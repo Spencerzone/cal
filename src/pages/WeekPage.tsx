@@ -1,4 +1,4 @@
-// src/pages/WeekPage.tsx
+// src/pages/WeekPage.tsx 3
 import { useEffect, useMemo, useState } from "react";
 import { getEventsForRange, weekRangeUtc } from "../db/queries";
 import { formatDayLabel, formatEventTime, toLocalDayKey } from "../util/time";
