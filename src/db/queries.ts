@@ -55,3 +55,5 @@ export async function getLessonsForSubject(code: string, rangeStartUtc: number, 
     .filter(e => e.type === "class" && e.code?.toLowerCase() === code.toLowerCase())
     .sort((a, b) => a.dtStartUtc - b.dtStartUtc);
 }
+
+export { getEventsForRange, getLessonsForSubject, todayRangeUtc, weekRangeUtc } from "./queries";

@@ -2,6 +2,7 @@
 import { getDb } from "../db/db";
 import { parseIcsToBaseEvents, hashString } from "./parseIcs";
 
+
 export async function importIcs(icsText: string, icsName: string) {
   const db = await getDb();
   const importId = `${Date.now()}`;
