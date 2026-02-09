@@ -1,4 +1,4 @@
-// src/pages/SubjectPage.tsx
+// src/pages/SubjectPage.tsx 2
 import { useEffect, useMemo, useState } from "react";
 import { getDb } from "../db/db";
 import { getLessonsForSubject, weekRangeUtc } from "../db/queries";
