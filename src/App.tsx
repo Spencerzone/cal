@@ -4,6 +4,8 @@ import ImportPage from "./pages/ImportPage";
 import TodayPage from "./pages/TodayPage";
 import WeekPage from "./pages/WeekPage";
 import SubjectPage from "./pages/SubjectPage";
+import MatrixPage from "./pages/MatrixPage";
+
 
 export default function App() {
   return (
@@ -21,6 +23,9 @@ export default function App() {
         <NavLink to="/import" className={({ isActive }) => (isActive ? "active" : "")}>
           Import
         </NavLink>
+        <NavLink to="/matrix" className={({ isActive }) => (isActive ? "active" : "")}>
+  Matrix
+</NavLink>
       </nav>
 
       <div className="container">
@@ -29,6 +34,7 @@ export default function App() {
           <Route path="/week" element={<WeekPage />} />
           <Route path="/subject" element={<SubjectPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/matrix" element={<MatrixPage />} />
         </Routes>
       </div>
     </>

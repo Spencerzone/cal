@@ -9,6 +9,25 @@ export interface UserEventMeta {
   note: string | null;
 }
 
+
+
+// src/db/db.ts (types)
+export type DayLabel =
+  | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
+  | "MonB" | "TueB" | "WedB" | "ThuB" | "FriB";
+
+export interface CycleTemplateEvent {
+  id: string;
+  dayLabel: DayLabel;
+  startMinutes: number;
+  endMinutes: number;
+  periodCode: string | null;
+  type: "class" | "duty" | "break";
+  code: string | null;
+  title: string;
+  room: string | null;
+}
+
 export interface ImportRow {
   importId: string;
   importedAt: number;
@@ -34,6 +53,14 @@ interface DaybookDB extends DBSchema {
     key: string; // importId
     value: ImportRow;
   };
+  cycleTemplateEvents: {
+  key: string;
+  value: CycleTemplateEvent;
+  indexes: {
+    byDayLabel: string;
+    byStartMinutes: number;
+  };
+};
 }
 
 let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
@@ -46,6 +73,11 @@ export function getDb() {
         be.createIndex("byStartUtc", "dtStartUtc");
         be.createIndex("byCode", "code");
         be.createIndex("byType", "type");
+        // add near other stores
+const te = db.createObjectStore("cycleTemplateEvents", { keyPath: "id" });
+te.createIndex("byDayLabel", "dayLabel");
+te.createIndex("byStartMinutes", "startMinutes");
+        
 
         db.createObjectStore("userEventMeta", { keyPath: "eventId" });
         db.createObjectStore("imports", { keyPath: "importId" });
