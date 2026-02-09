@@ -1,7 +1,9 @@
 // src/db/queries.ts
 import { getDb } from "./db";
-import { utcToZonedTime } from "date-fns-tz";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
+
+
 
 const TZ = "Australia/Sydney";
 
@@ -26,26 +28,24 @@ export async function getEventsForRange(rangeStartUtc: number, rangeEndUtc: numb
 }
 
 export function todayRangeUtc(now = new Date()) {
-  const local = utcToZonedTime(now, TZ);
+  const local = toZonedTime(now, TZ);
   const startLocal = startOfDay(local);
   const endLocal = endOfDay(local);
   // Convert local boundaries back to UTC ms by constructing Date from ISO with TZ offset
   // Simplest: use date-fns-tz zonedTimeToUtc, but keep this concise:
-  const { zonedTimeToUtc } = require("date-fns-tz");
   return {
-    startUtc: zonedTimeToUtc(startLocal, TZ).getTime(),
-    endUtc: zonedTimeToUtc(endLocal, TZ).getTime(),
+    startUtc: fromZonedTime(startLocal, TZ).getTime(),
+    endUtc: fromZonedTime(endLocal, TZ).getTime(),
   };
 }
 
 export function weekRangeUtc(now = new Date()) {
-  const { zonedTimeToUtc } = require("date-fns-tz");
-  const local = utcToZonedTime(now, TZ);
+  const local = toZonedTime(now, TZ);
   const startLocal = startOfWeek(local, { weekStartsOn: 1 });
   const endLocal = endOfWeek(local, { weekStartsOn: 1 });
   return {
-    startUtc: zonedTimeToUtc(startLocal, TZ).getTime(),
-    endUtc: zonedTimeToUtc(endLocal, TZ).getTime(),
+    startUtc: fromZonedTime(startLocal, TZ).getTime(),
+    endUtc: fromZonedTime(endLocal, TZ).getTime(),
   };
 }
 
@@ -55,5 +55,3 @@ export async function getLessonsForSubject(code: string, rangeStartUtc: number, 
     .filter(e => e.type === "class" && e.code?.toLowerCase() === code.toLowerCase())
     .sort((a, b) => a.dtStartUtc - b.dtStartUtc);
 }
-
-export { getEventsForRange, getLessonsForSubject, todayRangeUtc, weekRangeUtc } from "./queries";

@@ -1,12 +1,12 @@
 // src/util/time.ts
 import { format } from "date-fns";
-import { utcToZonedTime } from "date-fns-tz";
+import { fromZonedTime } from "date-fns-tz";
 import type { BaseEvent } from "../ics/parseIcs";
 
 const TZ = "Australia/Sydney";
 
 export function toLocal(dtUtcMs: number): Date {
-  return utcToZonedTime(new Date(dtUtcMs), TZ);
+  return fromZonedTime(new Date(dtUtcMs), TZ);
 }
 
 export function toLocalDayKey(dtUtcMs: number): string {
