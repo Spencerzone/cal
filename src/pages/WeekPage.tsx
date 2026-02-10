@@ -9,6 +9,9 @@ import { getVisibleBlocks } from "../db/blockQueries";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
+import type { Item } from "../db/db";
+import { getItemsByUser, makeTemplateItemId } from "../db/itemQueries";
+import { ensureItemsForTemplates } from "../db/seedItemsFromTemplates";
 
 type Cell =
   | { kind: "blank" }
@@ -23,6 +26,7 @@ const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
 ) as Record<string, SlotId>;
 
 export default function WeekPage() {
+  const [itemById, setItemById] = useState<Map<string, Item>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
 
@@ -41,6 +45,15 @@ export default function WeekPage() {
       setBlocks(await getVisibleBlocks(userId));
     })();
   }, []);
+
+  // Load templates
+  useEffect(() => {
+  (async () => {
+    await ensureItemsForTemplates(userId);
+    const items = await getItemsByUser(userId);
+    setItemById(new Map(items.map((it) => [it.id, it])));
+  })();
+}, []);
 
   // Load templates
   useEffect(() => {
@@ -149,10 +162,16 @@ export default function WeekPage() {
                 </td>
 
                 {cells.map((cell, i) => {
-                  const dateKey = format(weekDays[i], "yyyy-MM-dd");
-                  return (
-                    <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
-                      <div className="card" style={{ background: "#0f0f0f" }}>
+                    const dateKey = format(weekDays[i], "yyyy-MM-dd");
+
+                    const bg =
+                      cell.kind === "template"
+                        ? itemById.get(makeTemplateItemId(userId, cell.e.id))?.color
+                        : undefined;
+
+                    return (
+                      <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
+                        <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
                         {cell.kind === "blank" ? (
                           <div className="muted">—</div>
                         ) : cell.kind === "free" ? (
