@@ -73,10 +73,9 @@ export function getDb() {
         be.createIndex("byStartUtc", "dtStartUtc");
         be.createIndex("byCode", "code");
         be.createIndex("byType", "type");
-        // add near other stores
-const te = db.createObjectStore("cycleTemplateEvents", { keyPath: "id" });
-te.createIndex("byDayLabel", "dayLabel");
-te.createIndex("byStartMinutes", "startMinutes");
+        const te = db.createObjectStore("cycleTemplateEvents", { keyPath: "id" });
+        te.createIndex("byDayLabel", "dayLabel");
+        te.createIndex("byStartMinutes", "startMinutes");
         
 
         db.createObjectStore("userEventMeta", { keyPath: "eventId" });
@@ -86,3 +85,4 @@ te.createIndex("byStartMinutes", "startMinutes");
   }
   return dbPromise;
 }
+

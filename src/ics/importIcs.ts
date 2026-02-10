@@ -1,7 +1,7 @@
 // src/ics/importIcs.ts
 import { getDb } from "../db/db";
 import { parseIcsToBaseEvents, hashString } from "./parseIcs";
-
+import { buildCycleTemplateFromIcs } from "../rolling/buildTemplateFromIcs";
 
 export async function importIcs(icsText: string, icsName: string) {
   const db = await getDb();
@@ -17,6 +17,8 @@ export async function importIcs(icsText: string, icsName: string) {
     icsName,
     icsHash,
   });
+
+  await buildCycleTemplateFromIcs(icsText);
 
   // Mark all existing base events as "not seen" first (soft approach)
   // We’ll set active=true for any seen in this import, and after loop we can deactivate unseen.
