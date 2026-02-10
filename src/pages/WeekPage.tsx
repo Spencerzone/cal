@@ -1,6 +1,6 @@
 // src/pages/WeekPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
+import { addDays, addWeeks, format, startOfWeek } from "date-fns";
 import { getDb } from "../db/db";
 import type { Block, CycleTemplateEvent, DayLabel, SlotAssignment, SlotId } from "../db/db";
 import { SLOT_DEFS } from "../rolling/slots";
@@ -22,17 +22,17 @@ const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
   SLOT_DEFS.map((s) => [s.label, s.id])
 ) as Record<string, SlotId>;
 
-function weekdayFromLabel(label: DayLabel): string {
-  return label.slice(0, 3);
-}
-
 export default function WeekPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
-  const [assignmentsByLabel, setAssignmentsByLabel] = useState<Map<DayLabel, Map<SlotId, SlotAssignment>>>(new Map());
-  const [weekLabels, setWeekLabels] = useState<DayLabel[]>([]);
 
-  const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  // Map keyed by dateKey ("yyyy-MM-dd") => assignments for that dayLabel
+  const [assignmentsByDate, setAssignmentsByDate] = useState<Map<string, Map<SlotId, SlotAssignment>>>(new Map());
+
+  // Cursor is Monday of the week being viewed
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+
+  const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   // Load blocks
   useEffect(() => {
@@ -51,62 +51,46 @@ export default function WeekPage() {
     })();
   }, []);
 
-  // Compute week labels (A or B) based on today (uses your existing rolling settings + mapping)
+  // Load assignments for each Mon-Fri date in the viewed week
   useEffect(() => {
     (async () => {
       const settings = await getRollingSettings();
-      const canonicalToday = dayLabelForDate(todayKey, settings) as DayLabel | null;
-
-      if (!canonicalToday) {
-        setWeekLabels([]);
-        return;
-      }
-
       const meta = await getTemplateMeta();
-      const storedToday = meta ? applyMetaToLabel(canonicalToday, meta) : canonicalToday;
-
-      // ---------- EDIT HERE IF YOUR LABEL SYSTEM DIFFERS ----------
-      // Determine whether we're in A or B week based on storedToday suffix (MonA -> "A")
-      const weekSuffix = storedToday.slice(3) as "A" | "B";
-      const labels: DayLabel[] = (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map(
-        (d) => `${d}${weekSuffix}` as DayLabel
-      );
-      // ------------------------------------------------------------
-
-      setWeekLabels(labels);
-    })();
-  }, [todayKey]);
-
-  // Load assignments for the week labels
-  useEffect(() => {
-    (async () => {
-      if (weekLabels.length === 0) {
-        setAssignmentsByLabel(new Map());
-        return;
-      }
 
       const db = await getDb();
-      const out = new Map<DayLabel, Map<SlotId, SlotAssignment>>();
+      const out = new Map<string, Map<SlotId, SlotAssignment>>();
 
-      for (const lbl of weekLabels) {
+      for (const d of weekDays) {
+        const dateKey = format(d, "yyyy-MM-dd");
+
+        const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
+        if (!canonical) {
+          out.set(dateKey, new Map()); // non-school day
+          continue;
+        }
+
+        const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
+
         const idx = db.transaction("slotAssignments").store.index("byDayLabel");
-        const rows = await idx.getAll(lbl);
+        const rows = await idx.getAll(stored);
 
         const m = new Map<SlotId, SlotAssignment>();
         for (const a of rows) m.set(a.slotId, a);
-        out.set(lbl, m);
+
+        out.set(dateKey, m);
       }
 
-      setAssignmentsByLabel(out);
+      setAssignmentsByDate(out);
     })();
-  }, [weekLabels]);
+  }, [weekDays]);
 
-  // Build grid: rows=blocks, cols=weekLabels
+  // Build grid: rows=blocks, cols=weekDays
   const grid = useMemo(() => {
     return blocks.map((b) => {
-      const slotId = SLOT_LABEL_TO_ID[b.name]; // may be undefined for new custom blocks
-      const rowCells = weekLabels.map((lbl) => {
-        const a = slotId ? assignmentsByLabel.get(lbl)?.get(slotId) : undefined;
+      const slotId = SLOT_LABEL_TO_ID[b.name]; // undefined for custom blocks => blanks
+      const rowCells = weekDays.map((d) => {
+        const dateKey = format(d, "yyyy-MM-dd");
+        const a = slotId ? assignmentsByDate.get(dateKey)?.get(slotId) : undefined;
 
         if (!a) return { kind: "blank" } as Cell;
         if (a.kind === "free") return { kind: "free" } as Cell;
@@ -122,11 +106,25 @@ export default function WeekPage() {
 
       return { block: b, cells: rowCells };
     });
-  }, [blocks, weekLabels, assignmentsByLabel, templateById]);
+  }, [blocks, weekDays, assignmentsByDate, templateById]);
 
   return (
     <div className="grid">
       <h1>Week</h1>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div>
+            <strong>
+              {format(weekStart, "d MMM")} – {format(addDays(weekStart, 4), "d MMM")}
+            </strong>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button onClick={() => setWeekStart((d) => addWeeks(d, -1))}>Prev</button>
+            <button onClick={() => setWeekStart((d) => addWeeks(d, 1))}>Next</button>
+          </div>
+        </div>
+      </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
@@ -135,9 +133,9 @@ export default function WeekPage() {
               <th style={{ textAlign: "left", width: 180 }} className="muted">
                 Block
               </th>
-              {weekLabels.map((lbl) => (
-                <th key={lbl} style={{ textAlign: "left" }} className="muted">
-                  {weekdayFromLabel(lbl)}
+              {weekDays.map((d) => (
+                <th key={format(d, "yyyy-MM-dd")} style={{ textAlign: "left" }} className="muted">
+                  {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
                 </th>
               ))}
             </tr>
@@ -150,46 +148,49 @@ export default function WeekPage() {
                   <div className="badge">{block.name}</div>
                 </td>
 
-                {cells.map((cell, i) => (
-                  <td key={`${block.id}:${weekLabels[i]}`} style={{ verticalAlign: "top" }}>
-                    <div className="card" style={{ background: "#0f0f0f" }}>
-                      {cell.kind === "blank" ? (
-                        <div className="muted">—</div>
-                      ) : cell.kind === "free" ? (
-                        <div className="muted">Free</div>
-                      ) : cell.kind === "manual" ? (
-                        <>
-                          <div>
-                            <strong>{cell.a.manualTitle}</strong>{" "}
-                            {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
-                          </div>
-                          <div className="muted">
-                            {cell.a.manualRoom ? <span className="badge">Room {cell.a.manualRoom}</span> : null}{" "}
-                            <span className="badge">{cell.a.kind}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div>
-                            <strong>{cell.e.title}</strong>{" "}
-                            {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
-                          </div>
-                          <div className="muted">
-                            {cell.e.room ? <span className="badge">Room {cell.e.room}</span> : null}{" "}
-                            {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
-                            <span className="badge">{cell.a.kind}</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                ))}
+                {cells.map((cell, i) => {
+                  const dateKey = format(weekDays[i], "yyyy-MM-dd");
+                  return (
+                    <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
+                      <div className="card" style={{ background: "#0f0f0f" }}>
+                        {cell.kind === "blank" ? (
+                          <div className="muted">—</div>
+                        ) : cell.kind === "free" ? (
+                          <div className="muted">Free</div>
+                        ) : cell.kind === "manual" ? (
+                          <>
+                            <div>
+                              <strong>{cell.a.manualTitle}</strong>{" "}
+                              {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
+                            </div>
+                            <div className="muted">
+                              {cell.a.manualRoom ? <span className="badge">Room {cell.a.manualRoom}</span> : null}{" "}
+                              <span className="badge">{cell.a.kind}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <strong>{cell.e.title}</strong>{" "}
+                              {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
+                            </div>
+                            <div className="muted">
+                              {cell.e.room ? <span className="badge">Room {cell.e.room}</span> : null}{" "}
+                              {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
+                              <span className="badge">{cell.a.kind}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
               </tr>
             ))}
 
             {grid.length === 0 ? (
               <tr>
-                <td colSpan={1 + weekLabels.length} className="muted">
+                <td colSpan={1 + weekDays.length} className="muted">
                   No data.
                 </td>
               </tr>
