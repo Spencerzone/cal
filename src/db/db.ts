@@ -59,13 +59,17 @@ interface DaybookDB extends DBSchema {
     byStartMinutes: number;
   };
 };
+  settings: {
+    key: string;
+    value: { key: string; value: any };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 2, {
+    dbPromise = openDB<DaybookDB>("daybook", 3, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -84,6 +88,13 @@ export function getDb() {
             te.createIndex("byStartMinutes", "startMinutes");
           }
         }
+        
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains("settings")) {
+            db.createObjectStore("settings", { keyPath: "key" });
+          }
+        }
+
       },
     });
   }
