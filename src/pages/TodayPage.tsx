@@ -10,7 +10,6 @@ import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
 
-const [blocks, setBlocks] = useState<Block[]>([]);
 
 type Cell =
   | { kind: "blank" }
@@ -41,6 +40,7 @@ function timeRangeFromTemplate(today: Date, e: CycleTemplateEvent): string {
 }
 
 export default function TodayPage() {
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
   const [label, setLabel] = useState<DayLabel | null>(null);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
