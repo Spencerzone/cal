@@ -1,45 +1,48 @@
+// src/pages/WeekPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { addDays, format, startOfWeek } from "date-fns";
+import { format } from "date-fns";
 import { getDb } from "../db/db";
-import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId } from "../db/db";
+import type { Block, CycleTemplateEvent, DayLabel, SlotAssignment, SlotId } from "../db/db";
 import { SLOT_DEFS } from "../rolling/slots";
+import { ensureDefaultBlocks } from "../db/seed";
+import { getVisibleBlocks } from "../db/blockQueries";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 
-type DayColumn = {
-  dateKey: string; // YYYY-MM-DD
-  header: string;  // Mon 12 Feb
-  storedLabel: DayLabel | null;
-  assignmentBySlot: Map<SlotId, SlotAssignment>;
-};
+type Cell =
+  | { kind: "blank" }
+  | { kind: "free" }
+  | { kind: "manual"; a: SlotAssignment }
+  | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
-function localDateFromKey(dateKey: string): Date {
-  const [y, m, d] = dateKey.split("-").map(Number);
-  return new Date(y!, (m! - 1), d!);
-}
+const userId = "local";
 
-function minutesToLocalDateTime(day: Date, minutes: number): Date {
-  const d = new Date(day);
-  d.setHours(0, minutes, 0, 0);
-  return d;
-}
+const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
+  SLOT_DEFS.map((s) => [s.label, s.id])
+) as Record<string, SlotId>;
 
-function timeRangeFromTemplate(day: Date, e: CycleTemplateEvent): string {
-  const s = minutesToLocalDateTime(day, e.startMinutes);
-  const t = minutesToLocalDateTime(day, e.endMinutes);
-  return `${format(s, "H:mm")}–${format(t, "H:mm")}`;
+function weekdayFromLabel(label: DayLabel): string {
+  return label.slice(0, 3);
 }
 
 export default function WeekPage() {
-  const [weekStart, setWeekStart] = useState<Date>(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 }) // Monday
-  );
-
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
-  const [days, setDays] = useState<DayColumn[]>([]);
+  const [assignmentsByLabel, setAssignmentsByLabel] = useState<Map<DayLabel, Map<SlotId, SlotAssignment>>>(new Map());
+  const [weekLabels, setWeekLabels] = useState<DayLabel[]>([]);
 
-  // load template once
+  const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+
+  // Load blocks
+  useEffect(() => {
+    (async () => {
+      await ensureDefaultBlocks(userId);
+      setBlocks(await getVisibleBlocks(userId));
+    })();
+  }, []);
+
+  // Load templates
   useEffect(() => {
     (async () => {
       const db = await getDb();
@@ -48,173 +51,152 @@ export default function WeekPage() {
     })();
   }, []);
 
-  // load week columns whenever weekStart changes
+  // Compute week labels (A or B) based on today (uses your existing rolling settings + mapping)
   useEffect(() => {
     (async () => {
       const settings = await getRollingSettings();
-      const meta = await getTemplateMeta();
-      const db = await getDb();
+      const canonicalToday = dayLabelForDate(todayKey, settings) as DayLabel | null;
 
-      const cols: DayColumn[] = [];
-
-      for (let i = 0; i < 5; i++) {
-        const d = addDays(weekStart, i);
-        const dateKey = format(d, "yyyy-MM-dd");
-        const header = format(d, "EEE d MMM");
-
-        const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
-        const storedLabel = canonical ? (meta ? applyMetaToLabel(canonical, meta) : canonical) : null;
-
-        const assignmentBySlot = new Map<SlotId, SlotAssignment>();
-
-        if (storedLabel) {
-          const idx = db.transaction("slotAssignments").store.index("byDayLabel");
-          const rows = await idx.getAll(storedLabel);
-          for (const a of rows) assignmentBySlot.set(a.slotId, a);
-        }
-
-        cols.push({ dateKey, header, storedLabel, assignmentBySlot });
+      if (!canonicalToday) {
+        setWeekLabels([]);
+        return;
       }
 
-      setDays(cols);
+      const meta = await getTemplateMeta();
+      const storedToday = meta ? applyMetaToLabel(canonicalToday, meta) : canonicalToday;
+
+      // ---------- EDIT HERE IF YOUR LABEL SYSTEM DIFFERS ----------
+      // Determine whether we're in A or B week based on storedToday suffix (MonA -> "A")
+      const weekSuffix = storedToday.slice(3) as "A" | "B";
+      const labels: DayLabel[] = (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map(
+        (d) => `${d}${weekSuffix}` as DayLabel
+      );
+      // ------------------------------------------------------------
+
+      setWeekLabels(labels);
     })();
-  }, [weekStart]);
+  }, [todayKey]);
 
-  const weekLabel = useMemo(() => {
-    const end = addDays(weekStart, 4);
-    return `${format(weekStart, "d MMM")} – ${format(end, "d MMM")}`;
-  }, [weekStart]);
+  // Load assignments for the week labels
+  useEffect(() => {
+    (async () => {
+      if (weekLabels.length === 0) {
+        setAssignmentsByLabel(new Map());
+        return;
+      }
 
-  function moveWeek(delta: number) {
-    setWeekStart((d) => addDays(d, delta * 7));
-  }
+      const db = await getDb();
+      const out = new Map<DayLabel, Map<SlotId, SlotAssignment>>();
 
-  const hasTemplate = templateById.size > 0;
+      for (const lbl of weekLabels) {
+        const idx = db.transaction("slotAssignments").store.index("byDayLabel");
+        const rows = await idx.getAll(lbl);
+
+        const m = new Map<SlotId, SlotAssignment>();
+        for (const a of rows) m.set(a.slotId, a);
+        out.set(lbl, m);
+      }
+
+      setAssignmentsByLabel(out);
+    })();
+  }, [weekLabels]);
+
+  // Build grid: rows=blocks, cols=weekLabels
+  const grid = useMemo(() => {
+    return blocks.map((b) => {
+      const slotId = SLOT_LABEL_TO_ID[b.name]; // may be undefined for new custom blocks
+      const rowCells = weekLabels.map((lbl) => {
+        const a = slotId ? assignmentsByLabel.get(lbl)?.get(slotId) : undefined;
+
+        if (!a) return { kind: "blank" } as Cell;
+        if (a.kind === "free") return { kind: "free" } as Cell;
+        if (a.manualTitle) return { kind: "manual", a } as Cell;
+
+        if (a.sourceTemplateEventId) {
+          const e = templateById.get(a.sourceTemplateEventId);
+          if (e) return { kind: "template", a, e } as Cell;
+        }
+
+        return { kind: "blank" } as Cell;
+      });
+
+      return { block: b, cells: rowCells };
+    });
+  }, [blocks, weekLabels, assignmentsByLabel, templateById]);
 
   return (
     <div className="grid">
       <h1>Week</h1>
 
-      <div className="card">
-        <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => moveWeek(-1)}>Prev</button>
-          <div className="badge">{weekLabel}</div>
-          <button className="btn" onClick={() => moveWeek(1)}>Next</button>
+      <div className="card" style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", width: 180 }} className="muted">
+                Block
+              </th>
+              {weekLabels.map((lbl) => (
+                <th key={lbl} style={{ textAlign: "left" }} className="muted">
+                  {weekdayFromLabel(lbl)}
+                </th>
+              ))}
+            </tr>
+          </thead>
 
-          <div style={{ flex: 1 }} />
+          <tbody>
+            {grid.map(({ block, cells }) => (
+              <tr key={block.id}>
+                <td style={{ verticalAlign: "top" }}>
+                  <div className="badge">{block.name}</div>
+                </td>
 
-          <button className="btn" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
-            This week
-          </button>
-        </div>
-        <div className="space" />
-        <div className="muted">Shows Mon–Fri using slot assignments; blanks appear where no assignment exists.</div>
-      </div>
-
-      {!hasTemplate ? (
-        <div className="card">
-          <div><strong>No template found.</strong></div>
-          <div className="muted">Import ICS and build template first.</div>
-        </div>
-      ) : (
-        <div className="card" style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", width: 160 }} className="muted">Slot</th>
-                {days.map((day) => (
-                  <th key={day.dateKey} style={{ textAlign: "left", minWidth: 230 }}>
-                    <div>{day.header}</div>
-                    <div className="muted">
-                      {day.storedLabel ? `Cycle: ${day.storedLabel}` : "—"}
+                {cells.map((cell, i) => (
+                  <td key={`${block.id}:${weekLabels[i]}`} style={{ verticalAlign: "top" }}>
+                    <div className="card" style={{ background: "#0f0f0f" }}>
+                      {cell.kind === "blank" ? (
+                        <div className="muted">—</div>
+                      ) : cell.kind === "free" ? (
+                        <div className="muted">Free</div>
+                      ) : cell.kind === "manual" ? (
+                        <>
+                          <div>
+                            <strong>{cell.a.manualTitle}</strong>{" "}
+                            {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
+                          </div>
+                          <div className="muted">
+                            {cell.a.manualRoom ? <span className="badge">Room {cell.a.manualRoom}</span> : null}{" "}
+                            <span className="badge">{cell.a.kind}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <strong>{cell.e.title}</strong>{" "}
+                            {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
+                          </div>
+                          <div className="muted">
+                            {cell.e.room ? <span className="badge">Room {cell.e.room}</span> : null}{" "}
+                            {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
+                            <span className="badge">{cell.a.kind}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
-                  </th>
+                  </td>
                 ))}
               </tr>
-            </thead>
+            ))}
 
-            <tbody>
-              {SLOT_DEFS.map((slot) => (
-                <tr key={slot.id}>
-                  <td style={{ verticalAlign: "top" }}>
-                    <div className="badge">{slot.label}</div>
-                  </td>
-
-                  {days.map((day) => {
-                    const a = day.assignmentBySlot.get(slot.id);
-                    const dayDate = localDateFromKey(day.dateKey);
-
-                    // blank if no school day or no assignment
-                    if (!day.storedLabel || !a) {
-                      return (
-                        <td key={`${day.dateKey}::${slot.id}`} style={{ verticalAlign: "top" }}>
-                          <div className="card" style={{ background: "#0f0f0f", minHeight: 60 }}>
-                            <div className="muted">—</div>
-                          </div>
-                        </td>
-                      );
-                    }
-
-                    if (a.kind === "free") {
-                      return (
-                        <td key={`${day.dateKey}::${slot.id}`} style={{ verticalAlign: "top" }}>
-                          <div className="card" style={{ background: "#0f0f0f", minHeight: 60 }}>
-                            <div className="muted">Free</div>
-                          </div>
-                        </td>
-                      );
-                    }
-
-                    if (a.manualTitle) {
-                      return (
-                        <td key={`${day.dateKey}::${slot.id}`} style={{ verticalAlign: "top" }}>
-                          <div className="card" style={{ background: "#0f0f0f", minHeight: 60 }}>
-                            <div>
-                              <strong>{a.manualTitle}</strong>{" "}
-                              {a.manualCode ? <span className="muted">({a.manualCode})</span> : null}
-                            </div>
-                            <div className="muted">
-                              {a.manualRoom ? <span className="badge">Room {a.manualRoom}</span> : null}{" "}
-                              <span className="badge">{a.kind}</span>
-                            </div>
-                          </div>
-                        </td>
-                      );
-                    }
-
-                    const e = a.sourceTemplateEventId ? templateById.get(a.sourceTemplateEventId) : undefined;
-
-                    return (
-                      <td key={`${day.dateKey}::${slot.id}`} style={{ verticalAlign: "top" }}>
-                        <div className="card" style={{ background: "#0f0f0f", minHeight: 60 }}>
-                          {!e ? (
-                            <div className="muted">—</div>
-                          ) : (
-                            <>
-                              <div>
-                                <strong>{e.title}</strong>{" "}
-                                {e.code ? <span className="muted">({e.code})</span> : null}
-                                <span style={{ marginLeft: 10 }} className="muted">
-                                  {timeRangeFromTemplate(dayDate, e)}
-                                </span>
-                              </div>
-                              <div className="muted">
-                                {e.room ? <span className="badge">Room {e.room}</span> : null}{" "}
-                                {e.periodCode ? <span className="badge">{e.periodCode}</span> : null}{" "}
-                                <span className="badge">{a.kind}</span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            {grid.length === 0 ? (
+              <tr>
+                <td colSpan={1 + weekLabels.length} className="muted">
+                  No data.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
