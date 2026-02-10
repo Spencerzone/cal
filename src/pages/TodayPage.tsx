@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { getDb } from "../db/db";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId } from "../db/db";
-import { SLOT_DEFS } from "../rolling/slots";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
+import type { Block } from "../db/db";
+import { ensureDefaultBlocks } from "../db/seed";
+import { getVisibleBlocks } from "../db/blockQueries";
+
+const [blocks, setBlocks] = useState<Block[]>([]);
 
 type Cell =
   | { kind: "blank" }
@@ -13,7 +17,25 @@ type Cell =
   | { kind: "manual"; a: SlotAssignment }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
-function weekdayFromLabel(label: DayLabel): string {
+const BLOCK_NAME_TO_SLOT: Partial<Record<string, SlotId>> = {
+  "Before school": "before",
+  "Roll call": "rc",
+  "P1": "p1",
+  "P2": "p2",
+  "Recess 1": "r1",
+  "Recess 2": "r2",
+  "P3": "p3",
+  "P4": "p4",
+  "Lunch 1": "l1",
+  "Lunch 2": "l2",
+  "P5": "p5",
+  "P6": "p6",
+  "After school": "after",
+};
+
+const userId = "local";
+
+  function weekdayFromLabel(label: DayLabel): string {
   return label.slice(0, 3);
 }
 
@@ -53,6 +75,13 @@ export default function TodayPage() {
     })();
   }, []);
 
+  useEffect(() => {
+  (async () => {
+    await ensureDefaultBlocks(userId);
+    setBlocks(await getVisibleBlocks(userId));
+  })();
+}, []);
+
   // compute today's DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
     (async () => {
@@ -80,24 +109,25 @@ export default function TodayPage() {
     })();
   }, [todayKey]);
 
-  const cells: Array<{ slotId: SlotId; slotLabel: string; cell: Cell }> = useMemo(() => {
-    return SLOT_DEFS.map((s) => {
-      const a = assignmentBySlot.get(s.id);
+  const cells: Array<{ blockId: string; blockLabel: string; cell: Cell }> = useMemo(() => {
+  return blocks.map((b) => {
+    const slotId = BLOCK_NAME_TO_SLOT[b.name];
+    const a = slotId ? assignmentBySlot.get(slotId) : undefined;
 
-      if (!a) return { slotId: s.id, slotLabel: s.label, cell: { kind: "blank" } };
+    if (!a) return { blockId: b.id, blockLabel: b.name, cell: { kind: "blank" } };
 
-      if (a.kind === "free") return { slotId: s.id, slotLabel: s.label, cell: { kind: "free" } };
+    if (a.kind === "free") return { blockId: b.id, blockLabel: b.name, cell: { kind: "free" } };
 
-      if (a.manualTitle) return { slotId: s.id, slotLabel: s.label, cell: { kind: "manual", a } };
+    if (a.manualTitle) return { blockId: b.id, blockLabel: b.name, cell: { kind: "manual", a } };
 
-      if (a.sourceTemplateEventId) {
-        const e = templateById.get(a.sourceTemplateEventId);
-        if (e) return { slotId: s.id, slotLabel: s.label, cell: { kind: "template", a, e } };
-      }
+    if (a.sourceTemplateEventId) {
+      const e = templateById.get(a.sourceTemplateEventId);
+      if (e) return { blockId: b.id, blockLabel: b.name, cell: { kind: "template", a, e } };
+    }
 
-      return { slotId: s.id, slotLabel: s.label, cell: { kind: "blank" } };
-    });
-  }, [assignmentBySlot, templateById]);
+    return { blockId: b.id, blockLabel: b.name, cell: { kind: "blank" } };
+  });
+}, [blocks, assignmentBySlot, templateById]);
 
   // current/next computed only from template events (ignore blank/free)
   const currentNext = useMemo(() => {
@@ -159,10 +189,10 @@ export default function TodayPage() {
             </tr>
           </thead>
           <tbody>
-            {cells.map(({ slotId, slotLabel, cell }) => (
-              <tr key={slotId}>
+            {cells.map(({ blockId, blockLabel, cell }) => (
+              <tr key={blockId}>
                 <td style={{ verticalAlign: "top" }}>
-                  <div className="badge">{slotLabel}</div>
+                  <div className="badge">{blockLabel}</div>
                 </td>
                 <td style={{ verticalAlign: "top" }}>
                   <div className="card" style={{ background: "#0f0f0f" }}>

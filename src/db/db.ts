@@ -2,12 +2,35 @@
 import { openDB, DBSchema, IDBPDatabase } from "idb";
 import type { BaseEvent } from "../ics/parseIcs";
 
+export type BlockKind = "class" | "break" | "duty" | "admin" | "other";
+
 export interface UserEventMeta {
   eventId: string;
   hidden: boolean;
   colour: string | null;
   note: string | null;
 }
+
+export type ItemType = "class" | "duty" | "break" | "event" | "other";
+
+export type Item = {
+  id: string;          // uuid
+  userId: string;
+  type: ItemType;
+  title: string;       // "10 Sci", "Yard Duty", "Recess"
+  location?: string;
+  color: string;       // "#RRGGBB"
+  metaJson?: string;   // optional JSON string for now
+};
+
+export type Block = {
+  id: string;          // uuid
+  userId: string;
+  name: string;        // "P1", "Recess", "Before school"
+  kind: BlockKind;
+  orderIndex: number;  // for drag/drop
+  isVisible: 0 | 1;
+};
 
 // src/db/db.ts (types)
 export type DayLabel =
@@ -89,7 +112,22 @@ interface DaybookDB extends DBSchema {
       byDayLabel: DayLabel;
     };
   };
- 
+   blocks: {
+    key: string; // Block.id
+    value: Block;
+    indexes: {
+      byUserId: string;
+      byUserIdOrder: [string, number]; // [userId, orderIndex]
+    };
+  };
+  items: {
+    key: string; // Item.id
+    value: Item;
+    indexes: {
+      byUserId: string;
+      byUserIdType: [string, ItemType]; // [userId, type]
+    };
+  };
   
 
 }
@@ -98,7 +136,7 @@ let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 4, {
+    dbPromise = openDB<DaybookDB>("daybook", 5, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -125,12 +163,24 @@ export function getDb() {
         }
 
         if (oldVersion < 4) {
-  if (!db.objectStoreNames.contains("slotAssignments")) {
-    const sa = db.createObjectStore("slotAssignments", { keyPath: "key" });
-    sa.createIndex("byDayLabel", "dayLabel");
+          if (!db.objectStoreNames.contains("slotAssignments")) {
+            const sa = db.createObjectStore("slotAssignments", { keyPath: "key" });
+            sa.createIndex("byDayLabel", "dayLabel");
   }
 }
+        if (oldVersion < 5) {
+          if (!db.objectStoreNames.contains("blocks")) {
+            const b = db.createObjectStore("blocks", { keyPath: "id" });
+            b.createIndex("byUserId", "userId");
+            b.createIndex("byUserIdOrder", ["userId", "orderIndex"]);
+          }
 
+          if (!db.objectStoreNames.contains("items")) {
+            const it = db.createObjectStore("items", { keyPath: "id" });
+            it.createIndex("byUserId", "userId");
+            it.createIndex("byUserIdType", ["userId", "type"]);
+          }
+        }
       },
     });
   }
