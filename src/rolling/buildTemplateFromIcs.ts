@@ -200,6 +200,19 @@ export async function buildCycleTemplateFromIcs(icsText: string) {
   for (const te of templateEvents) await store.put(te);
   await tx.done;
 
+  // after tx.done that writes cycleTemplateEvents
+const db2 = await getDb();
+await db2.put("settings", {
+  key: "templateMeta",
+  value: {
+    anchorMonday,
+    cycleDates,
+    shift: 0,
+    flipped: false,
+    builtAt: Date.now(),
+  },
+});
+
   return {
     anchorMonday,
     cycleDates,
