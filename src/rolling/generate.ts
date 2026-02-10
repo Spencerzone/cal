@@ -2,6 +2,8 @@ import { getDb } from "../db/db";
 import type { CycleTemplateEvent } from "../db/db";
 import type { RollingSettings } from "./settings";
 import { dayLabelForDate } from "./cycle";
+import { getTemplateMeta, applyMetaToLabel } from "./templateMapping";
+import type { DayLabel } from "../db/db";
 
 export type GeneratedEvent = {
   id: string;
@@ -27,11 +29,14 @@ function toUtcMs(localDate: Date, minutes: number): number {
 
 export async function generateForDate(localDateKey: string, settings: RollingSettings): Promise<GeneratedEvent[]> {
   const label = dayLabelForDate(localDateKey, settings);
+  const meta = await getTemplateMeta();
+  const storedLabel: DayLabel = meta ? applyMetaToLabel(label as DayLabel, meta) : (label as DayLabel);
+
   if (!label) return [];
 
   const db = await getDb();
   const idx = db.transaction("cycleTemplateEvents").store.index("byDayLabel");
-  const template = await idx.getAll(label);
+  const template = await idx.getAll(storedLabel);
 
   template.sort((a, b) => a.startMinutes - b.startMinutes);
 

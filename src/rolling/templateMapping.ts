@@ -29,6 +29,15 @@ function flipLabel(l: DayLabel): DayLabel {
   return `${d}${set === "A" ? "B" : "A"}` as DayLabel;
 }
 
+export function applyMetaToLabel(label: DayLabel, meta: Pick<TemplateMeta, "shift" | "flipped">): DayLabel {
+  let labels = rotateLabels(CANON_LABELS, meta.shift);
+  if (meta.flipped) labels = labels.map(flipLabel);
+
+  // labels[i] is the stored label for canonical CANON_LABELS[i]
+  const i = CANON_LABELS.indexOf(label);
+  return labels[i] ?? label;
+}
+
 export async function getTemplateMeta(): Promise<TemplateMeta | null> {
   const db = await getDb();
   const row = await db.get("settings", "templateMeta");
