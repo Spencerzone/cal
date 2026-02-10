@@ -9,6 +9,9 @@ import type { Block } from "../db/db";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
+import type { Item } from "../db/db";
+import { getItemsByUser, makeTemplateItemId } from "../db/itemQueries";
+import { ensureItemsForTemplates } from "../db/seedItemsFromTemplates";
 
 
 type Cell =
@@ -40,6 +43,7 @@ function timeRangeFromTemplate(today: Date, e: CycleTemplateEvent): string {
 }
 
 export default function TodayPage() {
+  const [itemById, setItemById] = useState<Map<string, Item>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
   const [label, setLabel] = useState<DayLabel | null>(null);
@@ -64,10 +68,23 @@ export default function TodayPage() {
     })();
   }, []);
 
+  // load blocks once
   useEffect(() => {
   (async () => {
     await ensureDefaultBlocks(userId);
     setBlocks(await getVisibleBlocks(userId));
+  })();
+}, []);
+
+  // load items once (for manual overrides)
+  useEffect(() => {
+  (async () => {
+    await ensureDefaultBlocks(userId);
+    setBlocks(await getVisibleBlocks(userId));
+
+    await ensureItemsForTemplates(userId);
+    const items = await getItemsByUser(userId);
+    setItemById(new Map(items.map((it) => [it.id, it])));
   })();
 }, []);
 
@@ -178,13 +195,19 @@ export default function TodayPage() {
             </tr>
           </thead>
           <tbody>
-            {cells.map(({ blockId, blockLabel, cell }) => (
-              <tr key={blockId}>
-                <td style={{ verticalAlign: "top" }}>
-                  <div className="badge">{blockLabel}</div>
-                </td>
-                <td style={{ verticalAlign: "top" }}>
-                  <div className="card" style={{ background: "#0f0f0f" }}>
+  {cells.map(({ blockId, blockLabel, cell }) => {
+    const bg =
+      cell.kind === "template"
+        ? itemById.get(makeTemplateItemId(userId, cell.e.id))?.color
+        : undefined;
+
+    return (
+      <tr key={blockId}>
+        <td style={{ verticalAlign: "top" }}>
+          <div className="badge">{blockLabel}</div>
+        </td>
+        <td style={{ verticalAlign: "top" }}>
+          <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
                     {cell.kind === "blank" ? (
                       <div className="muted">—</div>
                     ) : cell.kind === "free" ? (
@@ -219,7 +242,8 @@ export default function TodayPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+    )
+  })}
           </tbody>
         </table>
       </div>
