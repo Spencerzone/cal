@@ -30,6 +30,14 @@ const userId = "local";
   return label.slice(0, 3);
 }
 
+function displayTitleForTemplate(
+  userId: string,
+  itemById: Map<string, Item>,
+  e: CycleTemplateEvent
+) {
+  return itemById.get(makeTemplateItemId(userId, e.id))?.title ?? e.title;
+}
+
 function minutesToLocalDateTime(today: Date, minutes: number): Date {
   const d = new Date(today);
   d.setHours(0, minutes, 0, 0);
@@ -151,7 +159,7 @@ export default function TodayPage() {
     const current = realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
     const next = realEvents.find((e) => e.start > nowMs) ?? null;
     return { current, next };
-  }, [cells, now, todayLocal]);
+  }, [cells, now, todayLocal, itemById]);
 
   return (
     <div className="grid">
@@ -226,7 +234,7 @@ export default function TodayPage() {
                     ) : (
                       <>
                         <div>
-                          <strong>{cell.e.title}</strong>{" "}
+                          <strong>{displayTitleForTemplate(userId, itemById, cell.e)}</strong>{" "}
                           {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                           <span style={{ marginLeft: 10 }} className="muted">
                             {timeRangeFromTemplate(todayLocal, cell.e)}

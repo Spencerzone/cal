@@ -190,7 +190,7 @@ export default function WeekPage() {
                         ) : (
                           <>
                             <div>
-                              <strong>{cell.e.title}</strong>{" "}
+                              <strong>{itemById.get(makeTemplateItemId(userId, cell.e.id))?.title ?? cell.e.title}</strong>{" "}
                               {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                             </div>
                             <div className="muted">
