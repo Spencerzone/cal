@@ -9,8 +9,6 @@ export interface UserEventMeta {
   note: string | null;
 }
 
-
-
 // src/db/db.ts (types)
 export type DayLabel =
   | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
@@ -67,19 +65,25 @@ let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 1, {
-      upgrade(db) {
-        const be = db.createObjectStore("baseEvents", { keyPath: "id" });
-        be.createIndex("byStartUtc", "dtStartUtc");
-        be.createIndex("byCode", "code");
-        be.createIndex("byType", "type");
-        const te = db.createObjectStore("cycleTemplateEvents", { keyPath: "id" });
-        te.createIndex("byDayLabel", "dayLabel");
-        te.createIndex("byStartMinutes", "startMinutes");
-        
+    dbPromise = openDB<DaybookDB>("daybook", 2, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const be = db.createObjectStore("baseEvents", { keyPath: "id" });
+          be.createIndex("byStartUtc", "dtStartUtc");
+          be.createIndex("byCode", "code");
+          be.createIndex("byType", "type");
 
-        db.createObjectStore("userEventMeta", { keyPath: "eventId" });
-        db.createObjectStore("imports", { keyPath: "importId" });
+          db.createObjectStore("userEventMeta", { keyPath: "eventId" });
+          db.createObjectStore("imports", { keyPath: "importId" });
+        }
+
+        if (oldVersion < 2) {
+          if (!db.objectStoreNames.contains("cycleTemplateEvents")) {
+            const te = db.createObjectStore("cycleTemplateEvents", { keyPath: "id" });
+            te.createIndex("byDayLabel", "dayLabel");
+            te.createIndex("byStartMinutes", "startMinutes");
+          }
+        }
       },
     });
   }
