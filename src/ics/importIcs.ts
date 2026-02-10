@@ -2,6 +2,8 @@
 import { getDb } from "../db/db";
 import { parseIcsToBaseEvents, hashString } from "./parseIcs";
 import { buildCycleTemplateFromIcs } from "../rolling/buildTemplateFromIcs";
+import { buildDraftSlotAssignments } from "../rolling/buildSlotAssignments";
+
 
 export async function importIcs(icsText: string, icsName: string) {
   const db = await getDb();
@@ -19,6 +21,8 @@ export async function importIcs(icsText: string, icsName: string) {
   });
 
   await buildCycleTemplateFromIcs(icsText);
+  await buildDraftSlotAssignments();
+
 
   // Mark all existing base events as "not seen" first (soft approach)
   // We’ll set active=true for any seen in this import, and after loop we can deactivate unseen.

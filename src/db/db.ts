@@ -33,6 +33,25 @@ export interface ImportRow {
   icsHash: string;
 }
 
+export type SlotId =
+  | "before" | "rc" | "p1" | "p2" | "r1" | "r2"
+  | "p3" | "p4" | "l1" | "l2" | "p5" | "p6" | "after";
+
+export type AssignmentKind = "class" | "duty" | "break" | "free";
+
+export interface SlotAssignment {
+  key: string;                 // dayLabel::slotId
+  dayLabel: DayLabel;
+  slotId: SlotId;
+  kind: AssignmentKind;
+  // If kind === "class" or "duty"/"break" sourced from template:
+  sourceTemplateEventId?: string;
+  // Manual override fields (if you want to type your own):
+  manualTitle?: string;
+  manualCode?: string | null;
+  manualRoom?: string | null;
+}
+
 interface DaybookDB extends DBSchema {
   baseEvents: {
     key: string; // BaseEvent.id
@@ -63,13 +82,23 @@ interface DaybookDB extends DBSchema {
     key: string;
     value: { key: string; value: any };
   };
+  slotAssignments: {
+    key: string; // dayLabel::slotId
+    value: SlotAssignment;
+    indexes: {
+      byDayLabel: DayLabel;
+    };
+  };
+ 
+  
+
 }
 
 let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 3, {
+    dbPromise = openDB<DaybookDB>("daybook", 4, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -94,6 +123,13 @@ export function getDb() {
             db.createObjectStore("settings", { keyPath: "key" });
           }
         }
+
+        if (oldVersion < 4) {
+  if (!db.objectStoreNames.contains("slotAssignments")) {
+    const sa = db.createObjectStore("slotAssignments", { keyPath: "key" });
+    sa.createIndex("byDayLabel", "dayLabel");
+  }
+}
 
       },
     });
