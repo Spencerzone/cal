@@ -25,11 +25,11 @@ export default function App() {
           Import
         </NavLink>
         <NavLink to="/matrix" className={({ isActive }) => (isActive ? "active" : "")}>
+        Matrix
+        </NavLink>
         <NavLink to="/mapping" className={({ isActive }) => (isActive ? "active" : "")}>
-  Mapping
-</NavLink>
-  Matrix
-</NavLink>
+        Mapping
+        </NavLink>
       </nav>
 
       <div className="container">
