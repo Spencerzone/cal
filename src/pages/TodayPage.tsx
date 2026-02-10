@@ -8,6 +8,7 @@ import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 import type { Block } from "../db/db";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
+import { SLOT_DEFS } from "../rolling/slots";
 
 const [blocks, setBlocks] = useState<Block[]>([]);
 
@@ -17,21 +18,9 @@ type Cell =
   | { kind: "manual"; a: SlotAssignment }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
-const BLOCK_NAME_TO_SLOT: Partial<Record<string, SlotId>> = {
-  "Before school": "before",
-  "Roll call": "rc",
-  "P1": "p1",
-  "P2": "p2",
-  "Recess 1": "r1",
-  "Recess 2": "r2",
-  "P3": "p3",
-  "P4": "p4",
-  "Lunch 1": "l1",
-  "Lunch 2": "l2",
-  "P5": "p5",
-  "P6": "p6",
-  "After school": "after",
-};
+const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
+  SLOT_DEFS.map((s) => [s.label, s.id])
+) as Record<string, SlotId>;
 
 const userId = "local";
 
@@ -111,7 +100,7 @@ export default function TodayPage() {
 
   const cells: Array<{ blockId: string; blockLabel: string; cell: Cell }> = useMemo(() => {
   return blocks.map((b) => {
-    const slotId = BLOCK_NAME_TO_SLOT[b.name];
+    const slotId = SLOT_LABEL_TO_ID[b.name];
     const a = slotId ? assignmentBySlot.get(slotId) : undefined;
 
     if (!a) return { blockId: b.id, blockLabel: b.name, cell: { kind: "blank" } };
