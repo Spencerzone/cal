@@ -195,13 +195,16 @@ export default function MatrixPage() {
       {!hasTemplate ? (
         <div className="card">
           <div>
-            <strong>No template found.</strong>
+            <strong>No template loaded.</strong>
           </div>
-          <div className="muted">Import an ICS and build the MonA–FriB template first.</div>
+          <div className="muted">
+            You can still build your fortnight using overrides below. Importing an ICS just pre-fills defaults.
+          </div>
         </div>
-      ) : (
-        <div className="card" style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
+      ) : null}
+
+      <div className="card" style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
             <thead>
               <tr>
                 <th style={{ textAlign: "left", width: 160 }} className="muted">
@@ -331,9 +334,8 @@ export default function MatrixPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
-      )}
+        </table>
+      </div>
     </div>
   );
 }

@@ -381,6 +381,8 @@ export default function TodayPage() {
           style={{
             marginTop: 8,
             minHeight: 120,
+            maxHeight: 260,
+            overflowY: "auto",
             padding: 10,
             borderRadius: 12,
             background: "#0f0f0f",
@@ -462,109 +464,94 @@ export default function TodayPage() {
         </div>
       </div>
 
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", width: 160 }} className="muted">
-                Slot
-              </th>
-              <th style={{ textAlign: "left" }} className="muted">
-                Details
-              </th>
-            </tr>
-          </thead>
+      <div className="slotsGrid">
+        {cells.map(({ blockId, blockLabel, slotId, cell }) => {
+          const override = slotId ? placementBySlot.get(slotId) : undefined;
+          const overrideSubjectId =
+            override && Object.prototype.hasOwnProperty.call(override, "subjectId")
+              ? override.subjectId
+              : undefined;
+          const overrideSubject = typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
 
-          <tbody>
-            {cells.map(({ blockId, blockLabel, slotId, cell }) => {
-              const override = slotId ? placementBySlot.get(slotId) : undefined;
-              const overrideSubjectId =
-                override && Object.prototype.hasOwnProperty.call(override, "subjectId")
-                  ? override.subjectId
-                  : undefined;
-              const overrideSubject = typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
+          const roomOverride =
+            override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
+              ? override.roomOverride
+              : undefined;
 
-              const roomOverride =
-                override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
-                  ? override.roomOverride
-                  : undefined;
+          const subject = cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
+          const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
+          const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
 
-              const subject = cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
-              const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-              const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
+          return (
+            <div key={blockId} className="card" style={{ background: bg ?? "#0f0f0f" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div className="badge">{blockLabel}</div>
+                {cell.kind === "template" ? (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {timeRangeFromTemplate(dateLocal, cell.e)}
+                  </span>
+                ) : null}
+              </div>
 
-              return (
-                <tr key={blockId}>
-                  <td style={{ verticalAlign: "top" }}>
-                    <div className="badge">{blockLabel}</div>
-                  </td>
-
-                  <td style={{ verticalAlign: "top" }}>
-                    <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
-                      {overrideSubjectId === null ? (
-                        <div className="muted">—</div>
-                      ) : overrideSubject ? (
-                        <>
-                          <div>
-                            <strong>{overrideSubject.title}</strong>{" "}
-                            {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
-                          </div>
-                          <div className="muted">
-                            {roomOverride && typeof roomOverride === "string" ? <span className="badge">Room {roomOverride}</span> : null} {" "}
-                            <span className="badge">{overrideSubject.kind}</span>
-                          </div>
-                        </>
-                      ) : cell.kind === "blank" ? (
-                        <div className="muted">—</div>
-                      ) : cell.kind === "free" ? (
-                        <div className="muted">Free</div>
-                      ) : cell.kind === "manual" ? (
-                        <>
-                          <div>
-                            <strong>{cell.a.manualTitle}</strong>{" "}
-                            {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
-                          </div>
-                          <div className="muted">
-                            {(roomOverride === undefined ? cell.a.manualRoom : roomOverride || null) ? (
-                              <span className="badge">Room {roomOverride === undefined ? cell.a.manualRoom : roomOverride}</span>
-                            ) : null}{" "}
-                            <span className="badge">{cell.a.kind}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div>
-                            <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
-                            {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
-                            <span style={{ marginLeft: 10 }} className="muted">
-                              {timeRangeFromTemplate(dateLocal, cell.e)}
-                            </span>
-                          </div>
-                          <div className="muted">
-                            {(() => {
-                              const resolved = roomOverride === undefined ? cell.e.room : roomOverride;
-                              return resolved ? <span className="badge">Room {resolved}</span> : null;
-                            })()} {" "}
-                            {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
-                            <span className="badge">{cell.a.kind}</span>
-                          </div>
-                        </>
-                      )}
-
-                      {slotId ? (
-                        <RichTextPlanEditor
-                          slotId={slotId}
-                          initialHtml={planBySlot.get(slotId)?.html ?? ""}
-                          attachments={attachmentsBySlot.get(slotId) ?? []}
-                        />
-                      ) : null}
+              <div style={{ marginTop: 8 }}>
+                {overrideSubjectId === null ? (
+                  <div className="muted">—</div>
+                ) : overrideSubject ? (
+                  <>
+                    <div>
+                      <strong>{overrideSubject.title}</strong>{" "}
+                      {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      {roomOverride && typeof roomOverride === "string" ? <span className="badge">Room {roomOverride}</span> : null}{" "}
+                      <span className="badge">{overrideSubject.kind}</span>
+                    </div>
+                  </>
+                ) : cell.kind === "blank" ? (
+                  <div className="muted">—</div>
+                ) : cell.kind === "free" ? (
+                  <div className="muted">Free</div>
+                ) : cell.kind === "manual" ? (
+                  <>
+                    <div>
+                      <strong>{cell.a.manualTitle}</strong>{" "}
+                      {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
+                    </div>
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      {(roomOverride === undefined ? cell.a.manualRoom : roomOverride || null) ? (
+                        <span className="badge">Room {roomOverride === undefined ? cell.a.manualRoom : roomOverride}</span>
+                      ) : null}{" "}
+                      <span className="badge">{cell.a.kind}</span>
+                    </div>
+                  </>
+                ) : cell.kind === "template" ? (
+                  <>
+                    <div>
+                      <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
+                      {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
+                    </div>
+                    <div className="muted" style={{ marginTop: 6 }}>
+                      {(() => {
+                        const resolved = roomOverride === undefined ? cell.e.room : roomOverride;
+                        return resolved ? <span className="badge">Room {resolved}</span> : null;
+                      })()} {" "}
+                      {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
+                      <span className="badge">{cell.a.kind}</span>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              {slotId ? (
+                <RichTextPlanEditor
+                  slotId={slotId}
+                  initialHtml={planBySlot.get(slotId)?.html ?? ""}
+                  attachments={attachmentsBySlot.get(slotId) ?? []}
+                />
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
