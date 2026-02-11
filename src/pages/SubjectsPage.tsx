@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Subject, SubjectKind } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
-import { getSubjectsByUser, upsertSubject } from "../db/subjectQueries";
+import { deleteSubject, getSubjectsByUser, upsertSubject } from "../db/subjectQueries";
 import { subjectIdForManual, autoHexColorForKey } from "../db/subjectUtils";
 
 const userId = "local";
@@ -143,9 +143,8 @@ export default function SubjectsPage() {
               <th style={{ textAlign: "left", width: 160 }} className="muted">
                 Code
               </th>
-              <th style={{ textAlign: "left", width: 120 }} className="muted">
-                Kind
-              </th>
+              <th style={{ textAlign: "left", width: 120 }} className="muted">Kind</th>
+              <th style={{ textAlign: "left", width: 120 }} className="muted">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -189,15 +188,26 @@ export default function SubjectsPage() {
                   {s.code ?? "—"}
                 </td>
 
-                <td style={{ verticalAlign: "top" }} className="muted">
-                  {KIND_LABEL[s.kind]}
+                <td style={{ verticalAlign: "top" }} className="muted">{KIND_LABEL[s.kind]}</td>
+
+                <td style={{ verticalAlign: "top" }}>
+                  <button
+                    onClick={async () => {
+                      const ok = window.confirm(`Delete “${s.title}”? This removes it from Subjects and clears any matrix overrides that use it.`);
+                      if (!ok) return;
+                      await deleteSubject(userId, s.id);
+                      await refresh();
+                    }}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}
 
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={5} className="muted">
                   No subjects found.
                 </td>
               </tr>

@@ -48,8 +48,16 @@ export type Placement = {
   userId: string;
   dayLabel: DayLabel;
   slotId: SlotId;
-  subjectId: string | null; // null means blank/free
-  note?: string;
+  // subjectId semantics:
+  // - undefined => use template subject
+  // - null      => force blank/free
+  // - string    => override subject
+  subjectId?: string | null;
+  // roomOverride semantics:
+  // - undefined => use template room
+  // - null      => clear room (display blank)
+  // - string    => override room
+  roomOverride?: string | null;
 };
 
 // src/db/db.ts (types)
@@ -173,7 +181,7 @@ let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 7, {
+    dbPromise = openDB<DaybookDB>("daybook", 8, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -232,6 +240,11 @@ export function getDb() {
             p.createIndex("byUserId", "userId");
             p.createIndex("byUserIdDayLabel", ["userId", "dayLabel"]);
           }
+        }
+
+        // v8: Placement shape extended (roomOverride/subjectId optional). No schema changes.
+        if (oldVersion < 8) {
+          // no-op
         }
       },
     });

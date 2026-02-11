@@ -6,7 +6,7 @@ import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } fr
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
-import { deletePlacement, getPlacementsForDayLabels, upsertPlacement } from "../db/placementQueries";
+import { getPlacementsForDayLabels, setPlacement } from "../db/placementQueries";
 
 type SlotDef = { id: SlotId; label: string };
 
@@ -41,7 +41,7 @@ export default function MatrixPage() {
   const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
 
   const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(new Map());
-  const [placementsByKey, setPlacementsByKey] = useState<Map<string, string | null>>(new Map());
+  const [placementsByKey, setPlacementsByKey] = useState<Map<string, { subjectId?: string | null; roomOverride?: string | null }>>(new Map());
 
   useEffect(() => {
     (async () => {
@@ -59,8 +59,14 @@ export default function MatrixPage() {
 
   async function loadPlacements() {
     const ps = await getPlacementsForDayLabels(userId, labels);
-    const m = new Map<string, string | null>();
-    for (const p of ps) m.set(`${p.dayLabel}::${p.slotId}`, p.subjectId);
+    const m = new Map<string, { subjectId?: string | null; roomOverride?: string | null }>();
+    for (const p of ps) {
+      const key = `${p.dayLabel}::${p.slotId}`;
+      const o: { subjectId?: string | null; roomOverride?: string | null } = {};
+      if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
+      if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
+      m.set(key, o);
+    }
     setPlacementsByKey(m);
   }
 
@@ -120,15 +126,50 @@ export default function MatrixPage() {
   }, [subjectsById]);
 
   async function onSelect(dl: DayLabel, slotId: SlotId, value: string) {
+    const k = `${dl}::${slotId}`;
+    const existing = placementsByKey.get(k);
+    const roomOverride = existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride") ? existing.roomOverride : undefined;
+
     if (value === "") {
-      await deletePlacement(dl, slotId);
+      // Clear subject override only (keep room override if any)
+      await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
       return;
     }
     if (value === "__blank__") {
-      await upsertPlacement(userId, dl, slotId, null);
+      await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { subjectId: null, roomOverride } : { subjectId: null });
       return;
     }
-    await upsertPlacement(userId, dl, slotId, value);
+    await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
+  }
+
+  async function onRoomBlur(dl: DayLabel, slotId: SlotId, nextRoomText: string) {
+    const k = `${dl}::${slotId}`;
+    const existing = placementsByKey.get(k);
+    const subjectId = existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+    const trimmed = nextRoomText.trim();
+    // Empty => clear room override (use template)
+    const roomOverride = trimmed ? trimmed : undefined;
+    await setPlacement(userId, dl, slotId, {
+      ...(subjectId !== undefined ? { subjectId } : {}),
+      ...(roomOverride !== undefined ? { roomOverride } : {}),
+    });
+  }
+
+  async function setBlankRoom(dl: DayLabel, slotId: SlotId) {
+    const k = `${dl}::${slotId}`;
+    const existing = placementsByKey.get(k);
+    const subjectId = existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+    await setPlacement(userId, dl, slotId, {
+      ...(subjectId !== undefined ? { subjectId } : {}),
+      roomOverride: null,
+    });
+  }
+
+  async function clearRoomOverride(dl: DayLabel, slotId: SlotId) {
+    const k = `${dl}::${slotId}`;
+    const existing = placementsByKey.get(k);
+    const subjectId = existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+    await setPlacement(userId, dl, slotId, subjectId !== undefined ? { subjectId } : {});
   }
 
   return (
@@ -183,25 +224,26 @@ export default function MatrixPage() {
 
                   {labels.map((dl) => {
                     const k = `${dl}::${row.id}`;
-                    const override = placementsByKey.has(k) ? placementsByKey.get(k) : undefined;
+                    const override = placementsByKey.get(k);
                     const base = baseCell.get(k);
 
                     const baseSubjectId = base?.e ? subjectIdForTemplateEvent(base.e) : null;
                     const baseSubject = baseSubjectId ? subjectsById.get(baseSubjectId) : undefined;
 
-                    const overrideSubject = typeof override === "string" ? subjectsById.get(override) : undefined;
+                    const overrideSubjectId = override && Object.prototype.hasOwnProperty.call(override, "subjectId") ? override.subjectId : undefined;
+                    const overrideSubject = typeof overrideSubjectId === "string" ? subjectsById.get(overrideSubjectId) : undefined;
 
-                    const bg = override === null ? "#0f0f0f" : (overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f");
+                    const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f");
 
                     const selectValue =
-                      override === undefined
+                      overrideSubjectId === undefined
                         ? ""
-                        : override === null
+                        : overrideSubjectId === null
                         ? "__blank__"
-                        : override;
+                        : overrideSubjectId;
 
                     const labelText =
-                      override === null
+                      overrideSubjectId === null
                         ? "Blank"
                         : overrideSubject
                         ? overrideSubject.title
@@ -212,11 +254,15 @@ export default function MatrixPage() {
                         : "—";
 
                     const subText =
-                      override === undefined
+                      overrideSubjectId === undefined
                         ? "Using template"
-                        : override === null
+                        : overrideSubjectId === null
                         ? "Override: blank"
                         : "Override";
+
+                    const roomOverride = override && Object.prototype.hasOwnProperty.call(override, "roomOverride") ? override.roomOverride : undefined;
+                    const baseRoom = base?.e?.room ?? "";
+                    const resolvedRoom = roomOverride === undefined ? baseRoom : roomOverride === null ? "" : roomOverride;
 
                     return (
                       <td key={k} style={{ verticalAlign: "top" }}>
@@ -257,6 +303,27 @@ export default function MatrixPage() {
                               ))}
                             </optgroup>
                           </select>
+
+                          <div className="space" />
+                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                            <input
+                              defaultValue={roomOverride === undefined ? "" : roomOverride ?? ""}
+                              placeholder={baseRoom ? `Room (template: ${baseRoom})` : "Room"}
+                              onBlur={(e) => onRoomBlur(dl, row.id, e.target.value)}
+                              style={{ width: "100%" }}
+                            />
+                            <button onClick={() => clearRoomOverride(dl, row.id)} title="Use template room">
+                              ↺
+                            </button>
+                            <button onClick={() => setBlankRoom(dl, row.id)} title="Blank room">
+                              ☐
+                            </button>
+                          </div>
+                          {resolvedRoom ? (
+                            <div className="muted" style={{ marginTop: 4 }}>
+                              Room: {resolvedRoom}
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                     );

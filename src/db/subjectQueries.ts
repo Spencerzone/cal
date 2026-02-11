@@ -1,6 +1,7 @@
 // src/db/subjectQueries.ts
 import { getDb, type Subject } from "./db";
 import { makeCanonicalItemId, makeItem, upsertItem } from "./itemQueries";
+import { deletePlacementsReferencingSubject } from "./placementQueries";
 
 export async function getSubjectsByUser(userId: string): Promise<Subject[]> {
   const db = await getDb();
@@ -37,5 +38,13 @@ export async function upsertSubject(subject: Subject): Promise<void> {
   }
 
   // Notify open pages to reload subjects.
+  window.dispatchEvent(new Event("subjects-changed"));
+}
+
+export async function deleteSubject(userId: string, subjectId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("subjects", subjectId);
+  // Remove any matrix placements that reference this subject.
+  await deletePlacementsReferencingSubject(userId, subjectId);
   window.dispatchEvent(new Event("subjects-changed"));
 }

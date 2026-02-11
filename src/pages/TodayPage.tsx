@@ -49,8 +49,9 @@ export default function TodayPage() {
   const [label, setLabel] = useState<DayLabel | null>(null);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
   const [assignmentBySlot, setAssignmentBySlot] = useState<Map<SlotId, SlotAssignment>>(new Map());
-  const [placementBySlot, setPlacementBySlot] = useState<Map<SlotId, string | null>>(new Map());
-  const [placementsBySlot, setPlacementsBySlot] = useState<Map<SlotId, string | null>>(new Map());
+  const [placementBySlot, setPlacementBySlot] = useState<
+    Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
+  >(new Map());
 
   const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const todayLocal = useMemo(() => new Date(), []);
@@ -140,8 +141,13 @@ export default function TodayPage() {
 
     const load = async () => {
       const ps = await getPlacementsForDayLabels(userId, [label]);
-      const m = new Map<SlotId, string | null>();
-      for (const p of ps) m.set(p.slotId, p.subjectId);
+      const m = new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
+      for (const p of ps) {
+        const o: { subjectId?: string | null; roomOverride?: string | null } = {};
+        if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
+        if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
+        m.set(p.slotId, o);
+      }
       setPlacementBySlot(m);
     };
 
@@ -167,7 +173,7 @@ export default function TodayPage() {
 
       return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "blank" } };
     });
-  }, [blocks, assignmentBySlot, templateById, placementBySlot, label]);
+  }, [blocks, assignmentBySlot, templateById]);
 
   // current/next computed only from template events (ignore blank/free/manual)
   const currentNext = useMemo(() => {
@@ -181,10 +187,11 @@ export default function TodayPage() {
 
         // Slot-level placement override
         const ov = x.slotId ? placementBySlot.get(x.slotId) : undefined;
-        if (ov === null) return null;
+        const overrideSubjectId = ov && Object.prototype.hasOwnProperty.call(ov, "subjectId") ? ov.subjectId : undefined;
+        if (overrideSubjectId === null) return null;
 
-        if (typeof ov === "string") {
-          const s = subjectById.get(ov);
+        if (typeof overrideSubjectId === "string") {
+          const s = subjectById.get(overrideSubjectId);
           const title = s ? s.title : e.title;
           return { title, start, end };
         }
@@ -247,12 +254,21 @@ export default function TodayPage() {
 
           <tbody>
             {cells.map(({ blockId, blockLabel, slotId, cell }) => {
-              const override = slotId && placementBySlot.has(slotId) ? placementBySlot.get(slotId) : undefined;
-              const overrideSubject = typeof override === "string" ? subjectById.get(override) : undefined;
+              const override = slotId ? placementBySlot.get(slotId) : undefined;
+              const overrideSubjectId =
+                override && Object.prototype.hasOwnProperty.call(override, "subjectId")
+                  ? override.subjectId
+                  : undefined;
+              const overrideSubject = typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
+
+              const roomOverride =
+                override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
+                  ? override.roomOverride
+                  : undefined;
 
               const subject = cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
               const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-              const bg = override === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
+              const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
 
               return (
                 <tr key={blockId}>
@@ -262,7 +278,7 @@ export default function TodayPage() {
 
                   <td style={{ verticalAlign: "top" }}>
                     <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
-                      {override === null ? (
+                      {overrideSubjectId === null ? (
                         <div className="muted">—</div>
                       ) : overrideSubject ? (
                         <>
@@ -271,6 +287,7 @@ export default function TodayPage() {
                             {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
                           </div>
                           <div className="muted">
+                            {roomOverride && typeof roomOverride === "string" ? <span className="badge">Room {roomOverride}</span> : null} {" "}
                             <span className="badge">{overrideSubject.kind}</span>
                           </div>
                         </>
@@ -285,7 +302,9 @@ export default function TodayPage() {
                             {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                           </div>
                           <div className="muted">
-                            {cell.a.manualRoom ? <span className="badge">Room {cell.a.manualRoom}</span> : null}{" "}
+                            {(roomOverride === undefined ? cell.a.manualRoom : roomOverride || null) ? (
+                              <span className="badge">Room {roomOverride === undefined ? cell.a.manualRoom : roomOverride}</span>
+                            ) : null}{" "}
                             <span className="badge">{cell.a.kind}</span>
                           </div>
                         </>
@@ -299,7 +318,10 @@ export default function TodayPage() {
                             </span>
                           </div>
                           <div className="muted">
-                            {cell.e.room ? <span className="badge">Room {cell.e.room}</span> : null}{" "}
+                            {(() => {
+                              const resolved = roomOverride === undefined ? cell.e.room : roomOverride;
+                              return resolved ? <span className="badge">Room {resolved}</span> : null;
+                            })()} {" "}
                             {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
                             <span className="badge">{cell.a.kind}</span>
                           </div>

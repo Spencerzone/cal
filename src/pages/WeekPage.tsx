@@ -39,8 +39,10 @@ export default function WeekPage() {
   // Map keyed by dateKey => resolved canonical dayLabel (after meta mapping)
   const [dayLabelByDate, setDayLabelByDate] = useState<Map<string, DayLabel>>(new Map());
 
-  // Map keyed by dateKey => slotId -> subjectId|null (null = blank override)
-  const [placementsByDate, setPlacementsByDate] = useState<Map<string, Map<SlotId, string | null>>>(new Map());
+  // Map keyed by dateKey => slotId -> placement override
+  const [placementsByDate, setPlacementsByDate] = useState<
+    Map<string, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>
+  >(new Map());
 
   // Cursor is Monday of the week being viewed
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -137,16 +139,19 @@ export default function WeekPage() {
       }
       const ps = await getPlacementsForDayLabels(userId, unique);
 
-      // Build mapping by dayLabel -> slotId -> subjectId
-      const byLabel = new Map<DayLabel, Map<SlotId, string | null>>();
+      // Build mapping by dayLabel -> slotId -> placement override
+      const byLabel = new Map<DayLabel, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const p of ps) {
-        const m = byLabel.get(p.dayLabel) ?? new Map<SlotId, string | null>();
-        m.set(p.slotId, p.subjectId);
+        const m = byLabel.get(p.dayLabel) ?? new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
+        const o: { subjectId?: string | null; roomOverride?: string | null } = {};
+        if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
+        if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
+        m.set(p.slotId, o);
         byLabel.set(p.dayLabel, m);
       }
 
       // Map into dateKeys for this week
-      const byDate = new Map<string, Map<SlotId, string | null>>();
+      const byDate = new Map<string, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const [dateKey, dl] of dayLabelByDate) {
         byDate.set(dateKey, byLabel.get(dl) ?? new Map());
       }
@@ -173,8 +178,9 @@ export default function WeekPage() {
         if (!slotId) return { kind: "blank" } as Cell;
 
         const overrideMap = placementsByDate.get(dateKey);
-        if (overrideMap && overrideMap.has(slotId)) {
-          const ov = overrideMap.get(slotId);
+        const entry = overrideMap?.get(slotId);
+        if (entry && Object.prototype.hasOwnProperty.call(entry, "subjectId")) {
+          const ov = entry.subjectId;
           if (ov === null) return { kind: "blank" } as Cell;
           if (typeof ov === "string") return { kind: "placed", subjectId: ov } as Cell;
         }
@@ -242,17 +248,27 @@ export default function WeekPage() {
                   const slotId = SLOT_LABEL_TO_ID[block.name];
                   const override = slotId ? placementsByDate.get(dateKey)?.get(slotId) : undefined;
 
-                  const overrideSubject = typeof override === "string" ? subjectById.get(override) : undefined;
+                  const overrideSubjectId =
+                    override && Object.prototype.hasOwnProperty.call(override, "subjectId")
+                      ? override.subjectId
+                      : undefined;
+
+                  const overrideSubject = typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
+
+                  const roomOverride =
+                    override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
+                      ? override.roomOverride
+                      : undefined;
 
                   const subject =
                     cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
                   const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-                  const bg = override === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
+                  const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
 
                   return (
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
-                        {override === null ? (
+                        {overrideSubjectId === null ? (
                           <div className="muted">—</div>
                         ) : overrideSubject ? (
                           <>
@@ -260,6 +276,7 @@ export default function WeekPage() {
                               <strong>{overrideSubject.title}</strong> {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
                             </div>
                             <div className="muted">
+                              {roomOverride && typeof roomOverride === "string" ? <span className="badge">Room {roomOverride}</span> : null} {" "}
                               <span className="badge">{overrideSubject.kind}</span>
                             </div>
                           </>
@@ -274,7 +291,9 @@ export default function WeekPage() {
                               {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                             </div>
                             <div className="muted">
-                              {cell.a.manualRoom ? <span className="badge">Room {cell.a.manualRoom}</span> : null}{" "}
+                              {(roomOverride === undefined ? cell.a.manualRoom : roomOverride || null) ? (
+                                <span className="badge">Room {roomOverride === undefined ? cell.a.manualRoom : roomOverride}</span>
+                              ) : null}{" "}
                               <span className="badge">{cell.a.kind}</span>
                             </div>
                           </>
@@ -285,7 +304,10 @@ export default function WeekPage() {
                               {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                             </div>
                             <div className="muted">
-                              {cell.e.room ? <span className="badge">Room {cell.e.room}</span> : null}{" "}
+                              {(() => {
+                                const resolved = roomOverride === undefined ? cell.e.room : roomOverride;
+                                return resolved ? <span className="badge">Room {resolved}</span> : null;
+                              })()}{" "}
                               {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
                               <span className="badge">{cell.a.kind}</span>
                             </div>
