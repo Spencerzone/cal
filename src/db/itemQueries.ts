@@ -32,17 +32,41 @@ function slug(s: string) {
     .replace(/[^a-z0-9\-]/g, "");
 }
 
+// Similar to autoHexColorForString but stable per canonical item (not per template event which can change).
+function normKey(s: string) {
+  return s.trim().toUpperCase().replace(/\s+/g, "").replace(/[^A-Z0-9]/g, "");
+}
+
+function deriveCodeFromTitle(type: string, title: string): string | null {
+  const t = title.trim();
+
+  // Handles: "Duty.OvalN", "Duty: OvalN", "Duty - OvalN"
+  if (type === "duty") {
+    const m = t.match(/^duty[\s\.\:\-]+(.+)$/i);
+    if (m?.[1]) return normKey(m[1]);
+  }
+
+  return null;
+}
+
 /**
  * Canonical ID: one Item per (type + code) where possible.
  * Fallback: (type + normalised title).
  */
 export function makeCanonicalItemId(
   userId: string,
-  type: ItemType,
+  type: string,
   code: string | null | undefined,
   title: string
 ) {
-  const key = code && code.trim() ? `code:${normCode(code)}` : `title:${slug(normTitle(title))}`;
+  const fromCode = code && code.trim() ? normKey(code) : null;
+  const fromTitle = deriveCodeFromTitle(type, title);
+
+  const key =
+    fromCode ? `code:${fromCode}` :
+    fromTitle ? `code:${fromTitle}` :
+    `title:${title.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "")}`;
+
   return `${userId}::item::${type}::${key}`;
 }
 
