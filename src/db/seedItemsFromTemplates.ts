@@ -1,9 +1,15 @@
 // src/db/seedItemsFromTemplates.ts
-import { getDb, type CycleTemplateEvent, type ItemType } from "./db";
-import { makeItem, makeTemplateItemId, upsertItem } from "./itemQueries";
+import { getDb, type CycleTemplateEvent, type Item, type ItemType } from "./db";
+import {
+  makeItem,
+  makeTemplateItemId,
+  upsertItem,
+  getItemsByUser,
+  canonicalItemIdFromTemplate,
+} from "./itemQueries";
 
 function typeFromTemplate(e: CycleTemplateEvent): ItemType {
-  return e.type; // "class" | "duty" | "break" matches ItemType subset
+  return e.type;
 }
 
 function clamp01(x: number) {
@@ -11,7 +17,6 @@ function clamp01(x: number) {
 }
 
 function hslToHex(h: number, s: number, l: number): string {
-  // h: 0..360, s/l: 0..1
   h = ((h % 360) + 360) % 360;
   s = clamp01(s);
   l = clamp01(l);
@@ -37,29 +42,70 @@ function hslToHex(h: number, s: number, l: number): string {
 }
 
 function autoHexColorForString(s: string): string {
-  // deterministic hash -> hue, then fixed s/l tuned for dark UI
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   const hue = h % 360;
   return hslToHex(hue, 0.7, 0.45);
 }
 
+function safeParseMeta(item: Item): any {
+  try {
+    return item.metaJson ? JSON.parse(item.metaJson) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function ensureItemsForTemplates(userId: string) {
   const db = await getDb();
   const templates = await db.getAll("cycleTemplateEvents");
 
-  // Only create items for template events that are referenced by assignments
-  // (optional optimisation; can skip and just create all)
+  // Load existing items once (avoid per-loop IndexedDB hits)
+  const existingItems = await getItemsByUser(userId);
+
+  // Build a “best old tpl-item per canonical id” map to migrate edits.
+  const bestOldByCanonical = new Map<string, Item>();
+
+  for (const it of existingItems) {
+    // old template-derived items look like `${userId}::tpl::${templateEventId}`
+    if (!it.id.startsWith(`${userId}::tpl::`)) continue;
+
+    const meta = safeParseMeta(it);
+    // meta.code/title/type are present from previous seed logic; fall back to item fields.
+    const type = (meta?.type ?? it.type) as ItemType;
+    const title = (meta?.title ?? it.title) as string;
+    const code = meta?.code ?? null;
+
+    // Reconstruct canonical id from stored meta if possible by matching a template
+    // If meta lacks enough info, we still can use title+type fallback by calling canonicalItemIdFromTemplate,
+    // but we don't have a template event here; so use title/code/type directly:
+    const canonicalId =
+      `${userId}::item::${type}::` +
+      (code && String(code).trim()
+        ? `code:${String(code).trim().toUpperCase()}`
+        : `title:${title.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "")}`);
+
+    // Prefer the first one with a non-default-ish colour? We can’t know default reliably,
+    // so just take the first and keep it stable.
+    if (!bestOldByCanonical.has(canonicalId)) bestOldByCanonical.set(canonicalId, it);
+  }
+
+  // Create (or ensure) canonical items
   for (const e of templates) {
-    const id = makeTemplateItemId(userId, e.id);
+    const id = canonicalItemIdFromTemplate(userId, e);
 
-    // If it already exists, leave it alone (preserves manual colour edits)
-    const existing = await db.get("items", id);
-    if (existing) continue;
+    const already = await db.get("items", id);
+    if (already) continue;
 
-    const title = e.title;
-    const color = autoHexColorForString(`${e.type}:${e.code ?? ""}:${title}`);
-    
+    const migrated = bestOldByCanonical.get(id);
+
+    const title = migrated?.title ?? e.title;
+    const color =
+      migrated?.color ??
+      autoHexColorForString(`${e.type}:${e.code ?? ""}:${e.title}`);
+
+    const location = migrated?.location ?? (e.room ?? undefined);
+
     await upsertItem(
       makeItem(
         userId,
@@ -67,9 +113,17 @@ export async function ensureItemsForTemplates(userId: string) {
         typeFromTemplate(e),
         title,
         color,
-        e.room ?? undefined,
-        { templateEventId: e.id, code: e.code, periodCode: e.periodCode }
+        location,
+        // keep template linkage optional; not required for identity anymore
+        { code: e.code, type: e.type }
       )
     );
+  }
+
+  // Cleanup: remove old tpl-derived items (they cause the duplicates UI)
+  for (const it of existingItems) {
+    if (it.id.startsWith(`${userId}::tpl::`)) {
+      await db.delete("items", it.id);
+    }
   }
 }
