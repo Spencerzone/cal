@@ -12,6 +12,7 @@ import { SLOT_DEFS } from "../rolling/slots";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
+import { getPlacementsForDayLabels } from "../db/placementQueries";
 
 type Cell =
   | { kind: "blank" }
@@ -48,6 +49,8 @@ export default function TodayPage() {
   const [label, setLabel] = useState<DayLabel | null>(null);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
   const [assignmentBySlot, setAssignmentBySlot] = useState<Map<SlotId, SlotAssignment>>(new Map());
+  const [placementBySlot, setPlacementBySlot] = useState<Map<SlotId, string | null>>(new Map());
+  const [placementsBySlot, setPlacementsBySlot] = useState<Map<SlotId, string | null>>(new Map());
 
   const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const todayLocal = useMemo(() => new Date(), []);
@@ -64,7 +67,7 @@ export default function TodayPage() {
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }
 
-  // load subjects + keep in sync with edits
+  // load subjects and keep in sync with edits
   useEffect(() => {
     loadSubjects();
 
@@ -74,13 +77,13 @@ export default function TodayPage() {
       if (document.visibilityState === "visible") loadSubjects();
     };
 
-    window.addEventListener("subjects-changed", onChanged);
-    window.addEventListener("focus", onFocus);
+    window.addEventListener("subjects-changed", onChanged as any);
+    window.addEventListener("focus", onFocus as any);
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
-      window.removeEventListener("subjects-changed", onChanged);
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("subjects-changed", onChanged as any);
+      window.removeEventListener("focus", onFocus as any);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
@@ -128,23 +131,43 @@ export default function TodayPage() {
     })();
   }, [todayKey]);
 
-  const cells: Array<{ blockId: string; blockLabel: string; cell: Cell }> = useMemo(() => {
+  // Load placements for today's stored label
+  useEffect(() => {
+    if (!label) {
+      setPlacementBySlot(new Map());
+      return;
+    }
+
+    const load = async () => {
+      const ps = await getPlacementsForDayLabels(userId, [label]);
+      const m = new Map<SlotId, string | null>();
+      for (const p of ps) m.set(p.slotId, p.subjectId);
+      setPlacementBySlot(m);
+    };
+
+    load();
+    const onChanged = () => load();
+    window.addEventListener("placements-changed", onChanged as any);
+    return () => window.removeEventListener("placements-changed", onChanged as any);
+  }, [label]);
+
+  const cells: Array<{ blockId: string; blockLabel: string; slotId: SlotId | null; cell: Cell }> = useMemo(() => {
     return blocks.map((b) => {
       const slotId = SLOT_LABEL_TO_ID[b.name];
       const a = slotId ? assignmentBySlot.get(slotId) : undefined;
 
-      if (!a) return { blockId: b.id, blockLabel: b.name, cell: { kind: "blank" } };
-      if (a.kind === "free") return { blockId: b.id, blockLabel: b.name, cell: { kind: "free" } };
-      if (a.manualTitle) return { blockId: b.id, blockLabel: b.name, cell: { kind: "manual", a } };
+      if (!a) return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "blank" } };
+      if (a.kind === "free") return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "free" } };
+      if (a.manualTitle) return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "manual", a } };
 
       if (a.sourceTemplateEventId) {
         const e = templateById.get(a.sourceTemplateEventId);
-        if (e) return { blockId: b.id, blockLabel: b.name, cell: { kind: "template", a, e } };
+          if (e) return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "template", a, e } };
       }
 
-      return { blockId: b.id, blockLabel: b.name, cell: { kind: "blank" } };
+      return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "blank" } };
     });
-  }, [blocks, assignmentBySlot, templateById]);
+  }, [blocks, assignmentBySlot, templateById, placementBySlot, label]);
 
   // current/next computed only from template events (ignore blank/free/manual)
   const currentNext = useMemo(() => {
@@ -154,20 +177,31 @@ export default function TodayPage() {
         const e = (x.cell as any).e as CycleTemplateEvent;
         const start = minutesToLocalDateTime(todayLocal, e.startMinutes).getTime();
         const end = minutesToLocalDateTime(todayLocal, e.endMinutes).getTime();
+        const slotId = x.slotId;
+
+        // Slot-level placement override
+        const ov = x.slotId ? placementBySlot.get(x.slotId) : undefined;
+        if (ov === null) return null;
+
+        if (typeof ov === "string") {
+          const s = subjectById.get(ov);
+          const title = s ? s.title : e.title;
+          return { title, start, end };
+        }
 
         const subject = subjectById.get(subjectIdForTemplateEvent(e));
         const detail = detailForTemplateEvent(e);
         const title = subject ? displayTitle(subject, detail) : e.title;
-
         return { title, start, end };
       })
+      .filter((x): x is { title: string; start: number; end: number } => !!x)
       .sort((a, b) => a.start - b.start);
 
     const nowMs = now.getTime();
     const current = realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
     const next = realEvents.find((e) => e.start > nowMs) ?? null;
     return { current, next };
-  }, [cells, now, todayLocal, subjectById]);
+  }, [cells, now, todayLocal, subjectById, placementBySlot]);
 
   return (
     <div className="grid">
@@ -212,11 +246,13 @@ export default function TodayPage() {
           </thead>
 
           <tbody>
-            {cells.map(({ blockId, blockLabel, cell }) => {
-              const subject =
-                cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
+            {cells.map(({ blockId, blockLabel, slotId, cell }) => {
+              const override = slotId && placementBySlot.has(slotId) ? placementBySlot.get(slotId) : undefined;
+              const overrideSubject = typeof override === "string" ? subjectById.get(override) : undefined;
+
+              const subject = cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
               const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-              const bg = subject?.color;
+              const bg = override === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
 
               return (
                 <tr key={blockId}>
@@ -226,7 +262,19 @@ export default function TodayPage() {
 
                   <td style={{ verticalAlign: "top" }}>
                     <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
-                      {cell.kind === "blank" ? (
+                      {override === null ? (
+                        <div className="muted">—</div>
+                      ) : overrideSubject ? (
+                        <>
+                          <div>
+                            <strong>{overrideSubject.title}</strong>{" "}
+                            {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
+                          </div>
+                          <div className="muted">
+                            <span className="badge">{overrideSubject.kind}</span>
+                          </div>
+                        </>
+                      ) : cell.kind === "blank" ? (
                         <div className="muted">—</div>
                       ) : cell.kind === "free" ? (
                         <div className="muted">Free</div>

@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { dayLabelsForSet } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { getDb } from "../db/db";
-import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId } from "../db/db";
+import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } from "../db/db";
+import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
+import { getSubjectsByUser } from "../db/subjectQueries";
+import { subjectIdForTemplateEvent } from "../db/subjectUtils";
+import { deletePlacement, getPlacementsForDayLabels, upsertPlacement } from "../db/placementQueries";
 
 type SlotDef = { id: SlotId; label: string };
 
@@ -26,18 +30,18 @@ function weekdayFromLabel(label: DayLabel): "Mon" | "Tue" | "Wed" | "Thu" | "Fri
   return label.slice(0, 3) as any;
 }
 
+const userId = "local";
+
 export default function MatrixPage() {
   const [set, setSet] = useState<"A" | "B">("A");
-
-  // These now filter ASSIGNMENTS, not raw events
-  const [showBreaks, setShowBreaks] = useState(true);
-  const [showDuties, setShowDuties] = useState(true);
+  const labels = useMemo(() => dayLabelsForSet(set), [set]);
+  const rows = useMemo(() => SLOT_DEFS, []);
 
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
   const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
 
-  const labels = useMemo(() => dayLabelsForSet(set), [set]);
-  const rows = useMemo(() => SLOT_DEFS, []);
+  const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(new Map());
+  const [placementsByKey, setPlacementsByKey] = useState<Map<string, string | null>>(new Map());
 
   useEffect(() => {
     (async () => {
@@ -47,6 +51,26 @@ export default function MatrixPage() {
     })();
   }, []);
 
+  async function loadSubjects() {
+    await ensureSubjectsFromTemplates(userId);
+    const subs = await getSubjectsByUser(userId);
+    setSubjectsById(new Map(subs.map((s) => [s.id, s])));
+  }
+
+  async function loadPlacements() {
+    const ps = await getPlacementsForDayLabels(userId, labels);
+    const m = new Map<string, string | null>();
+    for (const p of ps) m.set(`${p.dayLabel}::${p.slotId}`, p.subjectId);
+    setPlacementsByKey(m);
+  }
+
+  useEffect(() => {
+    loadSubjects();
+    const onSubjects = () => loadSubjects();
+    window.addEventListener("subjects-changed", onSubjects as any);
+    return () => window.removeEventListener("subjects-changed", onSubjects as any);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const a = await getAssignmentsForDayLabels(labels);
@@ -54,44 +78,58 @@ export default function MatrixPage() {
     })();
   }, [labels]);
 
-  const filteredAssignments = useMemo(() => {
-    return assignments.filter((a) => {
-      if (!showBreaks && a.kind === "break") return false;
-      if (!showDuties && a.kind === "duty") return false;
-      return true;
-    });
-  }, [assignments, showBreaks, showDuties]);
+  useEffect(() => {
+    loadPlacements();
+    const onPlacements = () => loadPlacements();
+    window.addEventListener("placements-changed", onPlacements as any);
+    return () => window.removeEventListener("placements-changed", onPlacements as any);
+  }, [labels.join(",")]);
 
-  // Cell lookup: `${dayLabel}::${slotId}` -> single resolved entry
-  const cell = useMemo(() => {
-    const m = new Map<
-      string,
-      { kind: SlotAssignment["kind"]; item?: CycleTemplateEvent; manual?: SlotAssignment }
-    >();
+  // Default cell content from slotAssignments/template.
+  const baseCell = useMemo(() => {
+    const m = new Map<string, { kind: SlotAssignment["kind"]; e?: CycleTemplateEvent }>();
 
-    for (const a of filteredAssignments) {
+    for (const a of assignments) {
       const k = `${a.dayLabel}::${a.slotId}`;
-
       if (a.kind === "free") {
         m.set(k, { kind: "free" });
         continue;
       }
-
-      if (a.manualTitle) {
-        m.set(k, { kind: a.kind, manual: a });
-        continue;
-      }
-
       if (a.sourceTemplateEventId) {
         const te = templateById.get(a.sourceTemplateEventId);
-        if (te) m.set(k, { kind: a.kind, item: te });
+        if (te) m.set(k, { kind: a.kind, e: te });
       }
     }
 
     return m;
-  }, [filteredAssignments, templateById]);
+  }, [assignments, templateById]);
 
   const hasTemplate = templateById.size > 0;
+
+  const subjectsByKind = useMemo(() => {
+    const subs = Array.from(subjectsById.values());
+    const by = {
+      subject: subs.filter((s) => s.kind === "subject"),
+      duty: subs.filter((s) => s.kind === "duty"),
+      break: subs.filter((s) => s.kind === "break"),
+    };
+    for (const k of Object.keys(by) as (keyof typeof by)[]) {
+      by[k].sort((a, b) => a.title.localeCompare(b.title));
+    }
+    return by;
+  }, [subjectsById]);
+
+  async function onSelect(dl: DayLabel, slotId: SlotId, value: string) {
+    if (value === "") {
+      await deletePlacement(dl, slotId);
+      return;
+    }
+    if (value === "__blank__") {
+      await upsertPlacement(userId, dl, slotId, null);
+      return;
+    }
+    await upsertPlacement(userId, dl, slotId, value);
+  }
 
   return (
     <div className="grid">
@@ -105,30 +143,11 @@ export default function MatrixPage() {
           <button className="btn" onClick={() => setSet("B")} aria-pressed={set === "B"}>
             Week B
           </button>
-
-          <div style={{ flex: 1 }} />
-
-          <label className="row muted" style={{ gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={showBreaks}
-              onChange={(e) => setShowBreaks(e.target.checked)}
-            />
-            breaks
-          </label>
-          <label className="row muted" style={{ gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={showDuties}
-              onChange={(e) => setShowDuties(e.target.checked)}
-            />
-            duties
-          </label>
         </div>
 
         <div className="space" />
         <div className="muted">
-          Shows the {set}-week template (Mon–Fri). One assignment per slot.
+          Choose a subject/duty/break for each slot. “Use template” removes the override.
         </div>
       </div>
 
@@ -144,11 +163,11 @@ export default function MatrixPage() {
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: "left", width: 140 }} className="muted">
+                <th style={{ textAlign: "left", width: 160 }} className="muted">
                   Slot
                 </th>
                 {labels.map((dl) => (
-                  <th key={dl} style={{ textAlign: "left", minWidth: 190 }}>
+                  <th key={dl} style={{ textAlign: "left", minWidth: 260 }}>
                     {weekdayFromLabel(dl)} <span className="muted">{set}</span>
                   </th>
                 ))}
@@ -164,47 +183,80 @@ export default function MatrixPage() {
 
                   {labels.map((dl) => {
                     const k = `${dl}::${row.id}`;
-                    const entry = cell.get(k);
+                    const override = placementsByKey.has(k) ? placementsByKey.get(k) : undefined;
+                    const base = baseCell.get(k);
+
+                    const baseSubjectId = base?.e ? subjectIdForTemplateEvent(base.e) : null;
+                    const baseSubject = baseSubjectId ? subjectsById.get(baseSubjectId) : undefined;
+
+                    const overrideSubject = typeof override === "string" ? subjectsById.get(override) : undefined;
+
+                    const bg = override === null ? "#0f0f0f" : (overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f");
+
+                    const selectValue =
+                      override === undefined
+                        ? ""
+                        : override === null
+                        ? "__blank__"
+                        : override;
+
+                    const labelText =
+                      override === null
+                        ? "Blank"
+                        : overrideSubject
+                        ? overrideSubject.title
+                        : base?.kind === "free"
+                        ? "Free"
+                        : base?.e
+                        ? base.e.title
+                        : "—";
+
+                    const subText =
+                      override === undefined
+                        ? "Using template"
+                        : override === null
+                        ? "Override: blank"
+                        : "Override";
 
                     return (
                       <td key={k} style={{ verticalAlign: "top" }}>
-                        <div className="card" style={{ background: "#0f0f0f", minHeight: 60 }}>
-                          {!entry ? (
-                            <div className="muted">—</div>
-                          ) : entry.kind === "free" ? (
-                            <div className="muted">Free</div>
-                          ) : entry.manual ? (
-                            <>
-                              <div>
-                                <strong>{entry.manual.manualTitle}</strong>{" "}
-                                {entry.manual.manualCode ? (
-                                  <span className="muted">({entry.manual.manualCode})</span>
-                                ) : null}
-                              </div>
-                              <div className="muted">
-                                {entry.manual.manualRoom ? (
-                                  <span className="badge">Room {entry.manual.manualRoom}</span>
-                                ) : null}{" "}
-                                <span className="badge">{entry.kind}</span>
-                              </div>
-                            </>
-                          ) : entry.item ? (
-                            <>
-                              <div>
-                                <strong>{entry.item.title}</strong>{" "}
-                                {entry.item.code ? <span className="muted">({entry.item.code})</span> : null}
-                              </div>
-                              <div className="muted">
-                                {entry.item.room ? <span className="badge">Room {entry.item.room}</span> : null}{" "}
-                                {entry.item.periodCode ? (
-                                  <span className="badge">{entry.item.periodCode}</span>
-                                ) : null}{" "}
-                                <span className="badge">{entry.kind}</span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="muted">—</div>
-                          )}
+                        <div className="card" style={{ background: bg, minHeight: 88 }}>
+                          <div>
+                            <strong>{labelText}</strong>
+                          </div>
+                          <div className="muted" style={{ marginTop: 4 }}>
+                            {subText}
+                          </div>
+                          <div className="space" />
+                          <select
+                            value={selectValue}
+                            onChange={(e) => onSelect(dl, row.id, e.target.value)}
+                            style={{ width: "100%" }}
+                          >
+                            <option value="">Use template</option>
+                            <option value="__blank__">Blank</option>
+                            <optgroup label="Subjects">
+                              {subjectsByKind.subject.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.title}{s.code ? ` (${s.code})` : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Duties">
+                              {subjectsByKind.duty.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Breaks">
+                              {subjectsByKind.break.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
                         </div>
                       </td>
                     );

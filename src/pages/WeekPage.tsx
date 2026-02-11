@@ -13,11 +13,13 @@ import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
+import { getPlacementsForDayLabels } from "../db/placementQueries";
 
 type Cell =
   | { kind: "blank" }
   | { kind: "free" }
   | { kind: "manual"; a: SlotAssignment }
+  | { kind: "placed"; subjectId: string }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
 const userId = "local";
@@ -33,6 +35,12 @@ export default function WeekPage() {
 
   // Map keyed by dateKey ("yyyy-MM-dd") => assignments for that dayLabel
   const [assignmentsByDate, setAssignmentsByDate] = useState<Map<string, Map<SlotId, SlotAssignment>>>(new Map());
+
+  // Map keyed by dateKey => resolved canonical dayLabel (after meta mapping)
+  const [dayLabelByDate, setDayLabelByDate] = useState<Map<string, DayLabel>>(new Map());
+
+  // Map keyed by dateKey => slotId -> subjectId|null (null = blank override)
+  const [placementsByDate, setPlacementsByDate] = useState<Map<string, Map<SlotId, string | null>>>(new Map());
 
   // Cursor is Monday of the week being viewed
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -53,7 +61,7 @@ export default function WeekPage() {
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }
 
-  // Load subjects + keep in sync with edits
+  // Load subjects and keep them in sync with edits.
   useEffect(() => {
     loadSubjects();
 
@@ -63,13 +71,13 @@ export default function WeekPage() {
       if (document.visibilityState === "visible") loadSubjects();
     };
 
-    window.addEventListener("subjects-changed", onChanged);
-    window.addEventListener("focus", onFocus);
+    window.addEventListener("subjects-changed", onChanged as any);
+    window.addEventListener("focus", onFocus as any);
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
-      window.removeEventListener("subjects-changed", onChanged);
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("subjects-changed", onChanged as any);
+      window.removeEventListener("focus", onFocus as any);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
@@ -91,6 +99,7 @@ export default function WeekPage() {
 
       const db = await getDb();
       const out = new Map<string, Map<SlotId, SlotAssignment>>();
+      const dlOut = new Map<string, DayLabel>();
 
       for (const d of weekDays) {
         const dateKey = format(d, "yyyy-MM-dd");
@@ -102,6 +111,7 @@ export default function WeekPage() {
         }
 
         const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
+        dlOut.set(dateKey, stored);
 
         const idx = db.transaction("slotAssignments").store.index("byDayLabel");
         const rows = await idx.getAll(stored);
@@ -113,8 +123,46 @@ export default function WeekPage() {
       }
 
       setAssignmentsByDate(out);
+      setDayLabelByDate(dlOut);
     })();
   }, [weekDays]);
+
+  // Load placements for the dayLabels used this week
+  useEffect(() => {
+    (async () => {
+      const unique = Array.from(new Set(Array.from(dayLabelByDate.values())));
+      if (unique.length === 0) {
+        setPlacementsByDate(new Map());
+        return;
+      }
+      const ps = await getPlacementsForDayLabels(userId, unique);
+
+      // Build mapping by dayLabel -> slotId -> subjectId
+      const byLabel = new Map<DayLabel, Map<SlotId, string | null>>();
+      for (const p of ps) {
+        const m = byLabel.get(p.dayLabel) ?? new Map<SlotId, string | null>();
+        m.set(p.slotId, p.subjectId);
+        byLabel.set(p.dayLabel, m);
+      }
+
+      // Map into dateKeys for this week
+      const byDate = new Map<string, Map<SlotId, string | null>>();
+      for (const [dateKey, dl] of dayLabelByDate) {
+        byDate.set(dateKey, byLabel.get(dl) ?? new Map());
+      }
+      setPlacementsByDate(byDate);
+    })();
+  }, [dayLabelByDate]);
+
+  // Refresh placements when changed elsewhere
+  useEffect(() => {
+    const onChanged = () => {
+      // re-run effect by cloning dayLabelByDate
+      setDayLabelByDate(new Map(dayLabelByDate));
+    };
+    window.addEventListener("placements-changed", onChanged as any);
+    return () => window.removeEventListener("placements-changed", onChanged as any);
+  }, [dayLabelByDate]);
 
   // Build grid: rows=blocks, cols=weekDays
   const grid = useMemo(() => {
@@ -122,7 +170,16 @@ export default function WeekPage() {
       const slotId = SLOT_LABEL_TO_ID[b.name]; // undefined for custom blocks => blanks
       const rowCells = weekDays.map((d) => {
         const dateKey = format(d, "yyyy-MM-dd");
-        const a = slotId ? assignmentsByDate.get(dateKey)?.get(slotId) : undefined;
+        if (!slotId) return { kind: "blank" } as Cell;
+
+        const overrideMap = placementsByDate.get(dateKey);
+        if (overrideMap && overrideMap.has(slotId)) {
+          const ov = overrideMap.get(slotId);
+          if (ov === null) return { kind: "blank" } as Cell;
+          if (typeof ov === "string") return { kind: "placed", subjectId: ov } as Cell;
+        }
+
+        const a = assignmentsByDate.get(dateKey)?.get(slotId);
 
         if (!a) return { kind: "blank" } as Cell;
         if (a.kind === "free") return { kind: "free" } as Cell;
@@ -138,7 +195,7 @@ export default function WeekPage() {
 
       return { block: b, cells: rowCells };
     });
-  }, [blocks, weekDays, assignmentsByDate, templateById]);
+  }, [blocks, weekDays, assignmentsByDate, templateById, placementsByDate]);
 
   return (
     <div className="grid">
@@ -182,16 +239,31 @@ export default function WeekPage() {
 
                 {cells.map((cell, i) => {
                   const dateKey = format(weekDays[i], "yyyy-MM-dd");
+                  const slotId = SLOT_LABEL_TO_ID[block.name];
+                  const override = slotId ? placementsByDate.get(dateKey)?.get(slotId) : undefined;
+
+                  const overrideSubject = typeof override === "string" ? subjectById.get(override) : undefined;
 
                   const subject =
                     cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
                   const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-                  const bg = subject?.color;
+                  const bg = override === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
 
                   return (
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
-                        {cell.kind === "blank" ? (
+                        {override === null ? (
+                          <div className="muted">—</div>
+                        ) : overrideSubject ? (
+                          <>
+                            <div>
+                              <strong>{overrideSubject.title}</strong> {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
+                            </div>
+                            <div className="muted">
+                              <span className="badge">{overrideSubject.kind}</span>
+                            </div>
+                          </>
+                        ) : cell.kind === "blank" ? (
                           <div className="muted">—</div>
                         ) : cell.kind === "free" ? (
                           <div className="muted">Free</div>

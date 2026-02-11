@@ -44,10 +44,10 @@ export type Subject = {
 };
 
 export type Placement = {
-  key: string;         // `${dayLabel}::${blockId}`
+  key: string;         // `${dayLabel}::${slotId}`
   userId: string;
   dayLabel: DayLabel;
-  blockId: string;     // from blocks store
+  slotId: SlotId;
   subjectId: string | null; // null means blank/free
   note?: string;
 };
@@ -156,6 +156,15 @@ interface DaybookDB extends DBSchema {
       byUserIdKind: [string, SubjectKind];
     };
   };
+
+  placements: {
+    key: string; // dayLabel::slotId
+    value: Placement;
+    indexes: {
+      byUserId: string;
+      byUserIdDayLabel: [string, DayLabel];
+    };
+  };
   
 
 }
@@ -164,7 +173,7 @@ let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 6, {
+    dbPromise = openDB<DaybookDB>("daybook", 7, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -216,6 +225,14 @@ export function getDb() {
             s.createIndex("byUserIdKind", ["userId", "kind"]);
   }
 }
+
+        if (oldVersion < 7) {
+          if (!db.objectStoreNames.contains("placements")) {
+            const p = db.createObjectStore("placements", { keyPath: "key" });
+            p.createIndex("byUserId", "userId");
+            p.createIndex("byUserIdDayLabel", ["userId", "dayLabel"]);
+          }
+        }
       },
     });
   }
