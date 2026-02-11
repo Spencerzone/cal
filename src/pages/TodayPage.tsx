@@ -64,7 +64,7 @@ export default function TodayPage() {
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }
 
-  // load subjects and keep in sync with edits
+  // load subjects + keep in sync with edits
   useEffect(() => {
     loadSubjects();
 
@@ -74,13 +74,13 @@ export default function TodayPage() {
       if (document.visibilityState === "visible") loadSubjects();
     };
 
-    window.addEventListener("subjects-changed", onChanged as any);
-    window.addEventListener("focus", onFocus as any);
+    window.addEventListener("subjects-changed", onChanged);
+    window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
-      window.removeEventListener("subjects-changed", onChanged as any);
-      window.removeEventListener("focus", onFocus as any);
+      window.removeEventListener("subjects-changed", onChanged);
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);

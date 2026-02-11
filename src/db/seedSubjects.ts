@@ -1,69 +1,82 @@
 // src/db/seedSubjects.ts
 import { getDb, type Subject } from "./db";
-import {
-  autoHexColorForKey,
-  LEGACY_DUTY_SUBJECT_ID,
-  subjectIdForTemplateEvent,
-  subjectKindForTemplateEvent,
-} from "./subjectUtils";
+import { autoHexColorForKey, subjectIdForTemplateEvent, subjectKindForTemplateEvent } from "./subjectUtils";
+
+function normCode(code: string): string {
+  return code.trim().toUpperCase();
+}
 
 export async function ensureSubjectsFromTemplates(userId: string) {
   const db = await getDb();
   const templates = await db.getAll("cycleTemplateEvents");
 
+  // Track desired subject ids from the current template set (used for cleanup of legacy ids).
+  const desiredIds = new Set<string>(templates.map(subjectIdForTemplateEvent));
+
+  // Load existing so we don't overwrite user edits
   const existing = await db.getAllFromIndex("subjects", "byUserId", userId);
   const existingById = new Map(existing.map((s) => [s.id, s]));
 
-  const tx = db.transaction("subjects", "readwrite");
-
-  // 1) Remove legacy single-duty subject if present.
-  if (existingById.has(LEGACY_DUTY_SUBJECT_ID)) {
-    await tx.store.delete(LEGACY_DUTY_SUBJECT_ID);
-  }
-
-  // 2) Migrate legacy code casing: any `code::<something>` should be uppercased.
-  // Preserve user edits (title/color) when migrating.
+  // Also index existing by normalised code so we can migrate legacy ids (e.g. code casing changes).
+  const existingByNormCode = new Map<string, Subject>();
   for (const s of existing) {
-    if (!s.id.startsWith("code::")) continue;
-    const raw = s.id.slice("code::".length);
-    const upper = raw.trim().toUpperCase();
-    const canonicalId = `code::${upper}`;
-    if (s.id === canonicalId) continue;
-
-    // If canonical already exists, prefer the canonical and drop the legacy.
-    if (!existingById.has(canonicalId)) {
-      await tx.store.put({ ...s, id: canonicalId, code: upper });
-    }
-    await tx.store.delete(s.id);
+    if (s.code && s.code.trim()) existingByNormCode.set(normCode(s.code), s);
   }
 
-  // Refresh map after migration
-  const afterMigration = await tx.store.index("byUserId").getAll(userId);
-  const byId = new Map(afterMigration.map((s) => [s.id, s]));
+  const toUpsert: Subject[] = [];
 
-  // 3) Ensure subjects exist for all template events without overwriting edits.
+  // Avoid processing the same subject id multiple times (e.g. duties now share a single id).
+  const processedIds = new Set<string>();
+
   for (const e of templates) {
     const id = subjectIdForTemplateEvent(e);
-    if (byId.has(id)) continue;
 
-    const code = e.code?.trim() ? e.code.trim().toUpperCase() : null;
+    if (processedIds.has(id)) continue;
+    processedIds.add(id);
+
+    // If the desired id already exists, do nothing.
+    if (existingById.has(id)) continue;
+
+    // If this is a code-based subject, try migrating a legacy subject record
+    // (e.g. where old builds used different casing or a different id scheme).
+    const rawCode = e.code?.trim() || null;
+    const code = rawCode ? normCode(rawCode) : null;
+    if (code) {
+      const legacy = existingByNormCode.get(code);
+      if (legacy && legacy.id !== id) {
+        const tx = db.transaction("subjects", "readwrite");
+        await tx.store.put({ ...legacy, id, code });
+        await tx.store.delete(legacy.id);
+        await tx.done;
+        // Update local caches so we don't also create a fresh record.
+        existingById.set(id, { ...legacy, id, code });
+        continue;
+      }
+    }
+
     const kind = subjectKindForTemplateEvent(e);
+    const initialTitle =
+      kind === "duty" ? "Duties" : (code ? code : e.title);
 
-    // Default titles: for code-based classes use code; for duties use duty area; for breaks/title use title.
-    let title = code ? code : e.title;
-    if (kind === "duty") title = (e.room?.trim() || e.title).trim();
-
-    const s: Subject = {
+    toUpsert.push({
       id,
       userId,
       kind,
       code,
-      title,
+      title: initialTitle,
       color: autoHexColorForKey(id),
-    };
-
-    await tx.store.put(s);
+    });
   }
 
+  const tx = db.transaction("subjects", "readwrite");
+
+  // Upsert any newly discovered subjects.
+  for (const s of toUpsert) await tx.store.put(s);
+
+  // Cleanup legacy duty subjects from earlier builds.
+  // We now use a single canonical duty subject id of "duty".
+  for (const s of existing) {
+    if (s.id.startsWith("duty::")) await tx.store.delete(s.id);
+  }
   await tx.done;
 }

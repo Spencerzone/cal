@@ -10,6 +10,7 @@ const KIND_LABEL: Record<SubjectKind, string> = {
   subject: "Subject",
   duty: "Duty",
   break: "Break",
+  other: "Other",
 };
 
 export default function SubjectsPage() {
@@ -26,20 +27,22 @@ export default function SubjectsPage() {
   useEffect(() => {
     refresh();
 
-    // Keep this page in sync with edits from elsewhere.
     const onChanged = () => refresh();
-    window.addEventListener("subjects-changed", onChanged as any);
-    return () => window.removeEventListener("subjects-changed", onChanged as any);
+    window.addEventListener("subjects-changed", onChanged);
+    return () => window.removeEventListener("subjects-changed", onChanged);
   }, []);
 
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
     return subjects
       .filter((s) => (filter === "all" ? true : s.kind === filter))
-      .filter((s) => (query ? (s.title || "").toLowerCase().includes(query) || (s.code || "").toLowerCase().includes(query) : true))
+      .filter((s) => (query ? s.title.toLowerCase().includes(query) || (s.code ?? "").toLowerCase().includes(query) : true))
       .sort((a, b) => {
         if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
-        return (a.title || "").localeCompare(b.title || "");
+        const ac = a.code ?? "";
+        const bc = b.code ?? "";
+        if (ac !== bc) return ac.localeCompare(bc);
+        return a.title.localeCompare(b.title);
       });
   }, [subjects, filter, q]);
 
@@ -59,9 +62,15 @@ export default function SubjectsPage() {
             <option value="subject">Subjects</option>
             <option value="duty">Duties</option>
             <option value="break">Breaks</option>
+            <option value="other">Other</option>
           </select>
 
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" style={{ minWidth: 220 }} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search"
+            style={{ minWidth: 220 }}
+          />
 
           <button onClick={refresh}>Refresh</button>
         </div>
@@ -78,17 +87,18 @@ export default function SubjectsPage() {
               <th style={{ textAlign: "left", width: 110 }} className="muted">
                 Colour
               </th>
+              <th style={{ textAlign: "left", width: 140 }} className="muted">
+                Code
+              </th>
               <th style={{ textAlign: "left" }} className="muted">
                 Name
-              </th>
-              <th style={{ textAlign: "left", width: 160 }} className="muted">
-                Code
               </th>
               <th style={{ textAlign: "left", width: 120 }} className="muted">
                 Kind
               </th>
             </tr>
           </thead>
+
           <tbody>
             {visible.map((s) => (
               <tr key={s.id}>
@@ -106,12 +116,16 @@ export default function SubjectsPage() {
                     />
                     <input
                       type="color"
-                      value={normaliseToHex(s.color) ?? "#3b82f6"}
+                      value={s.color || "#3b82f6"}
                       onChange={(e) => save({ ...s, color: e.target.value })}
                       aria-label="Pick colour"
                       style={{ width: 42, height: 32 }}
                     />
                   </div>
+                </td>
+
+                <td style={{ verticalAlign: "top" }} className="muted">
+                  {s.code ?? "—"}
                 </td>
 
                 <td style={{ verticalAlign: "top" }}>
@@ -124,10 +138,6 @@ export default function SubjectsPage() {
                     }}
                     style={{ minWidth: 260 }}
                   />
-                </td>
-
-                <td style={{ verticalAlign: "top" }} className="muted">
-                  {s.code ?? "—"}
                 </td>
 
                 <td style={{ verticalAlign: "top" }} className="muted">
@@ -148,10 +158,4 @@ export default function SubjectsPage() {
       </div>
     </div>
   );
-}
-
-function normaliseToHex(color: string | undefined): string | null {
-  if (!color) return null;
-  if (color.startsWith("#") && (color.length === 7 || color.length === 4)) return color;
-  return null;
 }
