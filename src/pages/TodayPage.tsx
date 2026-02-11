@@ -8,6 +8,7 @@ import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
+
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
@@ -57,13 +58,31 @@ export default function TodayPage() {
     return () => clearInterval(t);
   }, []);
 
-  // load subjects once
+  async function loadSubjects() {
+    await ensureSubjectsFromTemplates(userId);
+    const subs = await getSubjectsByUser(userId);
+    setSubjectById(new Map(subs.map((s) => [s.id, s])));
+  }
+
+  // load subjects and keep in sync with edits
   useEffect(() => {
-    (async () => {
-      await ensureSubjectsFromTemplates(userId);
-      const subs = await getSubjectsByUser(userId);
-      setSubjectById(new Map(subs.map((s) => [s.id, s])));
-    })();
+    loadSubjects();
+
+    const onChanged = () => loadSubjects();
+    const onFocus = () => loadSubjects();
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadSubjects();
+    };
+
+    window.addEventListener("subjects-changed", onChanged as any);
+    window.addEventListener("focus", onFocus as any);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      window.removeEventListener("subjects-changed", onChanged as any);
+      window.removeEventListener("focus", onFocus as any);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   // load templateById once

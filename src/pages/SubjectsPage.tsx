@@ -1,77 +1,73 @@
-// src/pages/ItemsPage.tsx
+// src/pages/SubjectsPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import type { Item, ItemType } from "../db/db";
-import { ensureItemsForTemplates } from "../db/seedItemsFromTemplates";
-import { getItemsByUser, upsertItem } from "../db/itemQueries";
+import type { Subject, SubjectKind } from "../db/db";
+import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
+import { getSubjectsByUser, upsertSubject } from "../db/subjectQueries";
 
 const userId = "local";
 
-const TYPE_LABEL: Record<ItemType, string> = {
-  class: "Class",
+const KIND_LABEL: Record<SubjectKind, string> = {
+  subject: "Subject",
   duty: "Duty",
   break: "Break",
-  event: "Event",
-  other: "Other",
 };
 
-export default function ItemsPage() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [filter, setFilter] = useState<ItemType | "all">("all");
+export default function SubjectsPage() {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [filter, setFilter] = useState<SubjectKind | "all">("all");
   const [q, setQ] = useState("");
 
   async function refresh() {
-    await ensureItemsForTemplates(userId);
-    const all = await getItemsByUser(userId);
-    setItems(all);
+    await ensureSubjectsFromTemplates(userId);
+    const all = await getSubjectsByUser(userId);
+    setSubjects(all);
   }
 
   useEffect(() => {
     refresh();
+
+    // Keep this page in sync with edits from elsewhere.
+    const onChanged = () => refresh();
+    window.addEventListener("subjects-changed", onChanged as any);
+    return () => window.removeEventListener("subjects-changed", onChanged as any);
   }, []);
 
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return items
-      .filter((it) => (filter === "all" ? true : it.type === filter))
-      .filter((it) => (query ? it.title.toLowerCase().includes(query) : true))
+    return subjects
+      .filter((s) => (filter === "all" ? true : s.kind === filter))
+      .filter((s) => (query ? (s.title || "").toLowerCase().includes(query) || (s.code || "").toLowerCase().includes(query) : true))
       .sort((a, b) => {
-        if (a.type !== b.type) return a.type.localeCompare(b.type);
-        return a.title.localeCompare(b.title);
+        if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+        return (a.title || "").localeCompare(b.title || "");
       });
-  }, [items, filter, q]);
+  }, [subjects, filter, q]);
 
-  async function saveItem(next: Item) {
-    await upsertItem(next);
-    setItems((prev) => prev.map((p) => (p.id === next.id ? next : p)));
+  async function save(next: Subject) {
+    await upsertSubject(next);
+    setSubjects((prev) => prev.map((p) => (p.id === next.id ? next : p)));
   }
 
   return (
     <div className="grid">
-      <h1>Items</h1>
+      <h1>Subjects</h1>
 
       <div className="card">
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
             <option value="all">All</option>
-            <option value="class">Classes</option>
+            <option value="subject">Subjects</option>
             <option value="duty">Duties</option>
             <option value="break">Breaks</option>
-            <option value="event">Events</option>
-            <option value="other">Other</option>
           </select>
 
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search"
-            style={{ minWidth: 220 }}
-          />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" style={{ minWidth: 220 }} />
 
           <button onClick={refresh}>Refresh</button>
         </div>
 
         <div className="muted" style={{ marginTop: 8 }}>
-          Renaming/recolouring updates the item everywhere it appears.
+          Renaming/recolouring updates the subject everywhere it appears.
         </div>
       </div>
 
@@ -85,35 +81,33 @@ export default function ItemsPage() {
               <th style={{ textAlign: "left" }} className="muted">
                 Name
               </th>
-              <th style={{ textAlign: "left", width: 120 }} className="muted">
-                Type
+              <th style={{ textAlign: "left", width: 160 }} className="muted">
+                Code
               </th>
               <th style={{ textAlign: "left", width: 120 }} className="muted">
-                Actions
+                Kind
               </th>
             </tr>
           </thead>
           <tbody>
-            {visible.map((it) => (
-              <tr key={it.id}>
+            {visible.map((s) => (
+              <tr key={s.id}>
                 <td style={{ verticalAlign: "top" }}>
                   <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                    {/* Swatch */}
                     <div
                       style={{
                         width: 18,
                         height: 18,
                         borderRadius: 4,
-                        background: it.color || "#0f0f0f",
+                        background: s.color || "#0f0f0f",
                         border: "1px solid rgba(255,255,255,0.15)",
                       }}
-                      title={it.color}
+                      title={s.color}
                     />
-                    {/* Picker */}
                     <input
                       type="color"
-                      value={normaliseToHex(it.color) ?? "#3b82f6"}
-                      onChange={(e) => saveItem({ ...it, color: e.target.value })}
+                      value={normaliseToHex(s.color) ?? "#3b82f6"}
+                      onChange={(e) => save({ ...s, color: e.target.value })}
                       aria-label="Pick colour"
                       style={{ width: 42, height: 32 }}
                     />
@@ -122,30 +116,22 @@ export default function ItemsPage() {
 
                 <td style={{ verticalAlign: "top" }}>
                   <input
-                    defaultValue={it.title}
+                    defaultValue={s.title}
                     onBlur={(e) => {
                       const nextTitle = e.target.value.trim();
-                      if (!nextTitle || nextTitle === it.title) return;
-                      saveItem({ ...it, title: nextTitle });
+                      if (!nextTitle || nextTitle === s.title) return;
+                      save({ ...s, title: nextTitle });
                     }}
                     style={{ minWidth: 260 }}
                   />
                 </td>
 
                 <td style={{ verticalAlign: "top" }} className="muted">
-                  {TYPE_LABEL[it.type]}
+                  {s.code ?? "—"}
                 </td>
 
-                <td style={{ verticalAlign: "top" }}>
-                  <button
-                    onClick={() => {
-                      // quick reset: regenerate a colour by clearing then refresh seed won't overwrite,
-                      // so just set to a sensible default.
-                      saveItem({ ...it, color: "#0f0f0f" });
-                    }}
-                  >
-                    Reset
-                  </button>
+                <td style={{ verticalAlign: "top" }} className="muted">
+                  {KIND_LABEL[s.kind]}
                 </td>
               </tr>
             ))}
@@ -153,7 +139,7 @@ export default function ItemsPage() {
             {visible.length === 0 ? (
               <tr>
                 <td colSpan={4} className="muted">
-                  No items found.
+                  No subjects found.
                 </td>
               </tr>
             ) : null}
@@ -164,8 +150,6 @@ export default function ItemsPage() {
   );
 }
 
-// Your seed currently uses `hsl(...)`. <input type="color"> only accepts hex.
-// This converts `hsl(...)` to null (so we fall back) unless you switch seed to hex.
 function normaliseToHex(color: string | undefined): string | null {
   if (!color) return null;
   if (color.startsWith("#") && (color.length === 7 || color.length === 4)) return color;

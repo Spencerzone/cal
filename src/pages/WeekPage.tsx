@@ -47,13 +47,31 @@ export default function WeekPage() {
     })();
   }, []);
 
-  // Load subjects once
+  async function loadSubjects() {
+    await ensureSubjectsFromTemplates(userId);
+    const subs = await getSubjectsByUser(userId);
+    setSubjectById(new Map(subs.map((s) => [s.id, s])));
+  }
+
+  // Load subjects and keep them in sync with edits.
   useEffect(() => {
-    (async () => {
-      await ensureSubjectsFromTemplates(userId);
-      const subs = await getSubjectsByUser(userId);
-      setSubjectById(new Map(subs.map((s) => [s.id, s])));
-    })();
+    loadSubjects();
+
+    const onChanged = () => loadSubjects();
+    const onFocus = () => loadSubjects();
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadSubjects();
+    };
+
+    window.addEventListener("subjects-changed", onChanged as any);
+    window.addEventListener("focus", onFocus as any);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      window.removeEventListener("subjects-changed", onChanged as any);
+      window.removeEventListener("focus", onFocus as any);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   // Load templates
