@@ -46,6 +46,7 @@ export default function WeekPage() {
 
   // Cursor is Monday of the week being viewed
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
@@ -203,21 +204,90 @@ export default function WeekPage() {
     });
   }, [blocks, weekDays, assignmentsByDate, templateById, placementsByDate]);
 
+  function onGoThisWeek() {
+    setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  }
+
+  function DatePickerPopover() {
+    const rangeLabel = `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 4), "d MMM")}`;
+    const value = format(weekStart, "yyyy-MM-dd");
+
+    return (
+      <div style={{ position: "relative" }}>
+        <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose week">
+          {rangeLabel}
+        </button>
+
+        {showDatePicker ? (
+          <div
+            className="card"
+            style={{
+              position: "absolute",
+              right: 0,
+              top: "calc(100% + 8px)",
+              zIndex: 50,
+              width: 280,
+              background: "#0b0b0b",
+            }}
+          >
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div className="badge">Jump to week</div>
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <input
+                type="date"
+                value={value}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  setWeekStart(startOfWeek(new Date(`${next}T00:00:00`), { weekStartsOn: 1 }));
+                  setShowDatePicker(false);
+                }}
+                style={{ width: "100%" }}
+              />
+            </div>
+
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  onGoThisWeek();
+                  setShowDatePicker(false);
+                }}
+              >
+                This week
+              </button>
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="grid">
       <h1>Week</h1>
 
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-          <div>
-            <strong>
-              {format(weekStart, "d MMM")} – {format(addDays(weekStart, 4), "d MMM")}
-            </strong>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <button className="btn" type="button" onClick={() => setWeekStart((d) => addWeeks(d, -1))}>
+              ← Prev
+            </button>
+            <DatePickerPopover />
+            <button className="btn" type="button" onClick={() => setWeekStart((d) => addWeeks(d, 1))}>
+              Next →
+            </button>
           </div>
-          <div className="row" style={{ gap: 8 }}>
-            <button onClick={() => setWeekStart((d) => addWeeks(d, -1))}>Prev</button>
-            <button onClick={() => setWeekStart((d) => addWeeks(d, 1))}>Next</button>
-          </div>
+          <div />
         </div>
       </div>
 

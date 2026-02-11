@@ -58,6 +58,7 @@ export default function TodayPage() {
   const [attachmentsBySlot, setAttachmentsBySlot] = useState<Map<SlotId, LessonAttachment[]>>(new Map());
 
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   const dateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
@@ -250,6 +251,78 @@ export default function TodayPage() {
   }
   function onNextDay() {
     setSelectedDate((d) => addDays(d, 1));
+  }
+
+  function onGoToday() {
+    setSelectedDate(new Date());
+  }
+
+  function DatePickerPopover() {
+    const value = format(selectedDate, "yyyy-MM-dd");
+    return (
+      <div style={{ position: "relative" }}>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => setShowDatePicker((v) => !v)}
+          aria-label="Choose date"
+        >
+          {formatDisplayDate(selectedDate)}
+        </button>
+
+        {showDatePicker ? (
+          <div
+            className="card"
+            style={{
+              position: "absolute",
+              right: 0,
+              top: "calc(100% + 8px)",
+              zIndex: 50,
+              width: 280,
+              background: "#0b0b0b",
+            }}
+          >
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div className="badge">Jump to date</div>
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <input
+                type="date"
+                value={value}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  // Use local date without timezone surprises
+                  setSelectedDate(new Date(`${next}T00:00:00`));
+                  setShowDatePicker(false);
+                }}
+                style={{ width: "100%" }}
+              />
+            </div>
+
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  onGoToday();
+                  setShowDatePicker(false);
+                }}
+              >
+                Today
+              </button>
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   function planKeyForSlot(slotId: SlotId) {
@@ -554,7 +627,7 @@ export default function TodayPage() {
           <button className="btn" type="button" onClick={onPrevDay}>
             ← Prev
           </button>
-          <div className="badge">{formatDisplayDate(selectedDate)}</div>
+          <DatePickerPopover />
           <button className="btn" type="button" onClick={onNextDay}>
             Next →
           </button>
