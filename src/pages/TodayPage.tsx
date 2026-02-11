@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { addDays, format } from "date-fns";
 import { getDb } from "../db/db";
-import type { Block, CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } from "../db/db";
+import type { Block, CycleTemplateEvent, DayLabel, LessonAttachment, LessonPlan, SlotAssignment, SlotId, Subject } from "../db/db";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
@@ -13,6 +13,7 @@ import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
+import { addAttachmentToPlan, deleteAttachment, getAttachmentsForPlan, getLessonPlansForDate, upsertLessonPlan } from "../db/lessonPlanQueries";
 
 type Cell =
   | { kind: "blank" }
@@ -53,8 +54,14 @@ export default function TodayPage() {
     Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
   >(new Map());
 
-  const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
-  const todayLocal = useMemo(() => new Date(), []);
+  const [planBySlot, setPlanBySlot] = useState<Map<SlotId, LessonPlan>>(new Map());
+  const [attachmentsBySlot, setAttachmentsBySlot] = useState<Map<SlotId, LessonAttachment[]>>(new Map());
+
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+
+  const dateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
+  const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
+  const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
 
   // clock tick
   useEffect(() => {
@@ -106,11 +113,11 @@ export default function TodayPage() {
     })();
   }, []);
 
-  // compute today's DayLabel (canonical), then apply mapping to reach stored label
+  // compute day's DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
     (async () => {
       const settings = await getRollingSettings();
-      const canonical = dayLabelForDate(todayKey, settings) as DayLabel | null;
+      const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
 
       if (!canonical) {
         setLabel(null);
@@ -130,7 +137,7 @@ export default function TodayPage() {
       for (const a of rows) m.set(a.slotId, a);
       setAssignmentBySlot(m);
     })();
-  }, [todayKey]);
+  }, [dateKey]);
 
   // Load placements for today's stored label
   useEffect(() => {
@@ -177,12 +184,13 @@ export default function TodayPage() {
 
   // current/next computed only from template events (ignore blank/free/manual)
   const currentNext = useMemo(() => {
+    if (!isViewingToday) return { current: null, next: null };
     const realEvents = cells
       .filter((x) => x.cell.kind === "template")
       .map((x) => {
         const e = (x.cell as any).e as CycleTemplateEvent;
-        const start = minutesToLocalDateTime(todayLocal, e.startMinutes).getTime();
-        const end = minutesToLocalDateTime(todayLocal, e.endMinutes).getTime();
+        const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
+        const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
         const slotId = x.slotId;
 
         // Slot-level placement override
@@ -208,11 +216,226 @@ export default function TodayPage() {
     const current = realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
     const next = realEvents.find((e) => e.start > nowMs) ?? null;
     return { current, next };
-  }, [cells, now, todayLocal, subjectById, placementBySlot]);
+  }, [cells, now, dateLocal, subjectById, placementBySlot, isViewingToday]);
+
+  // Load lesson plans + attachments for this date
+  useEffect(() => {
+    const load = async () => {
+      const plans = await getLessonPlansForDate(userId, dateKey);
+      const pMap = new Map<SlotId, LessonPlan>();
+      const aMap = new Map<SlotId, LessonAttachment[]>();
+
+      for (const p of plans) {
+        pMap.set(p.slotId, p);
+      }
+
+      // Load attachments per plan (only for plans that exist)
+      for (const [slotId, plan] of pMap) {
+        const atts = await getAttachmentsForPlan(plan.key);
+        aMap.set(slotId, atts);
+      }
+
+      setPlanBySlot(pMap);
+      setAttachmentsBySlot(aMap);
+    };
+
+    load();
+    const onChanged = () => load();
+    window.addEventListener("lessonplans-changed", onChanged as any);
+    return () => window.removeEventListener("lessonplans-changed", onChanged as any);
+  }, [dateKey]);
+
+  function onPrevDay() {
+    setSelectedDate((d) => addDays(d, -1));
+  }
+  function onNextDay() {
+    setSelectedDate((d) => addDays(d, 1));
+  }
+
+  function planKeyForSlot(slotId: SlotId) {
+    return `${dateKey}::${slotId}`;
+  }
+
+  function formatDisplayDate(d: Date) {
+    return format(d, "EEE d MMM yyyy");
+  }
+
+  function RichTextPlanEditor(props: {
+    slotId: SlotId;
+    initialHtml: string;
+    attachments: LessonAttachment[];
+  }) {
+    const { slotId, initialHtml, attachments } = props;
+    const ref = useRef<HTMLDivElement | null>(null);
+    const [html, setHtml] = useState<string>(initialHtml);
+    const saveTimer = useRef<number | null>(null);
+
+    useEffect(() => {
+      setHtml(initialHtml);
+      if (ref.current && ref.current.innerHTML !== initialHtml) {
+        ref.current.innerHTML = initialHtml;
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialHtml]);
+
+    function scheduleSave(nextHtml: string) {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(() => {
+        upsertLessonPlan(userId, dateKey, slotId, nextHtml);
+      }, 600);
+    }
+
+    function exec(cmd: string, value?: string) {
+      // Ensure the editor is focused so execCommand applies
+      ref.current?.focus();
+      // eslint-disable-next-line deprecation/deprecation
+      document.execCommand(cmd, false, value);
+      const next = ref.current?.innerHTML ?? "";
+      setHtml(next);
+      scheduleSave(next);
+    }
+
+    function onInput() {
+      const next = ref.current?.innerHTML ?? "";
+      setHtml(next);
+      scheduleSave(next);
+    }
+
+    async function onAddFiles(files: FileList | null) {
+      if (!files || files.length === 0) return;
+      const planKey = planKeyForSlot(slotId);
+      // Ensure plan exists (if empty, store a stub so attachments have a parent)
+      if (!html.trim()) {
+        await upsertLessonPlan(userId, dateKey, slotId, "<p></p>");
+      }
+      for (const f of Array.from(files)) {
+        await addAttachmentToPlan(userId, planKey, f);
+      }
+    }
+
+    return (
+      <div className="card" style={{ marginTop: 8, background: "#0b0b0b" }}>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="badge">Lesson plan</span>
+
+          <button className="btn" type="button" onClick={() => exec("bold")}>B</button>
+          <button className="btn" type="button" onClick={() => exec("italic")}>I</button>
+          <button className="btn" type="button" onClick={() => exec("underline")}>U</button>
+          <button className="btn" type="button" onClick={() => exec("insertUnorderedList")}>• List</button>
+          <button className="btn" type="button" onClick={() => exec("insertOrderedList")}>1. List</button>
+
+          <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            Text
+            <input
+              type="color"
+              onChange={(e) => exec("foreColor", e.target.value)}
+              style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
+            />
+          </label>
+
+          <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            Highlight
+            <input
+              type="color"
+              onChange={(e) => exec("hiliteColor", e.target.value)}
+              style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
+            />
+          </label>
+
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              const url = window.prompt("URL (https://...)");
+              if (url) exec("createLink", url);
+            }}
+          >
+            Link
+          </button>
+
+          <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            Attach
+            <input
+              type="file"
+              multiple
+              onChange={(e) => {
+                onAddFiles(e.target.files);
+                e.currentTarget.value = "";
+              }}
+              style={{ display: "none" }}
+            />
+          </label>
+
+          <button className="btn" type="button" onClick={() => exec("removeFormat")}>Clear</button>
+
+          <span className="muted" style={{ marginLeft: "auto" }}>
+            Auto-saves
+          </span>
+        </div>
+
+        <div
+          ref={ref}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={onInput}
+          style={{
+            marginTop: 8,
+            minHeight: 120,
+            padding: 10,
+            borderRadius: 12,
+            background: "#0f0f0f",
+            border: "1px solid rgba(255,255,255,0.08)",
+            outline: "none",
+          }}
+        />
+
+        {attachments.length > 0 ? (
+          <div style={{ marginTop: 10 }}>
+            <div className="muted" style={{ marginBottom: 6 }}>
+              Attachments
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {attachments.map((a) => (
+                <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
+                  <a
+                    href={URL.createObjectURL(a.blob)}
+                    download={a.name}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => {
+                      // Revoke shortly after click to avoid leaks
+                      const url = (e.currentTarget as HTMLAnchorElement).href;
+                      setTimeout(() => URL.revokeObjectURL(url), 5_000);
+                    }}
+                  >
+                    {a.name}
+                  </a>
+                  <button className="btn" type="button" onClick={() => deleteAttachment(a.id)}>
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="grid">
-      <h1>Today</h1>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+        <h1>Today</h1>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" type="button" onClick={onPrevDay}>
+            ← Prev
+          </button>
+          <div className="badge">{formatDisplayDate(selectedDate)}</div>
+          <button className="btn" type="button" onClick={onNextDay}>
+            Next →
+          </button>
+        </div>
+      </div>
 
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
@@ -314,7 +537,7 @@ export default function TodayPage() {
                             <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
                             {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                             <span style={{ marginLeft: 10 }} className="muted">
-                              {timeRangeFromTemplate(todayLocal, cell.e)}
+                              {timeRangeFromTemplate(dateLocal, cell.e)}
                             </span>
                           </div>
                           <div className="muted">
@@ -327,6 +550,14 @@ export default function TodayPage() {
                           </div>
                         </>
                       )}
+
+                      {slotId ? (
+                        <RichTextPlanEditor
+                          slotId={slotId}
+                          initialHtml={planBySlot.get(slotId)?.html ?? ""}
+                          attachments={attachmentsBySlot.get(slotId) ?? []}
+                        />
+                      ) : null}
                     </div>
                   </td>
                 </tr>

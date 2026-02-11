@@ -60,6 +60,26 @@ export type Placement = {
   roomOverride?: string | null;
 };
 
+export type LessonPlan = {
+  key: string; // `${dateKey}::${slotId}`
+  userId: string;
+  dateKey: string; // yyyy-MM-dd
+  slotId: SlotId;
+  html: string; // rich text (HTML)
+  updatedAt: number;
+};
+
+export type LessonAttachment = {
+  id: string;
+  userId: string;
+  planKey: string; // LessonPlan.key
+  name: string;
+  mime: string;
+  size: number;
+  blob: Blob;
+  createdAt: number;
+};
+
 // src/db/db.ts (types)
 export type DayLabel =
   | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
@@ -173,6 +193,24 @@ interface DaybookDB extends DBSchema {
       byUserIdDayLabel: [string, DayLabel];
     };
   };
+
+  lessonPlans: {
+    key: string; // dateKey::slotId
+    value: LessonPlan;
+    indexes: {
+      byUserId: string;
+      byUserIdDateKey: [string, string];
+    };
+  };
+
+  lessonAttachments: {
+    key: string; // id
+    value: LessonAttachment;
+    indexes: {
+      byUserId: string;
+      byPlanKey: string;
+    };
+  };
   
 
 }
@@ -181,7 +219,7 @@ let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 8, {
+    dbPromise = openDB<DaybookDB>("daybook", 9, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -245,6 +283,19 @@ export function getDb() {
         // v8: Placement shape extended (roomOverride/subjectId optional). No schema changes.
         if (oldVersion < 8) {
           // no-op
+        }
+
+        if (oldVersion < 9) {
+          if (!db.objectStoreNames.contains("lessonPlans")) {
+            const lp = db.createObjectStore("lessonPlans", { keyPath: "key" });
+            lp.createIndex("byUserId", "userId");
+            lp.createIndex("byUserIdDateKey", ["userId", "dateKey"]);
+          }
+          if (!db.objectStoreNames.contains("lessonAttachments")) {
+            const la = db.createObjectStore("lessonAttachments", { keyPath: "id" });
+            la.createIndex("byUserId", "userId");
+            la.createIndex("byPlanKey", "planKey");
+          }
         }
       },
     });
