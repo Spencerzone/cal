@@ -32,6 +32,26 @@ export type Block = {
   isVisible: 0 | 1;
 };
 
+export type SubjectKind = "subject" | "duty" | "break" | "other";
+
+export type Subject = {
+  id: string;          // e.g. "code::12INV01", "code::11Roll7", "duty"
+  userId: string;
+  kind: SubjectKind;
+  code: string | null; // "12INV01" etc
+  title: string;       // editable display name
+  color: string;       // #RRGGBB
+};
+
+export type Placement = {
+  key: string;         // `${dayLabel}::${blockId}`
+  userId: string;
+  dayLabel: DayLabel;
+  blockId: string;     // from blocks store
+  subjectId: string | null; // null means blank/free
+  note?: string;
+};
+
 // src/db/db.ts (types)
 export type DayLabel =
   | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
@@ -128,6 +148,14 @@ interface DaybookDB extends DBSchema {
       byUserIdType: [string, ItemType]; // [userId, type]
     };
   };
+    subjects: {
+    key: string; // Subject.id
+    value: Subject;
+    indexes: {
+      byUserId: string;
+      byUserIdKind: [string, SubjectKind];
+    };
+  };
   
 
 }
@@ -136,7 +164,7 @@ let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
 
 export function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 5, {
+    dbPromise = openDB<DaybookDB>("daybook", 6, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const be = db.createObjectStore("baseEvents", { keyPath: "id" });
@@ -181,6 +209,13 @@ export function getDb() {
             it.createIndex("byUserIdType", ["userId", "type"]);
           }
         }
+        if (oldVersion < 6) {
+          if (!db.objectStoreNames.contains("subjects")) {
+            const s = db.createObjectStore("subjects", { keyPath: "id" });
+            s.createIndex("byUserId", "userId");
+            s.createIndex("byUserIdKind", ["userId", "kind"]);
+  }
+}
       },
     });
   }

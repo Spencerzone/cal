@@ -7,7 +7,7 @@ import SubjectPage from "./pages/SubjectPage";
 import MatrixPage from "./pages/MatrixPage";
 import TemplateMappingPage from "./pages/TemplateMappingPage";
 import BlocksPage from "./pages/BlocksPage";
-import ItemsPage from "./pages/ItemsPage";
+import ItemsPage from "./pages/SubjectsPage";
 
 export default function App() {
   return (
@@ -49,7 +49,7 @@ export default function App() {
           <Route path="/matrix" element={<MatrixPage />} />
           <Route path="/mapping" element={<TemplateMappingPage />} />
           <Route path="/blocks" element={<BlocksPage />} />
-          <Route path="/items" element={<ItemsPage />} />
+          <Route path="/subjects" element={<SubjectPage />} />
         </Routes>
       </div>
     </>
