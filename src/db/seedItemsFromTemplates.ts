@@ -126,4 +126,24 @@ export async function ensureItemsForTemplates(userId: string) {
       await db.delete("items", it.id);
     }
   }
+
+  // After seeding + deleting old tpl items:
+const all = await db.getAllFromIndex("items", "byUserId", userId);
+
+// Dedupe DUTY items by normalised title (keeps the first, deletes the rest).
+const seen = new Map<string, string>(); // key -> keepId
+for (const it of all) {
+  if (it.type !== "duty") continue;
+
+  const key = it.title.trim().toUpperCase().replace(/\s+/g, " ");
+  const keepId = seen.get(key);
+  if (!keepId) {
+    seen.set(key, it.id);
+    continue;
+  }
+
+  // delete duplicates
+  await db.delete("items", it.id);
 }
+}
+

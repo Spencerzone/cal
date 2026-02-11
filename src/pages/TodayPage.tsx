@@ -8,7 +8,6 @@ import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
-
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
