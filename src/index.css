@@ -76,6 +76,14 @@ h2 { font-size: 16px; margin: 0 0 10px; }
   align-items: start;
 }
 
+/* Today: force one full-width lesson per row */
+.slotsGridFull {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
 @media (max-width: 920px) {
   .slotsGrid {
     grid-template-columns: 1fr;

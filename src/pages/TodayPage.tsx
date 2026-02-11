@@ -266,8 +266,10 @@ export default function TodayPage() {
     attachments: LessonAttachment[];
   }) {
     const { slotId, initialHtml, attachments } = props;
+    const wrapRef = useRef<HTMLDivElement | null>(null);
     const ref = useRef<HTMLDivElement | null>(null);
     const [html, setHtml] = useState<string>(initialHtml);
+    const [active, setActive] = useState<boolean>(false);
     const saveTimer = useRef<number | null>(null);
 
     useEffect(() => {
@@ -301,6 +303,19 @@ export default function TodayPage() {
       scheduleSave(next);
     }
 
+    // Close editor when clicking outside the lesson-plan card
+    useEffect(() => {
+      if (!active) return;
+      const onDown = (ev: MouseEvent) => {
+        const t = ev.target as Node | null;
+        if (!t) return;
+        if (wrapRef.current && wrapRef.current.contains(t)) return;
+        setActive(false);
+      };
+      window.addEventListener("mousedown", onDown);
+      return () => window.removeEventListener("mousedown", onDown);
+    }, [active]);
+
     async function onAddFiles(files: FileList | null) {
       if (!files || files.length === 0) return;
       const planKey = planKeyForSlot(slotId);
@@ -314,112 +329,185 @@ export default function TodayPage() {
     }
 
     return (
-      <div className="card" style={{ marginTop: 8, background: "#0b0b0b" }}>
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div ref={wrapRef} className="card" style={{ marginTop: 8, background: "#0b0b0b" }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <span className="badge">Lesson plan</span>
-
-          <button className="btn" type="button" onClick={() => exec("bold")}>B</button>
-          <button className="btn" type="button" onClick={() => exec("italic")}>I</button>
-          <button className="btn" type="button" onClick={() => exec("underline")}>U</button>
-          <button className="btn" type="button" onClick={() => exec("insertUnorderedList")}>• List</button>
-          <button className="btn" type="button" onClick={() => exec("insertOrderedList")}>1. List</button>
-
-          <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            Text
-            <input
-              type="color"
-              onChange={(e) => exec("foreColor", e.target.value)}
-              style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
-            />
-          </label>
-
-          <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            Highlight
-            <input
-              type="color"
-              onChange={(e) => exec("hiliteColor", e.target.value)}
-              style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
-            />
-          </label>
-
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              const url = window.prompt("URL (https://...)");
-              if (url) exec("createLink", url);
-            }}
-          >
-            Link
-          </button>
-
-          <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            Attach
-            <input
-              type="file"
-              multiple
-              onChange={(e) => {
-                onAddFiles(e.target.files);
-                e.currentTarget.value = "";
-              }}
-              style={{ display: "none" }}
-            />
-          </label>
-
-          <button className="btn" type="button" onClick={() => exec("removeFormat")}>Clear</button>
-
-          <span className="muted" style={{ marginLeft: "auto" }}>
-            Auto-saves
-          </span>
+          {active ? <span className="muted">Auto-saves</span> : null}
         </div>
 
-        <div
-          ref={ref}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={onInput}
-          style={{
-            marginTop: 8,
-            minHeight: 120,
-            maxHeight: 260,
-            overflowY: "auto",
-            padding: 10,
-            borderRadius: 12,
-            background: "#0f0f0f",
-            border: "1px solid rgba(255,255,255,0.08)",
-            outline: "none",
-          }}
-        />
-
-        {attachments.length > 0 ? (
-          <div style={{ marginTop: 10 }}>
-            <div className="muted" style={{ marginBottom: 6 }}>
-              Attachments
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {attachments.map((a) => (
-                <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <a
-                    href={URL.createObjectURL(a.blob)}
-                    download={a.name}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => {
-                      // Revoke shortly after click to avoid leaks
-                      const url = (e.currentTarget as HTMLAnchorElement).href;
-                      setTimeout(() => URL.revokeObjectURL(url), 5_000);
-                    }}
-                  >
-                    {a.name}
-                  </a>
-                  <button className="btn" type="button" onClick={() => deleteAttachment(a.id)}>
-                    Delete
-                  </button>
-                </div>
-              ))}
-            </div>
+        {!active ? (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setActive(true);
+              setTimeout(() => ref.current?.focus(), 0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setActive(true);
+                setTimeout(() => ref.current?.focus(), 0);
+              }
+            }}
+            style={{
+              marginTop: 8,
+              minHeight: 84,
+              maxHeight: 140,
+              overflow: "hidden",
+              padding: 10,
+              borderRadius: 12,
+              background: "#0f0f0f",
+              border: "1px solid rgba(255,255,255,0.08)",
+              cursor: "text",
+            }}
+          >
+            {html.trim() ? (
+              <div
+                className="muted"
+                style={{
+                  color: "rgba(255,255,255,0.85)",
+                }}
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            ) : (
+              <div className="muted">Click to add a lesson plan…</div>
+            )}
           </div>
         ) : null}
+
+        {active ? (
+          <>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+              <button className="btn" type="button" onClick={() => exec("bold")}>B</button>
+              <button className="btn" type="button" onClick={() => exec("italic")}>I</button>
+              <button className="btn" type="button" onClick={() => exec("underline")}>U</button>
+              <button className="btn" type="button" onClick={() => exec("insertUnorderedList")}>• List</button>
+              <button className="btn" type="button" onClick={() => exec("insertOrderedList")}>1. List</button>
+
+              <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                Text
+                <input
+                  type="color"
+                  onChange={(e) => exec("foreColor", e.target.value)}
+                  style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
+                />
+              </label>
+
+              <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                Highlight
+                <input
+                  type="color"
+                  onChange={(e) => exec("hiliteColor", e.target.value)}
+                  style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
+                />
+              </label>
+
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  const url = window.prompt("URL (https://...)");
+                  if (url) exec("createLink", url);
+                }}
+              >
+                Link
+              </button>
+
+              <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                Attach
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => {
+                    onAddFiles(e.target.files);
+                    e.currentTarget.value = "";
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+
+              <button className="btn" type="button" onClick={() => exec("removeFormat")}>Clear</button>
+
+              <button className="btn" type="button" onClick={() => setActive(false)} style={{ marginLeft: "auto" }}>
+                Done
+              </button>
+            </div>
+
+            <div
+              ref={ref}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={onInput}
+              onFocus={() => setActive(true)}
+              style={{
+                marginTop: 8,
+                minHeight: 140,
+                maxHeight: 320,
+                overflowY: "auto",
+                padding: 10,
+                borderRadius: 12,
+                background: "#0f0f0f",
+                border: "1px solid rgba(255,255,255,0.08)",
+                outline: "none",
+              }}
+            />
+
+            {attachments.length > 0 ? (
+              <div style={{ marginTop: 10 }}>
+                <div className="muted" style={{ marginBottom: 6 }}>
+                  Attachments
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {attachments.map((a) => (
+                    <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
+                      <a
+                        href={URL.createObjectURL(a.blob)}
+                        download={a.name}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => {
+                          const url = (e.currentTarget as HTMLAnchorElement).href;
+                          setTimeout(() => URL.revokeObjectURL(url), 5_000);
+                        }}
+                      >
+                        {a.name}
+                      </a>
+                      <button className="btn" type="button" onClick={() => deleteAttachment(a.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div
+            className="muted"
+            style={{
+              marginTop: 8,
+              padding: 10,
+              borderRadius: 12,
+              background: "#0f0f0f",
+              border: "1px solid rgba(255,255,255,0.08)",
+              cursor: "text",
+              minHeight: 52,
+              display: "flex",
+              alignItems: "center",
+            }}
+            onClick={() => {
+              setActive(true);
+              setTimeout(() => ref.current?.focus(), 0);
+            }}
+          >
+            {html.replace(/<[^>]*>/g, "").trim() ? (
+              <span>{html.replace(/<[^>]*>/g, "").trim().slice(0, 140)}{html.replace(/<[^>]*>/g, "").trim().length > 140 ? "…" : ""}</span>
+            ) : (
+              <span>Add lesson plan…</span>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -464,7 +552,7 @@ export default function TodayPage() {
         </div>
       </div>
 
-      <div className="slotsGrid">
+      <div className="slotsGridFull">
         {cells.map(({ blockId, blockLabel, slotId, cell }) => {
           const override = slotId ? placementBySlot.get(slotId) : undefined;
           const overrideSubjectId =
