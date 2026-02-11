@@ -1,10 +1,13 @@
 // src/db/seedSubjects.ts
 import { getDb, type Subject } from "./db";
-import { autoHexColorForKey, DUTY_SUBJECT_ID, subjectIdForTemplateEvent, subjectKindForTemplateEvent } from "./subjectUtils";
+import { autoHexColorForKey, subjectIdForTemplateEvent, subjectKindForTemplateEvent } from "./subjectUtils";
 
 export async function ensureSubjectsFromTemplates(userId: string) {
   const db = await getDb();
   const templates = await db.getAll("cycleTemplateEvents");
+
+  // Track desired subject ids from the current template set (used for cleanup of legacy ids).
+  const desiredIds = new Set<string>(templates.map(subjectIdForTemplateEvent));
 
   // Load existing so we don't overwrite user edits
   const existing = await db.getAllFromIndex("subjects", "byUserId", userId);
@@ -12,37 +15,35 @@ export async function ensureSubjectsFromTemplates(userId: string) {
 
   const toUpsert: Subject[] = [];
 
-  // Ensure single global Duty subject exists (even if templates have no duty yet)
-  if (!existingById.has(DUTY_SUBJECT_ID)) {
-    toUpsert.push({
-      id: DUTY_SUBJECT_ID,
-      userId,
-      kind: "duty",
-      code: null,
-      title: "Duty",
-      color: autoHexColorForKey(DUTY_SUBJECT_ID),
-    });
-  }
-
   for (const e of templates) {
     const id = subjectIdForTemplateEvent(e);
     if (existingById.has(id)) continue;
 
     const code = e.code?.trim() || null;
 
+    const kind = subjectKindForTemplateEvent(e);
+    const initialTitle =
+      kind === "duty" ? (e.room?.trim() || e.title) : (code ? code : e.title);
+
     toUpsert.push({
       id,
       userId,
-      kind: subjectKindForTemplateEvent(e),
+      kind,
       code,
-      title: code ? code : e.title, // initial title; user can rename later
+      title: initialTitle,
       color: autoHexColorForKey(id),
     });
   }
 
-  if (toUpsert.length === 0) return;
-
   const tx = db.transaction("subjects", "readwrite");
+
+  // Upsert any newly discovered subjects.
   for (const s of toUpsert) await tx.store.put(s);
+
+  // Cleanup: remove the legacy single-duty subject if it exists.
+  // Older builds used a global id of "duty"; duty subjects are now per area (e.g. "duty::covered area").
+  if (!desiredIds.has("duty")) {
+    await tx.store.delete("duty");
+  }
   await tx.done;
 }

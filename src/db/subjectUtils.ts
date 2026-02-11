@@ -1,14 +1,17 @@
 // src/db/subjectUtils.ts
 import type { CycleTemplateEvent, Subject, SubjectKind } from "./db";
 
-export const DUTY_SUBJECT_ID = "duty";
-
 export function subjectIdForTemplateEvent(e: CycleTemplateEvent): string {
   // Primary identity is code if present (your examples confirm this)
   if (e.code && e.code.trim()) return `code::${e.code.trim()}`;
 
   // If no code, fall back to type/title buckets
-  if (e.type === "duty") return DUTY_SUBJECT_ID;
+  if (e.type === "duty") {
+    // Use the duty "area" as identity (room is used as area for duties)
+    const area = (e.room?.trim() || e.title.trim() || "duty");
+    return `duty::${normaliseKey(area)}`;
+  }
+
   return `title::${normaliseKey(e.title)}`;
 }
 
@@ -19,13 +22,14 @@ export function subjectKindForTemplateEvent(e: CycleTemplateEvent): SubjectKind 
 }
 
 export function displayTitle(subject: Subject, detail?: string | null): string {
-  if (subject.id === DUTY_SUBJECT_ID) return detail ? `Duty: ${detail}` : subject.title;
+  // Subjects are canonical display entities.
+  // For duties we make the subject itself the specific duty area, so no special prefixing.
   return subject.title;
 }
 
 export function detailForTemplateEvent(e: CycleTemplateEvent): string | null {
-  // For duty, treat room as area (per your preference)
-  if (e.type === "duty") return e.room?.trim() || null;
+  // If you want a secondary line for a template event, add it here.
+  // (For duties the subject title is already the area, so no detail.)
   return null;
 }
 
