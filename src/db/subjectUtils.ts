@@ -3,7 +3,10 @@ import type { CycleTemplateEvent, Subject, SubjectKind } from "./db";
 
 export function subjectIdForTemplateEvent(e: CycleTemplateEvent): string {
   // Primary identity is code if present (your examples confirm this)
-  if (e.code && e.code.trim()) return `code::${e.code.trim()}`;
+  if (e.code && e.code.trim()) {
+    // Normalise to ensure stable ids even if upstream data varies by case/spacing.
+    return `code::${e.code.trim().toUpperCase()}`;
+  }
 
   // If no code, fall back to type/title buckets
   if (e.type === "duty") {
