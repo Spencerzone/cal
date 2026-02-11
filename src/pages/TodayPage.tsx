@@ -271,14 +271,17 @@ export default function TodayPage() {
     const [html, setHtml] = useState<string>(initialHtml);
     const [active, setActive] = useState<boolean>(false);
     const saveTimer = useRef<number | null>(null);
+    const dirtyRef = useRef<boolean>(false);
+    const hydratedRef = useRef<boolean>(false);
 
     useEffect(() => {
+      // Only adopt DB/prop updates when not actively editing.
+      if (active || dirtyRef.current) return;
+
       setHtml(initialHtml);
-      if (ref.current && ref.current.innerHTML !== initialHtml) {
-        ref.current.innerHTML = initialHtml;
-      }
+      // When inactive, the editor DOM isn't mounted; preview uses `html` state.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialHtml]);
+    }, [initialHtml, active]);
 
     function scheduleSave(nextHtml: string) {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -287,7 +290,18 @@ export default function TodayPage() {
       }, 600);
     }
 
+
+    // When the editor becomes active, hydrate its DOM with the current draft HTML exactly once.
+    useEffect(() => {
+      if (!active) return;
+      if (hydratedRef.current) return;
+      const el = ref.current;
+      if (!el) return;
+      el.innerHTML = html || "<p></p>";
+      hydratedRef.current = true;
+    }, [active]);
     function exec(cmd: string, value?: string) {
+      dirtyRef.current = true;
       // Ensure the editor is focused so execCommand applies
       ref.current?.focus();
       // eslint-disable-next-line deprecation/deprecation
@@ -298,6 +312,7 @@ export default function TodayPage() {
     }
 
     function onInput() {
+      dirtyRef.current = true;
       const next = ref.current?.innerHTML ?? "";
       setHtml(next);
       scheduleSave(next);
@@ -310,6 +325,7 @@ export default function TodayPage() {
         const t = ev.target as Node | null;
         if (!t) return;
         if (wrapRef.current && wrapRef.current.contains(t)) return;
+        dirtyRef.current = false;
         setActive(false);
       };
       window.addEventListener("mousedown", onDown);
@@ -340,14 +356,26 @@ export default function TodayPage() {
             role="button"
             tabIndex={0}
             onClick={() => {
+              hydratedRef.current = false;
               setActive(true);
-              setTimeout(() => ref.current?.focus(), 0);
+              setTimeout(() => {
+                if (ref.current) {
+                  ref.current.innerHTML = html || "<p></p>";
+                  ref.current.focus();
+                }
+              }, 0);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
+                hydratedRef.current = false;
                 setActive(true);
-                setTimeout(() => ref.current?.focus(), 0);
+                setTimeout(() => {
+                  if (ref.current) {
+                    ref.current.innerHTML = html || "<p></p>";
+                    ref.current.focus();
+                  }
+                }, 0);
               }
             }}
             style={{
@@ -429,7 +457,7 @@ export default function TodayPage() {
 
               <button className="btn" type="button" onClick={() => exec("removeFormat")}>Clear</button>
 
-              <button className="btn" type="button" onClick={() => setActive(false)} style={{ marginLeft: "auto" }}>
+              <button className="btn" type="button" onClick={() => { dirtyRef.current = false; setActive(false); }} style={{ marginLeft: "auto" }}>
                 Done
               </button>
             </div>
@@ -497,8 +525,14 @@ export default function TodayPage() {
               alignItems: "center",
             }}
             onClick={() => {
+              hydratedRef.current = false;
               setActive(true);
-              setTimeout(() => ref.current?.focus(), 0);
+              setTimeout(() => {
+                if (ref.current) {
+                  ref.current.innerHTML = html || "<p></p>";
+                  ref.current.focus();
+                }
+              }, 0);
             }}
           >
             {html.replace(/<[^>]*>/g, "").trim() ? (
