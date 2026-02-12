@@ -3,6 +3,7 @@ import { addDays, format } from "date-fns";
 import { getDb } from "../db/db";
 import type { Block, CycleTemplateEvent, DayLabel, LessonAttachment, LessonPlan, SlotAssignment, SlotId, Subject } from "../db/db";
 import { getRollingSettings } from "../rolling/settings";
+import { setRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 import { ensureDefaultBlocks } from "../db/seed";
@@ -14,6 +15,7 @@ import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
 import { addAttachmentToPlan, deleteAttachment, getAttachmentsForPlan, getLessonPlansForDate, upsertLessonPlan } from "../db/lessonPlanQueries";
+import { termWeekForDate } from "../rolling/termWeek";
 
 type Cell =
   | { kind: "blank" }
@@ -43,6 +45,20 @@ function timeRangeFromTemplate(today: Date, e: CycleTemplateEvent): string {
   return `${format(s, "H:mm")}–${format(t, "H:mm")}`;
 }
 
+function compactBlockLabel(label: string): string {
+  const t = label.trim().toLowerCase();
+  const mP = t.match(/^period\s*(\d+)/);
+  if (mP) return mP[1];
+  const mR = t.match(/^recess\s*(\d+)/);
+  if (mR) return `R${mR[1]}`;
+  const mL = t.match(/^lunch\s*(\d+)/);
+  if (mL) return `L${mL[1]}`;
+  if (t.includes("roll")) return "RC";
+  if (t.includes("before")) return "B";
+  if (t.includes("after")) return "A";
+  return label;
+}
+
 export default function TodayPage() {
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -60,6 +76,8 @@ export default function TodayPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
+  const [rollingSettings, setRollingSettingsState] = useState<any>(null);
+
   const dateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
@@ -68,6 +86,14 @@ export default function TodayPage() {
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  // load rolling settings for cycle + optional term weeks
+  useEffect(() => {
+    (async () => {
+      const s = await getRollingSettings();
+      setRollingSettingsState(s);
+    })();
   }, []);
 
   async function loadSubjects() {
@@ -259,6 +285,33 @@ export default function TodayPage() {
 
   function DatePickerPopover() {
     const value = format(selectedDate, "yyyy-MM-dd");
+    const [t1, setT1] = useState<string>(() => (rollingSettings?.termStarts?.t1 ?? "").trim());
+    const [t2, setT2] = useState<string>(() => (rollingSettings?.termStarts?.t2 ?? "").trim());
+    const [t3, setT3] = useState<string>(() => (rollingSettings?.termStarts?.t3 ?? "").trim());
+    const [t4, setT4] = useState<string>(() => (rollingSettings?.termStarts?.t4 ?? "").trim());
+
+    useEffect(() => {
+      // keep in sync if settings load later
+      setT1((rollingSettings?.termStarts?.t1 ?? "").trim());
+      setT2((rollingSettings?.termStarts?.t2 ?? "").trim());
+      setT3((rollingSettings?.termStarts?.t3 ?? "").trim());
+      setT4((rollingSettings?.termStarts?.t4 ?? "").trim());
+    }, [rollingSettings]);
+
+    async function saveTermStarts() {
+      const base = (await getRollingSettings()) as any;
+      const next = {
+        ...base,
+        termStarts: {
+          t1: t1.trim(),
+          t2: t2.trim(),
+          t3: t3.trim(),
+          t4: t4.trim(),
+        },
+      };
+      await setRollingSettings(next);
+      setRollingSettingsState(next);
+    }
     return (
       <div style={{ position: "relative" }}>
         <button
@@ -302,6 +355,30 @@ export default function TodayPage() {
                 }}
                 style={{ width: "100%" }}
               />
+            </div>
+
+            <hr />
+            <div className="badge">NSW term starts (optional)</div>
+            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 1
+                <input type="date" value={t1} onChange={(e) => setT1(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 2
+                <input type="date" value={t2} onChange={(e) => setT2(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 3
+                <input type="date" value={t3} onChange={(e) => setT3(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 4
+                <input type="date" value={t4} onChange={(e) => setT4(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <button className="btn" type="button" onClick={saveTermStarts}>
+                Save term dates
+              </button>
             </div>
 
             <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
@@ -645,6 +722,15 @@ export default function TodayPage() {
             ) : (
               <span className="muted">No school day</span>
             )}
+            {(() => {
+              const tw = rollingSettings ? termWeekForDate(dateLocal, rollingSettings.termStarts) : null;
+              return tw ? (
+                <div style={{ marginTop: 6 }} className="slotCompactBadges">
+                  <span className="badge">Term {tw.term}</span>{" "}
+                  <span className="badge">Week {tw.week}</span>
+                </div>
+              ) : null;
+            })()}
           </div>
 
           <div>
@@ -675,12 +761,17 @@ export default function TodayPage() {
 
           const subject = cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
           const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-          const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
+          const strip =
+            overrideSubjectId === null
+              ? "#2a2a2a"
+              : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
 
           return (
-            <div key={blockId} className="card" style={{ background: bg ?? "#0f0f0f" }}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div className="badge">{blockLabel}</div>
+            <div key={blockId} className="slotCard" style={{ ...( { ["--slotStrip" as any]: strip } as any) }}>
+              <div className="slotHeader">
+                <div className="slotCompactBadges">
+                  <span className="badge">{blockLabel}</span>
+                </div>
                 {cell.kind === "template" ? (
                   <span className="muted" style={{ fontSize: 12 }}>
                     {timeRangeFromTemplate(dateLocal, cell.e)}
@@ -688,7 +779,8 @@ export default function TodayPage() {
                 ) : null}
               </div>
 
-              <div style={{ marginTop: 8 }}>
+              <div className="slotTitleRow">
+                <span className="slotPeriodDot">{compactBlockLabel(blockLabel)}</span>
                 {overrideSubjectId === null ? (
                   <div className="muted">—</div>
                 ) : overrideSubject ? (
@@ -696,10 +788,6 @@ export default function TodayPage() {
                     <div>
                       <strong>{overrideSubject.title}</strong>{" "}
                       {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
-                    </div>
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      {roomOverride && typeof roomOverride === "string" ? <span className="badge">Room {roomOverride}</span> : null}{" "}
-                      <span className="badge">{overrideSubject.kind}</span>
                     </div>
                   </>
                 ) : cell.kind === "blank" ? (
@@ -712,12 +800,6 @@ export default function TodayPage() {
                       <strong>{cell.a.manualTitle}</strong>{" "}
                       {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                     </div>
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      {(roomOverride === undefined ? cell.a.manualRoom : roomOverride || null) ? (
-                        <span className="badge">Room {roomOverride === undefined ? cell.a.manualRoom : roomOverride}</span>
-                      ) : null}{" "}
-                      <span className="badge">{cell.a.kind}</span>
-                    </div>
                   </>
                 ) : cell.kind === "template" ? (
                   <>
@@ -725,16 +807,31 @@ export default function TodayPage() {
                       <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
                       {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                     </div>
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      {(() => {
-                        const resolved = roomOverride === undefined ? cell.e.room : roomOverride;
-                        return resolved ? <span className="badge">Room {resolved}</span> : null;
-                      })()} {" "}
-                      {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
-                      <span className="badge">{cell.a.kind}</span>
-                    </div>
                   </>
                 ) : null}
+              </div>
+
+              {/* Meta badges */}
+              <div className="slotMetaRow slotCompactBadges">
+                {overrideSubject ? <span className="badge">{overrideSubject.kind}</span> : null}
+                {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
+                {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+                {(() => {
+                  const resolved =
+                    cell.kind === "template"
+                      ? roomOverride === undefined
+                        ? cell.e.room
+                        : roomOverride
+                      : cell.kind === "manual"
+                      ? roomOverride === undefined
+                        ? cell.a.manualRoom
+                        : roomOverride
+                      : overrideSubject
+                      ? roomOverride
+                      : null;
+                  return resolved ? <span className="badge">Room {resolved}</span> : null;
+                })()}
+                {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}
               </div>
 
               {slotId ? (

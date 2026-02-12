@@ -7,6 +7,7 @@ import { SLOT_DEFS } from "../rolling/slots";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { getRollingSettings } from "../rolling/settings";
+import { setRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 
@@ -14,6 +15,7 @@ import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
+import { termWeekForDate } from "../rolling/termWeek";
 
 type Cell =
   | { kind: "blank" }
@@ -27,6 +29,20 @@ const userId = "local";
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
   SLOT_DEFS.map((s) => [s.label, s.id])
 ) as Record<string, SlotId>;
+
+function compactBlockLabel(label: string): string {
+  const t = label.trim().toLowerCase();
+  const mP = t.match(/^period\s*(\d+)/);
+  if (mP) return mP[1];
+  const mR = t.match(/^recess\s*(\d+)/);
+  if (mR) return `R${mR[1]}`;
+  const mL = t.match(/^lunch\s*(\d+)/);
+  if (mL) return `L${mL[1]}`;
+  if (t.includes("roll")) return "RC";
+  if (t.includes("before")) return "B";
+  if (t.includes("after")) return "A";
+  return label;
+}
 
 export default function WeekPage() {
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
@@ -47,14 +63,30 @@ export default function WeekPage() {
   // Cursor is Monday of the week being viewed
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [rollingSettings, setRollingSettingsState] = useState<any>(null);
 
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+
+  useEffect(() => {
+    (async () => {
+      const s = await getRollingSettings();
+      setRollingSettingsState(s);
+    })();
+  }, []);
 
   // Load blocks
   useEffect(() => {
     (async () => {
       await ensureDefaultBlocks(userId);
       setBlocks(await getVisibleBlocks(userId));
+    })();
+  }, []);
+
+  // Load rolling settings (used for optional term/week display)
+  useEffect(() => {
+    (async () => {
+      const s = await getRollingSettings();
+      setRollingSettingsState(s);
     })();
   }, []);
 
@@ -212,6 +244,33 @@ export default function WeekPage() {
     const rangeLabel = `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 4), "d MMM")}`;
     const value = format(weekStart, "yyyy-MM-dd");
 
+    const [t1, setT1] = useState<string>(() => (rollingSettings?.termStarts?.t1 ?? "").trim());
+    const [t2, setT2] = useState<string>(() => (rollingSettings?.termStarts?.t2 ?? "").trim());
+    const [t3, setT3] = useState<string>(() => (rollingSettings?.termStarts?.t3 ?? "").trim());
+    const [t4, setT4] = useState<string>(() => (rollingSettings?.termStarts?.t4 ?? "").trim());
+
+    useEffect(() => {
+      setT1((rollingSettings?.termStarts?.t1 ?? "").trim());
+      setT2((rollingSettings?.termStarts?.t2 ?? "").trim());
+      setT3((rollingSettings?.termStarts?.t3 ?? "").trim());
+      setT4((rollingSettings?.termStarts?.t4 ?? "").trim());
+    }, [rollingSettings]);
+
+    async function saveTermStarts() {
+      const base = (await getRollingSettings()) as any;
+      const next = {
+        ...base,
+        termStarts: {
+          t1: t1.trim(),
+          t2: t2.trim(),
+          t3: t3.trim(),
+          t4: t4.trim(),
+        },
+      };
+      await setRollingSettings(next);
+      setRollingSettingsState(next);
+    }
+
     return (
       <div style={{ position: "relative" }}>
         <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose week">
@@ -251,6 +310,30 @@ export default function WeekPage() {
               />
             </div>
 
+            <hr />
+            <div className="badge">NSW term starts (optional)</div>
+            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 1
+                <input type="date" value={t1} onChange={(e) => setT1(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 2
+                <input type="date" value={t2} onChange={(e) => setT2(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 3
+                <input type="date" value={t3} onChange={(e) => setT3(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <label className="muted" style={{ fontSize: 12 }}>
+                Term 4
+                <input type="date" value={t4} onChange={(e) => setT4(e.target.value)} style={{ width: "100%" }} />
+              </label>
+              <button className="btn" type="button" onClick={saveTermStarts}>
+                Save term dates
+              </button>
+            </div>
+
             <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
               <button
                 className="btn"
@@ -287,7 +370,19 @@ export default function WeekPage() {
               Next →
             </button>
           </div>
-          <div />
+          <div className="slotCompactBadges">
+            {(() => {
+              const tw = rollingSettings ? termWeekForDate(weekStart, rollingSettings.termStarts) : null;
+              return tw ? (
+                <>
+                  <span className="badge">Term {tw.term}</span>{" "}
+                  <span className="badge">Week {tw.week}</span>
+                </>
+              ) : (
+                <span className="muted">&nbsp;</span>
+              );
+            })()}
+          </div>
         </div>
       </div>
 
@@ -333,56 +428,61 @@ export default function WeekPage() {
                   const subject =
                     cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
                   const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-                  const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? subject?.color);
+                  const strip =
+                    overrideSubjectId === null
+                      ? "#2a2a2a"
+                      : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
 
                   return (
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
-                      <div className="card" style={{ background: bg ?? "#0f0f0f" }}>
-                        {overrideSubjectId === null ? (
-                          <div className="muted">—</div>
-                        ) : overrideSubject ? (
-                          <>
+                      <div className="slotCard" style={{ ...( { ["--slotStrip" as any]: strip } as any) }}>
+                        <div className="slotTitleRow" style={{ marginTop: 0 }}>
+                          <span className="slotPeriodDot">{compactBlockLabel(block.name)}</span>
+                          {overrideSubjectId === null ? (
+                            <div className="muted">—</div>
+                          ) : overrideSubject ? (
                             <div>
-                              <strong>{overrideSubject.title}</strong> {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
+                              <strong>{overrideSubject.title}</strong>{" "}
+                              {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
                             </div>
-                            <div className="muted">
-                              {roomOverride && typeof roomOverride === "string" ? <span className="badge">Room {roomOverride}</span> : null} {" "}
-                              <span className="badge">{overrideSubject.kind}</span>
-                            </div>
-                          </>
-                        ) : cell.kind === "blank" ? (
-                          <div className="muted">—</div>
-                        ) : cell.kind === "free" ? (
-                          <div className="muted">Free</div>
-                        ) : cell.kind === "manual" ? (
-                          <>
+                          ) : cell.kind === "blank" ? (
+                            <div className="muted">—</div>
+                          ) : cell.kind === "free" ? (
+                            <div className="muted">Free</div>
+                          ) : cell.kind === "manual" ? (
                             <div>
                               <strong>{cell.a.manualTitle}</strong>{" "}
                               {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                             </div>
-                            <div className="muted">
-                              {(roomOverride === undefined ? cell.a.manualRoom : roomOverride || null) ? (
-                                <span className="badge">Room {roomOverride === undefined ? cell.a.manualRoom : roomOverride}</span>
-                              ) : null}{" "}
-                              <span className="badge">{cell.a.kind}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
+                          ) : (
                             <div>
                               <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
                               {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                             </div>
-                            <div className="muted">
-                              {(() => {
-                                const resolved = roomOverride === undefined ? cell.e.room : roomOverride;
-                                return resolved ? <span className="badge">Room {resolved}</span> : null;
-                              })()}{" "}
-                              {cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
-                              <span className="badge">{cell.a.kind}</span>
-                            </div>
-                          </>
-                        )}
+                          )}
+                        </div>
+
+                        <div className="slotMetaRow slotCompactBadges" style={{ marginTop: 6 }}>
+                          {overrideSubject ? <span className="badge">{overrideSubject.kind}</span> : null}
+                          {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
+                          {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+                          {(() => {
+                            const resolved =
+                              cell.kind === "template"
+                                ? roomOverride === undefined
+                                  ? cell.e.room
+                                  : roomOverride
+                                : cell.kind === "manual"
+                                ? roomOverride === undefined
+                                  ? cell.a.manualRoom
+                                  : roomOverride
+                                : overrideSubject
+                                ? roomOverride
+                                : null;
+                            return resolved ? <span className="badge">Room {resolved}</span> : null;
+                          })()}
+                          {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}
+                        </div>
                       </div>
                     </td>
                   );

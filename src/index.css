@@ -19,15 +19,82 @@ body {
 }
 a { color: inherit; text-decoration: none; }
 .container { max-width: none; margin: 0 auto; padding: 16px; }
-.nav {
-  display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line);
-  position: sticky; top: 0; background: rgba(11,11,11,0.9); backdrop-filter: blur(10px);
+
+/* App layout */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(11,11,11,0.9);
+  backdrop-filter: blur(10px);
 }
-.nav a {
-  padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; color: var(--muted);
+
+.hamburger {
+  width: 40px;
+  height: 36px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 10px;
+  cursor: pointer;
 }
-.nav a.active {
-  color: var(--text); border-color: var(--line); background: var(--panel);
+
+.hamburger:hover { border-color: #3a3a3a; }
+
+.topbarTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand { font-weight: 700; letter-spacing: 0.3px; }
+.pageTitle { color: var(--muted); font-size: 13px; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: calc(100vh - 48px);
+}
+
+.layout--collapsed { grid-template-columns: 0 1fr; }
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: rgba(20,20,20,0.6);
+}
+
+.layout--collapsed .sidebar { display: none; }
+
+.sidenav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+}
+
+.sidenav a {
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+
+.sidenav a.active {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.navDivider {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 6px;
 }
 .card {
   border: 1px solid var(--line);
@@ -68,10 +135,123 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 h1 { font-size: 20px; margin: 0 0 12px; }
 h2 { font-size: 16px; margin: 0 0 10px; }
 
+/* Minimal slot cards (Today/Week) */
+.slotCard {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 8px 10px;
+  position: relative;
+}
+
+.slotCard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  border-radius: 12px 0 0 12px;
+  background: var(--slotStrip, var(--line));
+}
+
+.slotHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-left: 6px;
+}
+
+.slotTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 0;
+  margin-left: 6px;
+}
+
+.slotPeriodDot {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #0f0f0f;
+  color: var(--text);
+}
+
+.slotMetaRow {
+  margin-left: 6px;
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.slotCompactBadges .badge {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.slotHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.slotHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.slotCode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  background: #0f0f0f;
+}
+
+.slotTitle {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slotMeta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.slotMeta .badge { padding: 2px 8px; }
+
+.slotTime {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* Dense responsive grids for Today/Week */
 .slotsGrid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   align-items: start;
 }
@@ -79,7 +259,7 @@ h2 { font-size: 16px; margin: 0 0 10px; }
 /* Today: force one full-width lesson per row */
 .slotsGridFull {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: 1fr;
   align-items: start;
 }
