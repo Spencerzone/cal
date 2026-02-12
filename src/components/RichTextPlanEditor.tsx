@@ -2,10 +2,6 @@ import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from "rea
 import type { LessonAttachment, SlotId } from "../db/db";
 import { addAttachmentToPlan, deleteAttachment, upsertLessonPlan } from "../db/lessonPlanQueries";
 
-function stripHtml(html: string) {
-  return html.replace(/<[^>]*>/g, "").trim();
-}
-
 function planKeyForSlot(dateKey: string, slotId: SlotId) {
   return `${dateKey}::${slotId}`;
 }
@@ -101,7 +97,7 @@ export default function RichTextPlanEditor(props: {
     }
   }
 
-  const plain = stripHtml(html);
+  const hasContent = !!html.trim();
 
   return (
     <div ref={wrapRef} className="card" style={{ marginTop: 8, background: "#0b0b0b" }}>
@@ -141,9 +137,9 @@ export default function RichTextPlanEditor(props: {
             marginTop: 8,
             width: "100%",
             boxSizing: "border-box",
-            minHeight: 84,
-            maxHeight: 140,
-            overflow: "hidden",
+            minHeight: 120,
+            maxHeight: 260,
+            overflowY: "auto",
             padding: 10,
             borderRadius: 12,
             background: "#0f0f0f",
@@ -151,7 +147,7 @@ export default function RichTextPlanEditor(props: {
             cursor: "text",
           }}
         >
-          {html.trim() ? (
+          {hasContent ? (
             <div
               style={{ color: "rgba(255,255,255,0.85)" }}
               dangerouslySetInnerHTML={{ __html: html }}
@@ -279,43 +275,7 @@ export default function RichTextPlanEditor(props: {
             </div>
           ) : null}
         </>
-      ) : (
-        <div
-          className="muted"
-          style={{
-            marginTop: 8,
-            width: "100%",
-            boxSizing: "border-box",
-            padding: 10,
-            borderRadius: 12,
-            background: "#0f0f0f",
-            border: "1px solid rgba(255,255,255,0.08)",
-            cursor: "text",
-            minHeight: 52,
-            display: "flex",
-            alignItems: "center",
-          }}
-          onClick={() => {
-            hydratedRef.current = false;
-            setActive(true);
-            setTimeout(() => {
-              if (ref.current) {
-                ref.current.innerHTML = html || "<p></p>";
-                ref.current.focus();
-              }
-            }, 0);
-          }}
-        >
-          {plain ? (
-            <span>
-              {plain.slice(0, 140)}
-              {plain.length > 140 ? "…" : ""}
-            </span>
-          ) : (
-            <span>Add lesson plan…</span>
-          )}
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

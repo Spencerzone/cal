@@ -404,10 +404,18 @@ export default function WeekPage() {
                             </div>
                           ) : (
                             <div>
-                              <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
-                              {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
+                              <strong>
+                                {subject
+                                  ? displayTitle(subject, detail)
+                                  : cell.kind === "template"
+                                    ? cell.e.title
+                                    : "—"}
+                              </strong>{" "}
+                              {cell.kind === "template" && cell.e.code ? (
+                                <span className="muted">({cell.e.code})</span>
+                              ) : null}
                             </div>
-                          )}
+                                                      )}
                         </div>
 
                         <div className="slotMetaRow slotCompactBadges" style={{ marginTop: 6 }}>
