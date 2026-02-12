@@ -370,10 +370,11 @@ export default function TodayPage() {
       </div>
     );
   }
-s*function formatDisplayDate(d: Date) {
+function formatDisplayDate(d: Date) {
     return format(d, "EEE d MMM yyyy");
   }
 
+  return (
     <div className="grid">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
         <h1>Today</h1>

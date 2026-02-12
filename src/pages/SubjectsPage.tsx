@@ -11,6 +11,7 @@ const KIND_LABEL: Record<SubjectKind, string> = {
   subject: "Subject",
   duty: "Duty",
   break: "Break",
+  other: "Other",
 };
 
 export default function SubjectsPage() {
