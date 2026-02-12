@@ -7,7 +7,6 @@ import { SLOT_DEFS } from "../rolling/slots";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { getRollingSettings } from "../rolling/settings";
-import { setRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 
@@ -244,33 +243,6 @@ export default function WeekPage() {
     const rangeLabel = `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 4), "d MMM")}`;
     const value = format(weekStart, "yyyy-MM-dd");
 
-    const [t1, setT1] = useState<string>(() => (rollingSettings?.termStarts?.t1 ?? "").trim());
-    const [t2, setT2] = useState<string>(() => (rollingSettings?.termStarts?.t2 ?? "").trim());
-    const [t3, setT3] = useState<string>(() => (rollingSettings?.termStarts?.t3 ?? "").trim());
-    const [t4, setT4] = useState<string>(() => (rollingSettings?.termStarts?.t4 ?? "").trim());
-
-    useEffect(() => {
-      setT1((rollingSettings?.termStarts?.t1 ?? "").trim());
-      setT2((rollingSettings?.termStarts?.t2 ?? "").trim());
-      setT3((rollingSettings?.termStarts?.t3 ?? "").trim());
-      setT4((rollingSettings?.termStarts?.t4 ?? "").trim());
-    }, [rollingSettings]);
-
-    async function saveTermStarts() {
-      const base = (await getRollingSettings()) as any;
-      const next = {
-        ...base,
-        termStarts: {
-          t1: t1.trim(),
-          t2: t2.trim(),
-          t3: t3.trim(),
-          t4: t4.trim(),
-        },
-      };
-      await setRollingSettings(next);
-      setRollingSettingsState(next);
-    }
-
     return (
       <div style={{ position: "relative" }}>
         <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose week">
@@ -308,30 +280,6 @@ export default function WeekPage() {
                 }}
                 style={{ width: "100%" }}
               />
-            </div>
-
-            <hr />
-            <div className="badge">NSW term starts (optional)</div>
-            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-              <label className="muted" style={{ fontSize: 12 }}>
-                Term 1
-                <input type="date" value={t1} onChange={(e) => setT1(e.target.value)} style={{ width: "100%" }} />
-              </label>
-              <label className="muted" style={{ fontSize: 12 }}>
-                Term 2
-                <input type="date" value={t2} onChange={(e) => setT2(e.target.value)} style={{ width: "100%" }} />
-              </label>
-              <label className="muted" style={{ fontSize: 12 }}>
-                Term 3
-                <input type="date" value={t3} onChange={(e) => setT3(e.target.value)} style={{ width: "100%" }} />
-              </label>
-              <label className="muted" style={{ fontSize: 12 }}>
-                Term 4
-                <input type="date" value={t4} onChange={(e) => setT4(e.target.value)} style={{ width: "100%" }} />
-              </label>
-              <button className="btn" type="button" onClick={saveTermStarts}>
-                Save term dates
-              </button>
             </div>
 
             <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
