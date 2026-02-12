@@ -29,6 +29,19 @@ const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
 
 const userId = "local";
 
+function isWeekend(d: Date): boolean {
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
+
+function adjustToWeekday(d: Date, direction: 1 | -1 = 1): Date {
+  let x = new Date(d);
+  while (isWeekend(x)) {
+    x = addDays(x, direction);
+  }
+  return x;
+}
+
 function weekdayFromLabel(label: DayLabel): string {
   return label.slice(0, 3);
 }
@@ -73,7 +86,7 @@ export default function TodayPage() {
   const [planBySlot, setPlanBySlot] = useState<Map<SlotId, LessonPlan>>(new Map());
   const [attachmentsBySlot, setAttachmentsBySlot] = useState<Map<SlotId, LessonAttachment[]>>(new Map());
 
-  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => adjustToWeekday(new Date(), 1));
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
@@ -81,6 +94,13 @@ export default function TodayPage() {
   const dateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
+
+  // coerce weekend selections to Monday (next weekday)
+  useEffect(() => {
+    if (isWeekend(selectedDate)) {
+      setSelectedDate(adjustToWeekday(selectedDate, 1));
+    }
+  }, [selectedDate]);
 
   // clock tick
   useEffect(() => {
@@ -273,14 +293,14 @@ export default function TodayPage() {
   }, [dateKey]);
 
   function onPrevDay() {
-    setSelectedDate((d) => addDays(d, -1));
+    setSelectedDate((d) => adjustToWeekday(addDays(d, -1), -1));
   }
   function onNextDay() {
-    setSelectedDate((d) => addDays(d, 1));
+    setSelectedDate((d) => adjustToWeekday(addDays(d, 1), 1));
   }
 
   function onGoToday() {
-    setSelectedDate(new Date());
+    setSelectedDate(adjustToWeekday(new Date(), 1));
   }
 
   function DatePickerPopover() {
@@ -350,7 +370,7 @@ export default function TodayPage() {
                   const next = e.target.value;
                   if (!next) return;
                   // Use local date without timezone surprises
-                  setSelectedDate(new Date(`${next}T00:00:00`));
+                  setSelectedDate(adjustToWeekday(new Date(`${next}T00:00:00`), 1));
                   setShowDatePicker(false);
                 }}
                 style={{ width: "100%" }}
@@ -530,6 +550,10 @@ export default function TodayPage() {
             }}
             style={{
               marginTop: 8,
+              width: "100%",
+              boxSizing: "border-box",
+              width: "100%",
+              boxSizing: "border-box",
               minHeight: 84,
               maxHeight: 140,
               overflow: "hidden",
@@ -620,6 +644,12 @@ export default function TodayPage() {
               onFocus={() => setActive(true)}
               style={{
                 marginTop: 8,
+                width: "100%",
+                boxSizing: "border-box",
+                width: "100%",
+                boxSizing: "border-box",
+                width: "100%",
+                boxSizing: "border-box",
                 minHeight: 140,
                 maxHeight: 320,
                 overflowY: "auto",
@@ -665,6 +695,8 @@ export default function TodayPage() {
             className="muted"
             style={{
               marginTop: 8,
+              width: "100%",
+              boxSizing: "border-box",
               padding: 10,
               borderRadius: 12,
               background: "#0f0f0f",
@@ -723,7 +755,7 @@ export default function TodayPage() {
               <span className="muted">No school day</span>
             )}
             {(() => {
-              const tw = rollingSettings ? termWeekForDate(dateLocal, rollingSettings.termStarts) : null;
+              const tw = rollingSettings ? termWeekForDate(dateLocal, rollingSettings.termStarts, rollingSettings.termEnds) : null;
               return tw ? (
                 <div style={{ marginTop: 6 }} className="slotCompactBadges">
                   <span className="badge">Term {tw.term}</span>{" "}

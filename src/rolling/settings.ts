@@ -15,6 +15,14 @@ export interface RollingSettings {
     t3?: string;
     t4?: string;
   };
+
+  // Optional NSW term end dates (inclusive). If set, Term/Week is only shown within a term range.
+  termEnds?: {
+    t1?: string; // YYYY-MM-DD
+    t2?: string;
+    t3?: string;
+    t4?: string;
+  };
 }
 
 const KEY = "rolling";
@@ -30,7 +38,13 @@ export async function getRollingSettings(): Promise<RollingSettings> {
     excludedDates: [],
     overrides: [],
     termStarts: {
-      // Leave blank by default; set via Today/Week date popover.
+      // Leave blank by default; set via Setup.
+      t1: "",
+      t2: "",
+      t3: "",
+      t4: "",
+    },
+    termEnds: {
       t1: "",
       t2: "",
       t3: "",

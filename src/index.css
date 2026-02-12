@@ -1,4 +1,6 @@
 /* src/index.css */
+html { overflow-y: scroll; }
+
 :root {
   color-scheme: dark;
   --bg: #0b0b0b;
@@ -269,3 +271,6 @@ h2 { font-size: 16px; margin: 0 0 10px; }
     grid-template-columns: 1fr;
   }
 }
+
+/* Prevent long URLs from widening cards */
+.slotCard, .slotCard * { overflow-wrap: anywhere; word-break: break-word; }

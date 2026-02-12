@@ -10,7 +10,8 @@ export type TermWeek = { term: 1 | 2 | 3 | 4; week: number };
  */
 export function termWeekForDate(
   date: Date,
-  termStarts?: { t1?: string; t2?: string; t3?: string; t4?: string }
+  termStarts?: { t1?: string; t2?: string; t3?: string; t4?: string },
+  termEnds?: { t1?: string; t2?: string; t3?: string; t4?: string }
 ): TermWeek | null {
   if (!termStarts) return null;
 
@@ -36,6 +37,16 @@ export function termWeekForDate(
     else break;
   }
   if (!active) return null;
+
+  // If an end date is provided for the active term, suppress Term/Week outside the range.
+  if (termEnds) {
+    const endIso = (active.term === 1 ? termEnds.t1 : active.term === 2 ? termEnds.t2 : active.term === 3 ? termEnds.t3 : termEnds.t4) ?? "";
+    const endS = endIso.trim();
+    if (endS) {
+      const endD = parseISO(endS);
+      if (isValid(endD) && ms > endD.getTime()) return null;
+    }
+  }
 
   const diffDays = Math.floor((ms - active.d.getTime()) / (1000 * 60 * 60 * 24));
   const week = Math.floor(diffDays / 7) + 1;

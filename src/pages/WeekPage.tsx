@@ -372,7 +372,7 @@ export default function WeekPage() {
           </div>
           <div className="slotCompactBadges">
             {(() => {
-              const tw = rollingSettings ? termWeekForDate(weekStart, rollingSettings.termStarts) : null;
+              const tw = rollingSettings ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds) : null;
               return tw ? (
                 <>
                   <span className="badge">Term {tw.term}</span>{" "}

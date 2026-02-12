@@ -9,6 +9,7 @@ import MatrixPage from "./pages/MatrixPage";
 import TemplateMappingPage from "./pages/TemplateMappingPage";
 import BlocksPage from "./pages/BlocksPage";
 import SubjectsPage from "./pages/SubjectsPage";
+import SetupPage from "./pages/SetupPage";
 
 export default function App() {
   const location = useLocation();
@@ -34,6 +35,7 @@ export default function App() {
     if (location.pathname.startsWith("/week")) return "Week";
     if (location.pathname.startsWith("/matrix")) return "Matrix";
     if (location.pathname.startsWith("/subjects")) return "Subjects";
+    if (location.pathname.startsWith("/setup")) return "Setup";
     if (location.pathname.startsWith("/subject")) return "Subject";
     if (location.pathname.startsWith("/import")) return "Import";
     if (location.pathname.startsWith("/mapping")) return "Mapping";
@@ -73,6 +75,9 @@ export default function App() {
               Subjects
             </NavLink>
             <div className="navDivider" />
+            <NavLink to="/setup" className={({ isActive }) => (isActive ? "active" : "")}>
+              Setup
+            </NavLink>
             <NavLink to="/subject" className={({ isActive }) => (isActive ? "active" : "")}>
               Subject
             </NavLink>
@@ -98,6 +103,7 @@ export default function App() {
           <Route path="/mapping" element={<TemplateMappingPage />} />
           <Route path="/blocks" element={<BlocksPage />} />
           <Route path="/subjects" element={<SubjectsPage />} />
+          <Route path="/setup" element={<SetupPage />} />
         </Routes>
       </div>
       </div>
