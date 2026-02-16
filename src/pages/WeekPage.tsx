@@ -402,20 +402,14 @@ export default function WeekPage() {
                               <strong>{cell.a.manualTitle}</strong>{" "}
                               {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                             </div>
-                          ) : (
+                          ) : cell.kind === "template" ? (
                             <div>
-                              <strong>
-                                {subject
-                                  ? displayTitle(subject, detail)
-                                  : cell.kind === "template"
-                                    ? cell.e.title
-                                    : "—"}
-                              </strong>{" "}
-                              {cell.kind === "template" && cell.e.code ? (
-                                <span className="muted">({cell.e.code})</span>
-                              ) : null}
+                              <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
+                              {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                             </div>
-                                                      )}
+                          ) : (
+                            <div className="muted">—</div>
+                          )}
                         </div>
 
                         <div className="slotMetaRow slotCompactBadges" style={{ marginTop: 6 }}>
