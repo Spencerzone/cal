@@ -389,6 +389,26 @@ export default function WeekPage() {
                     overrideSubjectId === null
                       ? "#2a2a2a"
                       : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
+                  const resolvedRoom =
+                    cell.kind === "template"
+                      ? roomOverride === undefined
+                        ? cell.e.room
+                        : roomOverride
+                      : cell.kind === "manual"
+                      ? roomOverride === undefined
+                        ? cell.a.manualRoom
+                        : roomOverride
+                      : overrideSubject
+                      ? roomOverride
+                      : null;
+
+                  const codeText =
+                    overrideSubject?.code ??
+                    (cell.kind === "template" ? cell.e.code : null) ??
+                    (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
+
+                  const timeText = cell.kind === "template" ? timeRangeFromTemplate(weekDays[i], cell.e) : null;
+
 
                   return (
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
@@ -397,62 +417,37 @@ export default function WeekPage() {
                           <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
                             {compactBlockLabel(block.name)}
                           </span>
-                          {overrideSubjectId === null ? (
-                            <div className="muted">—</div>
-                          ) : overrideSubject ? (
-                            <div>
-                              <strong style={{ color: strip }}>{overrideSubject.title}</strong>{" "}
-                              {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 0, width: "100%" }}>
+                            <div style={{ minWidth: 0 }}>
+                              {overrideSubjectId === null ? (
+                                <div className="muted">—</div>
+                              ) : overrideSubject ? (
+                                <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
+                                  {overrideSubject.title}
+                                </div>
+                              ) : cell.kind === "blank" ? (
+                                <div className="muted">—</div>
+                              ) : cell.kind === "free" ? (
+                                <div className="muted">Free</div>
+                              ) : cell.kind === "manual" ? (
+                                <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
+                                  {cell.a.manualTitle}
+                                </div>
+                              ) : cell.kind === "template" ? (
+                                <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
+                                  {subject ? displayTitle(subject, detail) : cell.e.title}
+                                </div>
+                              ) : (
+                                <div className="muted">—</div>
+                              )}
                             </div>
-                          ) : cell.kind === "blank" ? (
-                            <div className="muted">—</div>
-                          ) : cell.kind === "free" ? (
-                            <div className="muted">Free</div>
-                          ) : cell.kind === "manual" ? (
-                            <div>
-                              <strong style={{ color: strip }}>{cell.a.manualTitle}</strong>{" "}
-                              {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
+
+                            <div className="row slotCompactBadges" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              {codeText ? <span className="badge">{codeText}</span> : null}
+                              {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}
+                              {timeText ? <span className="badge">{timeText}</span> : null}
                             </div>
-                          ) : cell.kind === "template" ? (
-                            <div>
-                              <strong style={{ color: strip }}>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
-                              {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
-                            </div>
-                          ) : (
-                            <div className="muted">—</div>
-                          )}
-                        </div>
-
-                        <div className="slotMetaRow" style={{ marginTop: 6 }}>
-                          {(() => {
-                            const resolvedRoom =
-                              cell.kind === "template"
-                                ? roomOverride === undefined
-                                  ? cell.e.room
-                                  : roomOverride
-                                : cell.kind === "manual"
-                                ? roomOverride === undefined
-                                  ? cell.a.manualRoom
-                                  : roomOverride
-                                : overrideSubject
-                                ? roomOverride
-                                : null;
-
-                            const codeText =
-                              overrideSubject?.code ??
-                              (cell.kind === "template" ? cell.e.code : null) ??
-                              (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
-
-                            const timeText = cell.kind === "template" ? timeRangeFromTemplate(weekDays[i], cell.e) : null;
-
-                            return (
-                              <>
-                                {codeText ? <span className="muted">{codeText}</span> : null}
-                                {resolvedRoom ? <span className="muted">Room {resolvedRoom}</span> : null}
-                                {timeText ? <span className="muted">{timeText}</span> : null}
-                              </>
-                            );
-                          })()}
+                          </div>
                         </div>
                       </div>
                     </td>
