@@ -206,7 +206,16 @@ export default function TodayPage() {
     const plan = planBySlot.get(openPlanSlot);
     const atts = attachmentsBySlot.get(openPlanSlot) ?? [];
     const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
-    if (!hasPlan) setOpenPlanSlot(null);
+    // Mark as having had content once it becomes non-empty.
+    if (hasPlan) {
+      openPlanHasEverHadContentRef.current.set(openPlanSlot, true);
+      return;
+    }
+
+    // Do NOT auto-collapse a freshly-opened, never-before-saved editor.
+    // Only collapse when the slot previously had content and is now empty.
+    const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanSlot) ?? false;
+    if (hadContentBefore) setOpenPlanSlot(null);
   }, [openPlanSlot, planBySlot, attachmentsBySlot]);
 
   // Load placements for today's stored label
