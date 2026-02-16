@@ -2,7 +2,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDays, addWeeks, format, startOfWeek } from "date-fns";
 import { getDb } from "../db/db";
-import type { Block, CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } from "../db/db";
+import type {
+  Block,
+  CycleTemplateEvent,
+  DayLabel,
+  LessonAttachment,
+  LessonPlan,
+  SlotAssignment,
+  SlotId,
+  Subject,
+} from "../db/db";
 import { SLOT_DEFS } from "../rolling/slots";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
@@ -14,7 +23,9 @@ import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
+import { getAttachmentsForPlan, getLessonPlansForDate } from "../db/lessonPlanQueries";
 import { termWeekForDate } from "../rolling/termWeek";
+import RichTextPlanEditor from "../components/RichTextPlanEditor";
 
 type Cell =
   | { kind: "blank" }
@@ -60,6 +71,10 @@ export default function WeekPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
 
+  const [plansByDate, setPlansByDate] = useState<Map<string, Map<SlotId, LessonPlan>>>(new Map());
+  const [attachmentsByDate, setAttachmentsByDate] = useState<Map<string, Map<SlotId, LessonAttachment[]>>>(new Map());
+  const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
+
   // Map keyed by dateKey ("yyyy-MM-dd") => assignments for that dayLabel
   const [assignmentsByDate, setAssignmentsByDate] = useState<Map<string, Map<SlotId, SlotAssignment>>>(new Map());
 
@@ -77,6 +92,18 @@ export default function WeekPage() {
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
 
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+
+  function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
+    const s = (raw ?? "").trim();
+    if (!s) return true;
+    const text = s
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/?p[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .trim();
+    return text.length === 0;
+  }
 
   useEffect(() => {
     (async () => {
@@ -172,6 +199,50 @@ export default function WeekPage() {
       setDayLabelByDate(dlOut);
     })();
   }, [weekDays]);
+
+  // Load lesson plans + attachments for each day in the viewed week
+  useEffect(() => {
+    const load = async () => {
+      const pOut = new Map<string, Map<SlotId, LessonPlan>>();
+      const aOut = new Map<string, Map<SlotId, LessonAttachment[]>>();
+
+      for (const d of weekDays) {
+        const dateKey = format(d, "yyyy-MM-dd");
+        const plans = await getLessonPlansForDate(userId, dateKey);
+
+        const pMap = new Map<SlotId, LessonPlan>();
+        const aMap = new Map<SlotId, LessonAttachment[]>();
+
+        for (const p of plans) pMap.set(p.slotId, p);
+        for (const [slotId, plan] of pMap) {
+          const atts = await getAttachmentsForPlan(plan.key);
+          aMap.set(slotId, atts);
+        }
+
+        pOut.set(dateKey, pMap);
+        aOut.set(dateKey, aMap);
+      }
+
+      setPlansByDate(pOut);
+      setAttachmentsByDate(aOut);
+    };
+
+    load();
+    const onChanged = () => load();
+    window.addEventListener("lessonplans-changed", onChanged as any);
+    return () => window.removeEventListener("lessonplans-changed", onChanged as any);
+  }, [weekDays]);
+
+  // If an open plan is deleted/emptied, auto-collapse.
+  useEffect(() => {
+    if (!openPlanKey) return;
+    const [dateKey, slotIdRaw] = openPlanKey.split("::");
+    const slotId = slotIdRaw as SlotId;
+    const plan = plansByDate.get(dateKey)?.get(slotId);
+    const atts = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
+    const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+    if (!hasPlan) setOpenPlanKey(null);
+  }, [openPlanKey, plansByDate, attachmentsByDate]);
 
   // Load placements for the dayLabels used this week
   useEffect(() => {
@@ -409,10 +480,32 @@ export default function WeekPage() {
 
                   const timeText = cell.kind === "template" ? timeRangeFromTemplate(weekDays[i], cell.e) : null;
 
+                  const plan = slotId ? plansByDate.get(dateKey)?.get(slotId) : undefined;
+                  const atts = slotId ? attachmentsByDate.get(dateKey)?.get(slotId) ?? [] : [];
+                  const planKey = slotId ? `${dateKey}::${slotId}` : null;
+                  const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+                  const showPlanEditor = !!slotId && (hasPlan || (planKey && openPlanKey === planKey));
+
 
                   return (
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
-                      <div className="slotCard" style={{ ...( { ["--slotStrip" as any]: strip } as any) }}>
+                      <div
+                        className="slotCard slotClickable"
+                        style={{ ...( { ["--slotStrip" as any]: strip } as any) }}
+                        role={slotId ? "button" : undefined}
+                        tabIndex={slotId ? 0 : undefined}
+                        onClick={() => {
+                          if (!slotId || !planKey) return;
+                          setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
+                        }}
+                        onKeyDown={(e) => {
+                          if (!slotId || !planKey) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
+                          }
+                        }}
+                      >
                         <div className="slotTitleRow" style={{ marginTop: 0 }}>
                           <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
                             {compactBlockLabel(block.name)}
@@ -449,6 +542,16 @@ export default function WeekPage() {
                             </div>
                           </div>
                         </div>
+
+                        {showPlanEditor && slotId ? (
+                          <RichTextPlanEditor
+                            userId={userId}
+                            dateKey={dateKey}
+                            slotId={slotId}
+                            initialHtml={plan?.html ?? ""}
+                            attachments={atts}
+                          />
+                        ) : null}
                       </div>
                     </td>
                   );

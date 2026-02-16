@@ -96,6 +96,18 @@ export default function TodayPage() {
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
 
+  function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
+    const s = (raw ?? "").trim();
+    if (!s) return true;
+    const text = s
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/?p[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .trim();
+    return text.length === 0;
+  }
+
   // coerce weekend selections to Monday (next weekday)
   useEffect(() => {
     if (isWeekend(selectedDate)) {
@@ -186,6 +198,15 @@ export default function TodayPage() {
       setAssignmentBySlot(m);
     })();
   }, [dateKey]);
+
+  // If a plan is emptied/deleted, collapse the editor back to hidden state.
+  useEffect(() => {
+    if (!openPlanSlot) return;
+    const plan = planBySlot.get(openPlanSlot);
+    const atts = attachmentsBySlot.get(openPlanSlot) ?? [];
+    const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+    if (!hasPlan) setOpenPlanSlot(null);
+  }, [openPlanSlot, planBySlot, attachmentsBySlot]);
 
   // Load placements for today's stored label
   useEffect(() => {
@@ -474,27 +495,29 @@ function formatDisplayDate(d: Date) {
 
           const plan = slotId ? planBySlot.get(slotId) : undefined;
           const atts = slotId ? attachmentsBySlot.get(slotId) ?? [] : [];
-          const hasPlan = !!plan || atts.length > 0;
+          const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
           const showPlanEditor = !!slotId && (hasPlan || openPlanSlot === slotId);
 
           return (
-            <div key={blockId} className="slotCard" style={{ ...( { ["--slotStrip" as any]: strip } as any) }}>
-<div
-                className="slotTitleRow"
-                role={slotId ? "button" : undefined}
-                tabIndex={slotId ? 0 : undefined}
-                onClick={() => {
-                  if (!slotId) return;
+            <div
+              key={blockId}
+              className="slotCard slotClickable"
+              style={{ ...( { ["--slotStrip" as any]: strip } as any) }}
+              role={slotId ? "button" : undefined}
+              tabIndex={slotId ? 0 : undefined}
+              onClick={() => {
+                if (!slotId) return;
+                setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+              }}
+              onKeyDown={(e) => {
+                if (!slotId) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
                   setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
-                }}
-                onKeyDown={(e) => {
-                  if (!slotId) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
-                  }
-                }}
-              >
+                }
+              }}
+            >
+              <div className="slotTitleRow">
                 <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
                   {compactBlockLabel(blockLabel)}
                 </span>

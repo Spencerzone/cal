@@ -30,10 +30,27 @@ export default function RichTextPlanEditor(props: {
     setHtml(initialHtml);
   }, [initialHtml, active]);
 
+  function isHtmlEffectivelyEmpty(raw: string): boolean {
+    const s = (raw ?? "").trim();
+    if (!s) return true;
+    // Convert common empty editor outputs into empty.
+    const text = s
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/?p[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .trim();
+    return text.length === 0;
+  }
+
+  function normaliseForDb(raw: string): string {
+    return isHtmlEffectivelyEmpty(raw) ? "" : raw;
+  }
+
   function scheduleSave(nextHtml: string) {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      upsertLessonPlan(userId, dateKey, slotId, nextHtml);
+      upsertLessonPlan(userId, dateKey, slotId, normaliseForDb(nextHtml));
     }, 600);
   }
 
@@ -97,10 +114,16 @@ export default function RichTextPlanEditor(props: {
     }
   }
 
-  const hasContent = !!html.trim();
+  const hasContent = !isHtmlEffectivelyEmpty(html) || attachments.length > 0;
 
   return (
-    <div ref={wrapRef} className="card" style={{ marginTop: 8, background: "#0b0b0b" }}>
+    <div
+      ref={wrapRef}
+      className="card"
+      style={{ marginTop: 8, background: "#0b0b0b" }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       {active ? (
         <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
           <span className="muted" style={{ fontSize: 12 }}>Auto-saves</span>
