@@ -71,7 +71,9 @@ a { color: inherit; text-decoration: none; }
   width: 100%;
 }
 
-.layout--collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+.layout--collapsed { 
+  grid-template-columns: minmax(0, 1fr); 
+}
 
 .sidebar {
   border-right: 1px solid var(--line);
