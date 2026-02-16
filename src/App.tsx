@@ -60,6 +60,7 @@ export default function App() {
       </header>
 
       <div className={sidebarOpen ? "layout" : "layout layout--collapsed"}>
+{sidebarOpen ? (
         <aside className="sidebar">
           <nav className="sidenav">
             <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
@@ -92,6 +93,7 @@ export default function App() {
             </NavLink>
           </nav>
         </aside>
+) : null}
 
         <div className="container">
         <Routes>
