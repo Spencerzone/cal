@@ -1,5 +1,5 @@
 // src/pages/WeekPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, addWeeks, format, startOfWeek } from "date-fns";
 import { getDb } from "../db/db";
 import type {
@@ -74,6 +74,7 @@ export default function WeekPage() {
   const [plansByDate, setPlansByDate] = useState<Map<string, Map<SlotId, LessonPlan>>>(new Map());
   const [attachmentsByDate, setAttachmentsByDate] = useState<Map<string, Map<SlotId, LessonAttachment[]>>>(new Map());
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
+  const openPlanHasEverHadContentRef = useRef<Map<string, boolean>>(new Map());
 
   // Map keyed by dateKey ("yyyy-MM-dd") => assignments for that dayLabel
   const [assignmentsByDate, setAssignmentsByDate] = useState<Map<string, Map<SlotId, SlotAssignment>>>(new Map());
@@ -233,7 +234,7 @@ export default function WeekPage() {
     return () => window.removeEventListener("lessonplans-changed", onChanged as any);
   }, [weekDays]);
 
-  // If an open plan is deleted/emptied, auto-collapse.
+  // If an open plan is deleted/emptied, auto-collapse ONLY if it previously had content.
   useEffect(() => {
     if (!openPlanKey) return;
     const [dateKey, slotIdRaw] = openPlanKey.split("::");
@@ -241,7 +242,14 @@ export default function WeekPage() {
     const plan = plansByDate.get(dateKey)?.get(slotId);
     const atts = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
     const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
-    if (!hasPlan) setOpenPlanKey(null);
+
+    if (hasPlan) {
+      openPlanHasEverHadContentRef.current.set(openPlanKey, true);
+      return;
+    }
+
+    const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanKey) ?? false;
+    if (hadContentBefore) setOpenPlanKey(null);
   }, [openPlanKey, plansByDate, attachmentsByDate]);
 
   // Load placements for the dayLabels used this week
@@ -496,12 +504,20 @@ export default function WeekPage() {
                         tabIndex={slotId ? 0 : undefined}
                         onClick={() => {
                           if (!slotId || !planKey) return;
+                          const planNow = plansByDate.get(dateKey)?.get(slotId);
+                          const attsNow = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
+                          const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
+                          if (hasNow) openPlanHasEverHadContentRef.current.set(planKey, true);
                           setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
                         }}
                         onKeyDown={(e) => {
                           if (!slotId || !planKey) return;
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
+                            const planNow = plansByDate.get(dateKey)?.get(slotId);
+                            const attsNow = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
+                            const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
+                            if (hasNow) openPlanHasEverHadContentRef.current.set(planKey, true);
                             setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
                           }
                         }}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format } from "date-fns";
 import { getDb } from "../db/db";
 import type { Block, CycleTemplateEvent, DayLabel, LessonAttachment, LessonPlan, SlotAssignment, SlotId, Subject } from "../db/db";
@@ -86,6 +86,7 @@ export default function TodayPage() {
   const [planBySlot, setPlanBySlot] = useState<Map<SlotId, LessonPlan>>(new Map());
   const [attachmentsBySlot, setAttachmentsBySlot] = useState<Map<SlotId, LessonAttachment[]>>(new Map());
   const [openPlanSlot, setOpenPlanSlot] = useState<SlotId | null>(null);
+  const openPlanHasEverHadContentRef = useRef<Map<SlotId, boolean>>(new Map());
 
   const [selectedDate, setSelectedDate] = useState<Date>(() => adjustToWeekday(new Date(), 1));
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
@@ -507,12 +508,20 @@ function formatDisplayDate(d: Date) {
               tabIndex={slotId ? 0 : undefined}
               onClick={() => {
                 if (!slotId) return;
+                const planNow = planBySlot.get(slotId);
+                const attsNow = attachmentsBySlot.get(slotId) ?? [];
+                const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
+                if (hasNow) openPlanHasEverHadContentRef.current.set(slotId, true);
                 setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
               }}
               onKeyDown={(e) => {
                 if (!slotId) return;
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
+                  const planNow = planBySlot.get(slotId);
+                  const attsNow = attachmentsBySlot.get(slotId) ?? [];
+                  const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
+                  if (hasNow) openPlanHasEverHadContentRef.current.set(slotId, true);
                   setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
                 }
               }}
