@@ -85,6 +85,7 @@ export default function TodayPage() {
 
   const [planBySlot, setPlanBySlot] = useState<Map<SlotId, LessonPlan>>(new Map());
   const [attachmentsBySlot, setAttachmentsBySlot] = useState<Map<SlotId, LessonAttachment[]>>(new Map());
+  const [openPlanSlot, setOpenPlanSlot] = useState<SlotId | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<Date>(() => adjustToWeekday(new Date(), 1));
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
@@ -248,15 +249,15 @@ export default function TodayPage() {
         if (typeof overrideSubjectId === "string") {
           const s = subjectById.get(overrideSubjectId);
           const title = s ? s.title : e.title;
-          return { title, start, end };
+          return { title, start, end, color: s?.color ?? null };
         }
 
         const subject = subjectById.get(subjectIdForTemplateEvent(e));
         const detail = detailForTemplateEvent(e);
         const title = subject ? displayTitle(subject, detail) : e.title;
-        return { title, start, end };
+        return { title, start, end, color: subject?.color ?? null };
       })
-      .filter((x): x is { title: string; start: number; end: number } => !!x)
+      .filter((x): x is { title: string; start: number; end: number; color: string | null } => !!x)
       .sort((a, b) => a.start - b.start);
 
     const nowMs = now.getTime();
@@ -329,7 +330,7 @@ export default function TodayPage() {
             }}
           >
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <div className="badge">Jump to date</div>
+              <div className="muted">Jump to date</div>
               <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
                 ✕
               </button>
@@ -392,7 +393,7 @@ function formatDisplayDate(d: Date) {
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
           <div>
-            <div className="badge">Cycle day</div>{" "}
+            <span className="muted">Cycle day</span>{" "}
             {label ? (
               <strong>
                 {weekdayFromLabel(label)} {label.slice(3)}
@@ -403,22 +404,29 @@ function formatDisplayDate(d: Date) {
             {(() => {
               const tw = rollingSettings ? termWeekForDate(dateLocal, rollingSettings.termStarts, rollingSettings.termEnds) : null;
               return tw ? (
-                <div style={{ marginTop: 6 }} className="slotCompactBadges">
-                  <span className="badge">Term {tw.term}</span>{" "}
-                  <span className="badge">Week {tw.week}</span>
+                <div style={{ marginTop: 6 }}>
+                  <span className="muted">Term {tw.term} · Week {tw.week}</span>
                 </div>
               ) : null;
             })()}
           </div>
 
           <div>
-            <div className="badge">Now</div>{" "}
-            {currentNext.current ? <strong>{currentNext.current.title}</strong> : <span className="muted">—</span>}
+            <span className="muted" style={{ color: currentNext.current?.color ?? undefined }}>Now</span>{" "}
+            {currentNext.current ? (
+              <strong style={{ color: currentNext.current.color ?? undefined }}>{currentNext.current.title}</strong>
+            ) : (
+              <span className="muted">—</span>
+            )}
           </div>
 
           <div>
-            <div className="badge">Next</div>{" "}
-            {currentNext.next ? <strong>{currentNext.next.title}</strong> : <span className="muted">—</span>}
+            <span className="muted" style={{ color: currentNext.next?.color ?? undefined }}>Next</span>{" "}
+            {currentNext.next ? (
+              <strong style={{ color: currentNext.next.color ?? undefined }}>{currentNext.next.title}</strong>
+            ) : (
+              <span className="muted">—</span>
+            )}
           </div>
         </div>
       </div>
@@ -444,27 +452,42 @@ function formatDisplayDate(d: Date) {
               ? "#2a2a2a"
               : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
 
+          const plan = slotId ? planBySlot.get(slotId) : undefined;
+          const atts = slotId ? attachmentsBySlot.get(slotId) ?? [] : [];
+          const hasPlan = !!plan || atts.length > 0;
+          const showPlanEditor = !!slotId && (hasPlan || openPlanSlot === slotId);
+
           return (
             <div key={blockId} className="slotCard" style={{ ...( { ["--slotStrip" as any]: strip } as any) }}>
               <div className="slotHeader">
-                <div className="slotCompactBadges">
-                  <span className="badge">{blockLabel}</span>
-                </div>
-                {cell.kind === "template" ? (
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {timeRangeFromTemplate(dateLocal, cell.e)}
-                  </span>
-                ) : null}
+                <span className="muted">{blockLabel}</span>
               </div>
 
-              <div className="slotTitleRow">
-                <span className="slotPeriodDot">{compactBlockLabel(blockLabel)}</span>
+              <div
+                className="slotTitleRow"
+                role={slotId ? "button" : undefined}
+                tabIndex={slotId ? 0 : undefined}
+                onClick={() => {
+                  if (!slotId) return;
+                  setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+                }}
+                onKeyDown={(e) => {
+                  if (!slotId) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+                  }
+                }}
+              >
+                <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
+                  {compactBlockLabel(blockLabel)}
+                </span>
                 {overrideSubjectId === null ? (
                   <div className="muted">—</div>
                 ) : overrideSubject ? (
                   <>
                     <div>
-                      <strong>{overrideSubject.title}</strong>{" "}
+                      <strong style={{ color: strip }}>{overrideSubject.title}</strong>{" "}
                       {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
                     </div>
                   </>
@@ -475,27 +498,24 @@ function formatDisplayDate(d: Date) {
                 ) : cell.kind === "manual" ? (
                   <>
                     <div>
-                      <strong>{cell.a.manualTitle}</strong>{" "}
+                      <strong style={{ color: strip }}>{cell.a.manualTitle}</strong>{" "}
                       {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                     </div>
                   </>
                 ) : cell.kind === "template" ? (
                   <>
                     <div>
-                      <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
+                      <strong style={{ color: strip }}>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
                       {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                     </div>
                   </>
                 ) : null}
               </div>
 
-              {/* Meta badges */}
-              <div className="slotMetaRow slotCompactBadges">
-                {overrideSubject ? <span className="badge">{overrideSubject.kind}</span> : null}
-                {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
-                {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+              {/* Meta line: code + room + time (no badges) */}
+              <div className="slotMetaRow" style={{ marginTop: 6 }}>
                 {(() => {
-                  const resolved =
+                  const resolvedRoom =
                     cell.kind === "template"
                       ? roomOverride === undefined
                         ? cell.e.room
@@ -507,18 +527,32 @@ function formatDisplayDate(d: Date) {
                       : overrideSubject
                       ? roomOverride
                       : null;
-                  return resolved ? <span className="badge">Room {resolved}</span> : null;
+
+                  const pieces: string[] = [];
+                  if (cell.kind === "template" && cell.e.code) pieces.push(cell.e.code);
+                  if (overrideSubject?.code) pieces.push(overrideSubject.code);
+                  if (cell.kind === "manual" && cell.a.manualCode) pieces.push(cell.a.manualCode);
+
+                  const codeText = pieces.length > 0 ? pieces[0] : null;
+                  const timeText = cell.kind === "template" ? timeRangeFromTemplate(dateLocal, cell.e) : null;
+
+                  return (
+                    <>
+                      {codeText ? <span className="muted">{codeText}</span> : null}
+                      {resolvedRoom ? <span className="muted">Room {resolvedRoom}</span> : null}
+                      {timeText ? <span className="muted">{timeText}</span> : null}
+                    </>
+                  );
                 })()}
-                {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}
               </div>
 
-              {slotId ? (
+              {showPlanEditor ? (
                 <RichTextPlanEditor
                   userId={userId}
                   dateKey={dateKey}
                   slotId={slotId}
-                  initialHtml={planBySlot.get(slotId)?.html ?? ""}
-                  attachments={attachmentsBySlot.get(slotId) ?? []}
+                  initialHtml={plan?.html ?? ""}
+                  attachments={atts}
                 />
               ) : null}
             </div>

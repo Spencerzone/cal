@@ -101,10 +101,11 @@ export default function RichTextPlanEditor(props: {
 
   return (
     <div ref={wrapRef} className="card" style={{ marginTop: 8, background: "#0b0b0b" }}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <span className="badge">Lesson plan</span>
-        {active ? <span className="muted">Auto-saves</span> : null}
-      </div>
+      {active ? (
+        <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
+          <span className="muted" style={{ fontSize: 12 }}>Auto-saves</span>
+        </div>
+      ) : null}
 
       {!active ? (
         <div
@@ -137,7 +138,7 @@ export default function RichTextPlanEditor(props: {
             marginTop: 8,
             width: "100%",
             boxSizing: "border-box",
-            minHeight: 120,
+            minHeight: 72,
             maxHeight: 260,
             overflowY: "auto",
             padding: 10,

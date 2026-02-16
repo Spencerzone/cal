@@ -43,6 +43,18 @@ function compactBlockLabel(label: string): string {
   return label;
 }
 
+function minutesToLocalDateTime(day: Date, minutes: number): Date {
+  const d = new Date(day);
+  d.setHours(0, minutes, 0, 0);
+  return d;
+}
+
+function timeRangeFromTemplate(day: Date, e: CycleTemplateEvent): string {
+  const s = minutesToLocalDateTime(day, e.startMinutes);
+  const t = minutesToLocalDateTime(day, e.endMinutes);
+  return `${format(s, "H:mm")}–${format(t, "H:mm")}`;
+}
+
 export default function WeekPage() {
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -262,7 +274,7 @@ export default function WeekPage() {
             }}
           >
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <div className="badge">Jump to week</div>
+              <div className="muted">Jump to week</div>
               <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
                 ✕
               </button>
@@ -318,14 +330,11 @@ export default function WeekPage() {
               Next →
             </button>
           </div>
-          <div className="slotCompactBadges">
+          <div>
             {(() => {
               const tw = rollingSettings ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds) : null;
               return tw ? (
-                <>
-                  <span className="badge">Term {tw.term}</span>{" "}
-                  <span className="badge">Week {tw.week}</span>
-                </>
+                <span className="muted">Term {tw.term} · Week {tw.week}</span>
               ) : (
                 <span className="muted">&nbsp;</span>
               );
@@ -353,7 +362,7 @@ export default function WeekPage() {
             {grid.map(({ block, cells }) => (
               <tr key={block.id}>
                 <td style={{ verticalAlign: "top" }}>
-                  <div className="badge">{block.name}</div>
+                  <div className="muted">{block.name}</div>
                 </td>
 
                 {cells.map((cell, i) => {
@@ -385,12 +394,14 @@ export default function WeekPage() {
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div className="slotCard" style={{ ...( { ["--slotStrip" as any]: strip } as any) }}>
                         <div className="slotTitleRow" style={{ marginTop: 0 }}>
-                          <span className="slotPeriodDot">{compactBlockLabel(block.name)}</span>
+                          <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
+                            {compactBlockLabel(block.name)}
+                          </span>
                           {overrideSubjectId === null ? (
                             <div className="muted">—</div>
                           ) : overrideSubject ? (
                             <div>
-                              <strong>{overrideSubject.title}</strong>{" "}
+                              <strong style={{ color: strip }}>{overrideSubject.title}</strong>{" "}
                               {overrideSubject.code ? <span className="muted">({overrideSubject.code})</span> : null}
                             </div>
                           ) : cell.kind === "blank" ? (
@@ -399,12 +410,12 @@ export default function WeekPage() {
                             <div className="muted">Free</div>
                           ) : cell.kind === "manual" ? (
                             <div>
-                              <strong>{cell.a.manualTitle}</strong>{" "}
+                              <strong style={{ color: strip }}>{cell.a.manualTitle}</strong>{" "}
                               {cell.a.manualCode ? <span className="muted">({cell.a.manualCode})</span> : null}
                             </div>
                           ) : cell.kind === "template" ? (
                             <div>
-                              <strong>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
+                              <strong style={{ color: strip }}>{subject ? displayTitle(subject, detail) : cell.e.title}</strong>{" "}
                               {cell.e.code ? <span className="muted">({cell.e.code})</span> : null}
                             </div>
                           ) : (
@@ -412,12 +423,9 @@ export default function WeekPage() {
                           )}
                         </div>
 
-                        <div className="slotMetaRow slotCompactBadges" style={{ marginTop: 6 }}>
-                          {overrideSubject ? <span className="badge">{overrideSubject.kind}</span> : null}
-                          {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
-                          {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+                        <div className="slotMetaRow" style={{ marginTop: 6 }}>
                           {(() => {
-                            const resolved =
+                            const resolvedRoom =
                               cell.kind === "template"
                                 ? roomOverride === undefined
                                   ? cell.e.room
@@ -429,9 +437,22 @@ export default function WeekPage() {
                                 : overrideSubject
                                 ? roomOverride
                                 : null;
-                            return resolved ? <span className="badge">Room {resolved}</span> : null;
+
+                            const codeText =
+                              overrideSubject?.code ??
+                              (cell.kind === "template" ? cell.e.code : null) ??
+                              (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
+
+                            const timeText = cell.kind === "template" ? timeRangeFromTemplate(weekDays[i], cell.e) : null;
+
+                            return (
+                              <>
+                                {codeText ? <span className="muted">{codeText}</span> : null}
+                                {resolvedRoom ? <span className="muted">Room {resolvedRoom}</span> : null}
+                                {timeText ? <span className="muted">{timeText}</span> : null}
+                              </>
+                            );
                           })()}
-                          {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}
                         </div>
                       </div>
                     </td>
