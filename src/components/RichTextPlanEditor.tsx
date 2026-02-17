@@ -56,13 +56,18 @@ export default function RichTextPlanEditor(props: {
 
   // Hydrate DOM once per open.
   useEffect(() => {
-    if (!active) return;
-    if (hydratedRef.current) return;
-    const el = ref.current;
-    if (!el) return;
-    el.innerHTML = html || "<p></p>";
-    hydratedRef.current = true;
-  }, [active]);
+  if (!active) return;
+  if (hydratedRef.current) return;
+  const el = ref.current;
+  if (!el) return;
+
+  // Ensures Enter creates paragraphs consistently
+  // eslint-disable-next-line deprecation/deprecation
+  document.execCommand("defaultParagraphSeparator", false, "p");
+
+  el.innerHTML = html || "<p><br></p>";
+  hydratedRef.current = true;
+}, [active]);
 
   function exec(cmd: string, value?: string) {
     dirtyRef.current = true;
@@ -86,6 +91,23 @@ export default function RichTextPlanEditor(props: {
     scheduleSave(next);
   }
 
+  function onEditorKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+  if (e.key !== "Enter") return;
+
+  // Allow Shift+Enter to insert a simple line break
+  if (e.shiftKey) {
+    e.preventDefault();
+    // eslint-disable-next-line deprecation/deprecation
+    document.execCommand("insertLineBreak");
+    return;
+  }
+
+  // Plain Enter => new paragraph
+  e.preventDefault();
+  // eslint-disable-next-line deprecation/deprecation
+  document.execCommand("insertParagraph");
+}
+
   // Close editor when clicking outside.
   useEffect(() => {
     if (!active) return;
@@ -106,7 +128,7 @@ export default function RichTextPlanEditor(props: {
 
     // Ensure plan exists for attachment parent.
     if (!html.trim()) {
-      await upsertLessonPlan(userId, dateKey, slotId, "<p></p>");
+      await upsertLessonPlan(userId, dateKey, slotId, "<p><br></p>");
     }
 
     for (const f of Array.from(files)) {
@@ -139,7 +161,7 @@ export default function RichTextPlanEditor(props: {
             setActive(true);
             setTimeout(() => {
               if (ref.current) {
-                ref.current.innerHTML = html || "<p></p>";
+                ref.current.innerHTML = html || "<p><br></p>";
                 ref.current.focus();
               }
             }, 0);
@@ -151,7 +173,7 @@ export default function RichTextPlanEditor(props: {
               setActive(true);
               setTimeout(() => {
                 if (ref.current) {
-                  ref.current.innerHTML = html || "<p></p>";
+                  ref.current.innerHTML = html || "<p><br></p>";
                   ref.current.focus();
                 }
               }, 0);
@@ -255,6 +277,7 @@ export default function RichTextPlanEditor(props: {
             contentEditable
             suppressContentEditableWarning
             onInput={onInput}
+            onKeyDown={onEditorKeyDown}
             style={{
               marginTop: 8,
               width: "100%",
