@@ -534,7 +534,7 @@ export default function WeekPage() {
                           <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
                             {compactBlockLabel(block.name)}
                           </span>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 0, width: "100%" }}>
+                          <div style={{ minWidth: 0, width: "100%" }}>
                             <div style={{ minWidth: 0 }}>
                               {overrideSubjectId === null ? (
                                 <div className="muted">—</div>
@@ -558,13 +558,13 @@ export default function WeekPage() {
                                 <div className="muted">—</div>
                               )}
                             </div>
-
-                            <div className="row slotCompactBadges" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              {codeText ? <span className="badge">{codeText}</span> : null}
-                              {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}
-                              {timeText ? <span className="badge">{timeText}</span> : null}
-                            </div>
                           </div>
+                        </div>
+
+                        <div className="row slotCompactBadges" style={{ gap: 6, flexWrap: "wrap", marginLeft: 32, marginTop: 6 }}>
+                          {codeText ? <span className="badge">{codeText}</span> : null}
+                          {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}
+                          {timeText ? <span className="badge">{timeText}</span> : null}
                         </div>
 
                         {showPlanEditor && slotId ? (
