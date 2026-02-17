@@ -167,7 +167,7 @@ export default function RichTextPlanEditor(props: {
             }, 0);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
+            if (e.key === "Enter") {
               e.preventDefault();
               hydratedRef.current = false;
               setActive(true);
