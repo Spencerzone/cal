@@ -434,9 +434,6 @@ export default function WeekPage() {
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", width: 180 }} className="muted">
-                Block
-              </th>
               {weekDays.map((d) => (
                 <th key={format(d, "yyyy-MM-dd")} style={{ textAlign: "left" }} className="muted">
                   {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
@@ -448,9 +445,6 @@ export default function WeekPage() {
           <tbody>
             {grid.map(({ block, cells }) => (
               <tr key={block.id}>
-                <td style={{ verticalAlign: "top" }}>
-                  <div className="muted">{block.name}</div>
-                </td>
 
                 {cells.map((cell, i) => {
                   const dateKey = format(weekDays[i], "yyyy-MM-dd");
@@ -594,7 +588,7 @@ export default function WeekPage() {
 
             {grid.length === 0 ? (
               <tr>
-                <td colSpan={1 + weekDays.length} className="muted">
+                <td colSpan={weekDays.length} className="muted">
                   No data.
                 </td>
               </tr>
