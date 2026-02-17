@@ -215,7 +215,12 @@ export default function TodayPage() {
     // Do NOT auto-collapse a freshly-opened, never-before-saved editor.
     // Only collapse when the slot previously had content and is now empty.
     const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanSlot) ?? false;
-    if (hadContentBefore) setOpenPlanSlot(null);
+    if (hadContentBefore) {
+      // Once the user clears a plan and it's deleted, treat future opens as "new" again.
+      // Otherwise the editor will immediately auto-collapse on subsequent opens.
+      openPlanHasEverHadContentRef.current.delete(openPlanSlot);
+      setOpenPlanSlot(null);
+    }
   }, [openPlanSlot, planBySlot, attachmentsBySlot]);
 
   // Load placements for today's stored label

@@ -249,7 +249,12 @@ export default function WeekPage() {
     }
 
     const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanKey) ?? false;
-    if (hadContentBefore) setOpenPlanKey(null);
+    if (hadContentBefore) {
+      // After a plan is cleared and deleted, treat future opens as "new" again.
+      // This prevents immediate auto-collapse when reopening the now-empty slot.
+      openPlanHasEverHadContentRef.current.delete(openPlanKey);
+      setOpenPlanKey(null);
+    }
   }, [openPlanKey, plansByDate, attachmentsByDate]);
 
   // Load placements for the dayLabels used this week
