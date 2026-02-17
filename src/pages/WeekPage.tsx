@@ -74,6 +74,7 @@ export default function WeekPage() {
   const [plansByDate, setPlansByDate] = useState<Map<string, Map<SlotId, LessonPlan>>>(new Map());
   const [attachmentsByDate, setAttachmentsByDate] = useState<Map<string, Map<SlotId, LessonAttachment[]>>>(new Map());
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
+  const [activePlanKey, setActivePlanKey] = useState<string | null>(null);
   const openPlanHasEverHadContentRef = useRef<Map<string, boolean>>(new Map());
 
   // Map keyed by dateKey ("yyyy-MM-dd") => assignments for that dayLabel
@@ -237,6 +238,8 @@ export default function WeekPage() {
   // If an open plan is deleted/emptied, auto-collapse ONLY if it previously had content.
   useEffect(() => {
     if (!openPlanKey) return;
+    // Don't auto-collapse while the editor is focused/active (e.g. user clearing to retype).
+    if (activePlanKey === openPlanKey) return;
     const [dateKey, slotIdRaw] = openPlanKey.split("::");
     const slotId = slotIdRaw as SlotId;
     const plan = plansByDate.get(dateKey)?.get(slotId);
@@ -255,7 +258,7 @@ export default function WeekPage() {
       openPlanHasEverHadContentRef.current.delete(openPlanKey);
       setOpenPlanKey(null);
     }
-  }, [openPlanKey, plansByDate, attachmentsByDate]);
+  }, [openPlanKey, activePlanKey, plansByDate, attachmentsByDate]);
 
   // Load placements for the dayLabels used this week
   useEffect(() => {
@@ -565,13 +568,22 @@ export default function WeekPage() {
                         </div>
 
                         {showPlanEditor && slotId ? (
-                          <RichTextPlanEditor
-                            userId={userId}
-                            dateKey={dateKey}
-                            slotId={slotId}
-                            initialHtml={plan?.html ?? ""}
-                            attachments={atts}
-                          />
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            onFocusCapture={() => setActivePlanKey(`${dateKey}::${slotId}`)}
+                            onBlurCapture={(e) => {
+                              const rt = (e.relatedTarget as Node | null) ?? null;
+                              if (!rt || !e.currentTarget.contains(rt)) setActivePlanKey(null);
+                            }}
+                          >
+                            <RichTextPlanEditor
+                              userId={userId}
+                              dateKey={dateKey}
+                              slotId={slotId}
+                              initialHtml={plan?.html ?? ""}
+                              attachments={atts}
+                            />
+                          </div>
                         ) : null}
                       </div>
                     </td>
