@@ -165,8 +165,6 @@ export default function WeekPage() {
     (async () => {
       const settings = await getRollingSettings(userId);
       const meta = await getTemplateMeta(userId);
-
-      const db = await ;
       const out = new Map<string, Map<SlotId, SlotAssignment>>();
       const dlOut = new Map<string, DayLabel>();
 
@@ -182,8 +180,7 @@ export default function WeekPage() {
         const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
         dlOut.set(dateKey, stored);
 
-        const idx = db.transaction("slotAssignments").store.index("byDayLabel");
-        const rows = await idx.getAll(stored);
+        const rows = await getAssignmentsForDayLabels(userId, [stored]);
 
         const m = new Map<SlotId, SlotAssignment>();
         for (const a of rows) m.set(a.slotId, a);
