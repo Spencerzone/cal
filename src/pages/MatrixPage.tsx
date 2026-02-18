@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { dayLabelsForSet } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
-import { getDb } from "../db/db";
+import { useAuth } from "../auth/AuthProvider";
+import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
@@ -30,9 +31,10 @@ function weekdayFromLabel(label: DayLabel): "Mon" | "Tue" | "Wed" | "Thu" | "Fri
   return label.slice(0, 3) as any;
 }
 
-const userId = "local";
 
 export default function MatrixPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [set, setSet] = useState<"A" | "B">("A");
   const labels = useMemo(() => dayLabelsForSet(set), [set]);
   const rows = useMemo(() => SLOT_DEFS, []);
@@ -47,8 +49,7 @@ export default function MatrixPage() {
 
   useEffect(() => {
     (async () => {
-      const db = await getDb();
-      const template = await db.getAll("cycleTemplateEvents");
+      const template = await getAllCycleTemplateEvents(userId);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
   }, []);

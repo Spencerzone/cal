@@ -1,11 +1,11 @@
 // src/pages/BlocksPage.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
 import type { Block, BlockKind } from "../db/db";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { createBlock, reorderBlocks, setBlockVisible, updateBlock } from "../db/blockMutations";
 
-const userId = "local";
 
 const KIND_LABELS: Record<BlockKind, string> = {
   class: "Class",
@@ -16,6 +16,8 @@ const KIND_LABELS: Record<BlockKind, string> = {
 };
 
 export default function BlocksPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<BlockKind>("class");

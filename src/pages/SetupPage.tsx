@@ -3,6 +3,8 @@ import { getRollingSettings, setRollingSettings, type RollingSettings } from "..
 import { NavLink } from "react-router-dom";
 
 export default function SetupPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [settings, setSettings] = useState<RollingSettings | null>(null);
   const [t1s, setT1s] = useState("");
   const [t1e, setT1e] = useState("");
@@ -15,7 +17,7 @@ export default function SetupPage() {
 
   useEffect(() => {
     (async () => {
-      const s = await getRollingSettings();
+      const s = await getRollingSettings(userId);
       setSettings(s);
       setT1s((s.termStarts?.t1 ?? "").trim());
       setT2s((s.termStarts?.t2 ?? "").trim());
@@ -29,7 +31,7 @@ export default function SetupPage() {
   }, []);
 
   async function save() {
-    const current = (await getRollingSettings()) as any;
+    const current = (await getRollingSettings(userId)) as any;
     const next: RollingSettings = {
       ...current,
       termStarts: { t1: t1s.trim(), t2: t2s.trim(), t3: t3s.trim(), t4: t4s.trim() },

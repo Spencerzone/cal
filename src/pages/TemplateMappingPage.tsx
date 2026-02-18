@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { applyTemplateMapping, getTemplateMeta, mappingPreview } from "../rolling/templateMapping";
 
 export default function TemplateMappingPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [shift, setShift] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -11,7 +13,7 @@ export default function TemplateMappingPage() {
 
   useEffect(() => {
     (async () => {
-      const meta = await getTemplateMeta();
+      const meta = await getTemplateMeta(userId);
       if (!meta) {
         setStatus("No template metadata found. Import ICS and rebuild the template first.");
         setMetaLoaded(true);

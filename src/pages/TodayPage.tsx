@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format } from "date-fns";
-import { getDb } from "../db/db";
+import { useAuth } from "../auth/AuthProvider";
+import { getAllCycleTemplateEvents } from "../db/templateQueries";
+import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import type {
   Block,
   CycleTemplateEvent,
@@ -37,7 +39,6 @@ const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
   SLOT_DEFS.map((s) => [s.label, s.id])
 ) as Record<string, SlotId>;
 
-const userId = "local";
 
 function isWeekend(d: Date): boolean {
   const day = d.getDay();
@@ -81,6 +82,8 @@ function compactBlockLabel(label: string): string {
 }
 
 export default function TodayPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
@@ -168,10 +171,9 @@ export default function TodayPage() {
   // load templateById once
   useEffect(() => {
     (async () => {
-      const db = await getDb();
-      const template = await db.getAll("cycleTemplateEvents");
+      const template = await getAllCycleTemplateEvents(userId);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
-    })();
+})();
   }, []);
 
   // load blocks once
@@ -185,7 +187,7 @@ export default function TodayPage() {
   // compute day’s DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
     (async () => {
-      const settings = await getRollingSettings();
+      const settings = await getRollingSettings(userId);
       const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
 
       if (!canonical) {
@@ -194,18 +196,15 @@ export default function TodayPage() {
         return;
       }
 
-      const meta = await getTemplateMeta();
+      const meta = await getTemplateMeta(userId);
       const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
       setLabel(stored);
 
-      const db = await getDb();
-      const idx = db.transaction("slotAssignments").store.index("byDayLabel");
-      const rows = await idx.getAll(stored);
-
+      const rows = await getAssignmentsForDayLabels(userId, [stored]);
       const m = new Map<SlotId, SlotAssignment>();
-      for (const a of rows) m.set(a.slotId, a); // one per slotId (keyed store)
+      for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
       setAssignmentBySlot(m);
-    })();
+})();
   }, [dateKey]);
 
   // Load placements for the day’s stored label

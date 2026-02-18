@@ -1,7 +1,9 @@
 // src/pages/WeekPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, addWeeks, format, startOfWeek } from "date-fns";
-import { getDb } from "../db/db";
+import { useAuth } from "../auth/AuthProvider";
+import { getAllCycleTemplateEvents } from "../db/templateQueries";
+import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import type {
   Block,
   CycleTemplateEvent,
@@ -34,7 +36,6 @@ type Cell =
   | { kind: "placed"; subjectId: string }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
-const userId = "local";
 
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
   SLOT_DEFS.map((s) => [s.label, s.id])
@@ -67,6 +68,8 @@ function timeRangeFromTemplate(day: Date, e: CycleTemplateEvent): string {
 }
 
 export default function WeekPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
@@ -152,19 +155,18 @@ export default function WeekPage() {
   // Load templates
   useEffect(() => {
     (async () => {
-      const db = await getDb();
-      const template = await db.getAll("cycleTemplateEvents");
+      const template = await getAllCycleTemplateEvents(userId);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
-    })();
+})();
   }, []);
 
   // Load assignments for each Mon-Fri date in the viewed week
   useEffect(() => {
     (async () => {
-      const settings = await getRollingSettings();
-      const meta = await getTemplateMeta();
+      const settings = await getRollingSettings(userId);
+      const meta = await getTemplateMeta(userId);
 
-      const db = await getDb();
+      const db = await ;
       const out = new Map<string, Map<SlotId, SlotAssignment>>();
       const dlOut = new Map<string, DayLabel>();
 

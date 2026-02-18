@@ -1,4 +1,7 @@
-import { getDb } from "../db/db";
+// src/rolling/settings.ts (Firestore source-of-truth)
+
+import { getDoc, setDoc } from "firebase/firestore";
+import { settingDoc } from "../db/db";
 
 export type WeekSet = "A" | "B";
 
@@ -7,18 +10,15 @@ export interface RollingSettings {
   excludedDates: string[];
   overrides: Array<{ date: string; set: WeekSet }>;
 
-  // Optional NSW term start dates for displaying Term/Week in Today/Week.
-  // If omitted, Term/Week is not shown.
   termStarts?: {
-    t1?: string; // YYYY-MM-DD
+    t1?: string;
     t2?: string;
     t3?: string;
     t4?: string;
   };
 
-  // Optional NSW term end dates (inclusive). If set, Term/Week is only shown within a term range.
   termEnds?: {
-    t1?: string; // YYYY-MM-DD
+    t1?: string;
     t2?: string;
     t3?: string;
     t4?: string;
@@ -27,36 +27,20 @@ export interface RollingSettings {
 
 const KEY = "rolling";
 
-export async function getRollingSettings(): Promise<RollingSettings> {
-  const db = await getDb();
-  const row = await db.get("settings", KEY);
-  if (row?.value) return row.value as RollingSettings;
+const DEFAULTS: RollingSettings = {
+  cycleStartDate: "2026-01-01",
+  excludedDates: [],
+  overrides: [],
+};
 
-  // default: pick something sensible; user can change later
-  const defaultSettings: RollingSettings = {
-    cycleStartDate: "2026-02-02", // you can update this via UI later
-    excludedDates: [],
-    overrides: [],
-    termStarts: {
-      // Leave blank by default; set via Setup.
-      t1: "",
-      t2: "",
-      t3: "",
-      t4: "",
-    },
-    termEnds: {
-      t1: "",
-      t2: "",
-      t3: "",
-      t4: "",
-    },
-  };
-
-  await db.put("settings", { key: KEY, value: defaultSettings });
-  return defaultSettings;
+export async function getRollingSettings(userId: string): Promise<RollingSettings> {
+  const snap = await getDoc(settingDoc(userId, KEY));
+  const v = snap.exists() ? (snap.data() as any).value : null;
+  if (v) return v as RollingSettings;
+  return DEFAULTS;
 }
 
-export async function setRollingSettings(value: RollingSettings) {
-  const db = await getDb();
-  await db.put("settings", { key: KEY, value });
+export async function setRollingSettings(userId: string, next: RollingSettings): Promise<void> {
+  await setDoc(settingDoc(userId, KEY), { key: KEY, value: next }, { merge: true });
+  window.dispatchEvent(new Event("rolling-settings-changed"));
 }

@@ -1,6 +1,10 @@
+import { AuthProvider } from "./auth/AuthProvider";
+import RequireAuth from "./auth/RequireAuth";
+import LoginPage from "./pages/LoginPage";
+
 // src/App.tsx
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import ImportPage from "./pages/ImportPage";
 import TodayPage from "./pages/TodayPage";
 import WeekPage from "./pages/WeekPage";
@@ -96,17 +100,21 @@ export default function App() {
 ) : null}
 
         <div className="container">
+        <AuthProvider>
+          <BrowserRouter>
         <Routes>
-          <Route path="/" element={<TodayPage />} />
-          <Route path="/week" element={<WeekPage />} />
-          <Route path="/subject" element={<SubjectPage />} />
-          <Route path="/import" element={<ImportPage />} />
-          <Route path="/matrix" element={<MatrixPage />} />
-          <Route path="/mapping" element={<TemplateMappingPage />} />
-          <Route path="/blocks" element={<BlocksPage />} />
-          <Route path="/subjects" element={<SubjectsPage />} />
-          <Route path="/setup" element={<SetupPage />} />
+          <Route path="/" element={<RequireAuth><TodayPage /></RequireAuth>} />
+          <Route path="/week" element={<RequireAuth><WeekPage /></RequireAuth>} />
+          <Route path="/subject" element={<RequireAuth><SubjectPage /></RequireAuth>} />
+          <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
+          <Route path="/matrix" element={<RequireAuth><MatrixPage /></RequireAuth>} />
+          <Route path="/mapping" element={<RequireAuth><TemplateMappingPage /></RequireAuth>} />
+          <Route path="/blocks" element={<RequireAuth><BlocksPage /></RequireAuth>} />
+          <Route path="/subjects" element={<RequireAuth><SubjectsPage /></RequireAuth>} />
+          <Route path="/setup" element={<RequireAuth><SetupPage /></RequireAuth>} />
         </Routes>
+        </BrowserRouter>
+        </AuthProvider>
       </div>
       </div>
     </>

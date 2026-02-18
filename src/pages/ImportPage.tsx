@@ -1,53 +1,61 @@
-// src/pages/ImportPage.tsx 4
+// src/pages/ImportPage.tsx
 import { useMemo, useState } from "react";
 import { importIcs } from "../ics/importIcs";
+import { useAuth } from "../auth/AuthProvider";
 
 export default function ImportPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
+
   const [status, setStatus] = useState<string>("");
-  const [busy, setBusy] = useState(false);
+  const [text, setText] = useState<string>("");
+  const [fileName, setFileName] = useState<string>("timetable.ics");
 
-  const accept = useMemo(() => ".ics,text/calendar", []);
+  const canImport = useMemo(() => !!userId && text.trim().length > 0, [userId, text]);
 
-  async function handleFile(file: File) {
-    setBusy(true);
-    setStatus("Reading…");
+  async function onPickFile(file: File) {
+    setFileName(file.name);
+    const t = await file.text();
+    setText(t);
+  }
+
+  async function onImport() {
+    if (!canImport) return;
+    setStatus("Importing…");
     try {
-      const text = await file.text();
-      setStatus("Importing…");
-      const res = await importIcs(text, file.name);
-      setStatus(`Imported ${res.count} events (import ${res.importId}).`);
+      const res = await importIcs(userId, text, fileName);
+      setStatus(`Imported ${res.count} events (importId ${res.importId}).`);
     } catch (e: any) {
-      setStatus(e?.message ?? "Import failed.");
-    } finally {
-      setBusy(false);
+      setStatus(e?.message || String(e));
     }
   }
 
   return (
     <div className="grid">
-      <h1>Import iCal (.ics)</h1>
+      <h1>Import ICS</h1>
 
       <div className="card">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <div>
-            <div>Upload a Sentral iCal export to refresh your timetable.</div>
-            <div className="muted">User notes/metadata are preserved.</div>
-          </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input
+            type="file"
+            accept=".ics,text/calendar"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onPickFile(f);
+            }}
+          />
+          <button className="btn" disabled={!canImport} onClick={() => void onImport()}>
+            Import
+          </button>
         </div>
 
         <div className="space" />
-        <input
-          className="input"
-          type="file"
-          accept={accept}
-          disabled={busy}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleFile(f);
-            e.currentTarget.value = "";
-          }}
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Paste ICS content here…"
+          style={{ width: "100%", minHeight: 220 }}
         />
-
         <div className="space" />
         <div className="muted">{status}</div>
       </div>

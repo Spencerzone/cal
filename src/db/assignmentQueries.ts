@@ -1,15 +1,26 @@
-import { getDb } from "./db";
+// src/db/assignmentQueries.ts (Firestore source-of-truth)
+
+import { getDocs, query, where } from "firebase/firestore";
 import type { DayLabel, SlotAssignment } from "./db";
+import { slotAssignmentsCol } from "./db";
 
-export async function getAssignmentsForDayLabels(labels: DayLabel[]): Promise<SlotAssignment[]> {
-  const db = await getDb();
-  const all = await db.getAll("slotAssignments");
+export async function getAssignmentsForDayLabels(
+  userId: string,
+  labels: DayLabel[]
+): Promise<SlotAssignment[]> {
+  if (labels.length === 0) return [];
+  const out: SlotAssignment[] = [];
+  const col = slotAssignmentsCol(userId);
 
-  // Defensive: ensure unique by key (store is keyed by key anyway)
-  const m = new Map<string, SlotAssignment>();
-  for (const a of all) {
-    if (!labels.includes(a.dayLabel)) continue;
-    m.set(a.key, a);
+  const CHUNK = 10;
+  for (let i = 0; i < labels.length; i += CHUNK) {
+    const chunk = labels.slice(i, i + CHUNK);
+    const q = query(col, where("dayLabel", "in", chunk));
+    const snap = await getDocs(q);
+    out.push(...snap.docs.map((d) => d.data() as SlotAssignment));
   }
+
+  const m = new Map<string, SlotAssignment>();
+  for (const a of out) m.set(a.key, a);
   return Array.from(m.values());
 }

@@ -1,80 +1,51 @@
-// src/ics/importIcs.ts
-import { getDb } from "../db/db";
+// src/ics/importIcs.ts (Firestore source-of-truth)
+
+import { getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
+import { db } from "../firebase";
 import { parseIcsToBaseEvents, hashString } from "./parseIcs";
 import { buildCycleTemplateFromIcs } from "../rolling/buildTemplateFromIcs";
 import { buildDraftSlotAssignments } from "../rolling/buildSlotAssignments";
+import { baseEventDoc, baseEventsCol, importDoc, type ImportRow } from "../db/db";
 
-
-export async function importIcs(icsText: string, icsName: string) {
-  const db = await getDb();
+export async function importIcs(userId: string, icsText: string, icsName: string) {
   const importId = `${Date.now()}`;
   const icsHash = hashString(icsText);
 
   const parsed = parseIcsToBaseEvents(icsText, importId);
 
-  const tx = db.transaction(["baseEvents", "imports"], "readwrite");
-  await tx.objectStore("imports").put({
+  const imp: ImportRow = {
     importId,
     importedAt: Date.now(),
     icsName,
     icsHash,
-  });
+  };
+  await setDoc(importDoc(userId, importId), imp, { merge: false });
 
-  await buildCycleTemplateFromIcs(icsText);
-  await buildDraftSlotAssignments();
+  const CHUNK = 400;
 
-
-  // Mark all existing base events as "not seen" first (soft approach)
-  // We’ll set active=true for any seen in this import, and after loop we can deactivate unseen.
-  // Efficient approach: iterate cursor instead of loading all for large DBs.
-  const store = tx.objectStore("baseEvents");
-  let cursor = await store.openCursor();
-  while (cursor) {
-    const v = cursor.value;
-    // only flip to inactive AFTER we finish inserting/updating; for now tag unseen
-    v.lastSeenImportId = v.lastSeenImportId; // keep
-    v.active = v.active; // keep
-    await cursor.update(v);
-    cursor = await cursor.continue();
+  for (let i = 0; i < parsed.length; i += CHUNK) {
+    const chunk = parsed.slice(i, i + CHUNK);
+    const batch = writeBatch(db);
+    for (const ev of chunk) batch.set(baseEventDoc(userId, ev.id), ev, { merge: true });
+    await batch.commit();
   }
 
-  // Upsert parsed events. User meta is separate store, untouched.
-  for (const ev of parsed) {
-    const existing = await store.get(ev.id);
-    if (!existing) {
-      await store.put(ev);
-      continue;
-    }
-
-    // If unchanged, just refresh lastSeenImportId/active
-    if (existing.sourceHash === ev.sourceHash) {
-      existing.lastSeenImportId = importId;
-      existing.active = true;
-      await store.put(existing);
-      continue;
-    }
-
-    // Changed event: overwrite base fields, keep id stable
-    await store.put({
-      ...existing,
-      ...ev,
-      id: existing.id,
-      lastSeenImportId: importId,
-      active: true,
-    });
+  const activeSnap = await getDocs(query(baseEventsCol(userId), where("active", "==", true)));
+  const unseen: string[] = [];
+  for (const d of activeSnap.docs) {
+    const ev = d.data() as any;
+    if (ev.lastSeenImportId !== importId) unseen.push(d.id);
   }
 
-  // Deactivate events not seen in this import (soft delete)
-  cursor = await store.openCursor();
-  while (cursor) {
-    const v = cursor.value;
-    if (v.lastSeenImportId !== importId) {
-      v.active = false;
-      await cursor.update(v);
-    }
-    cursor = await cursor.continue();
+  for (let i = 0; i < unseen.length; i += CHUNK) {
+    const chunk = unseen.slice(i, i + CHUNK);
+    const batch = writeBatch(db);
+    for (const id of chunk) batch.set(baseEventDoc(userId, id), { active: false }, { merge: true });
+    await batch.commit();
   }
 
-  await tx.done;
+  await buildCycleTemplateFromIcs(userId, icsText);
+  await buildDraftSlotAssignments(userId);
+
   return { importId, count: parsed.length };
 }

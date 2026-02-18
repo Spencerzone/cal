@@ -1,50 +1,55 @@
-// src/db/blockMutations.ts
+// src/db/blockMutations.ts (Firestore-backed)
+
 import { nanoid } from "nanoid";
-import { getDb, type Block, type BlockKind } from "./db";
+import { deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { db } from "../firebase";
+import { blockDoc, blocksCol, type Block, type BlockKind } from "./db";
 
-export async function createBlock(userId: string, name: string, kind: BlockKind) {
-  const db = await getDb();
-  const existing = await db.getAllFromIndex("blocks", "byUserId", userId);
-  const nextOrder = existing.length ? Math.max(...existing.map((b) => b.orderIndex)) + 1 : 0;
+export async function createBlock(userId: string, name: string, kind: BlockKind): Promise<void> {
+  const id = nanoid();
+  // find next orderIndex
+  const snap = await getDocs(query(blocksCol(userId), where("userId", "==", userId)));
+  const max = snap.docs.reduce((m, d) => Math.max(m, (d.data() as any).orderIndex ?? 0), -1);
 
-  const block: Block = {
-    id: nanoid(),
+  const row: Block = {
+    id,
     userId,
-    name,
+    name: name.trim(),
     kind,
-    orderIndex: nextOrder,
+    orderIndex: max + 1,
     isVisible: 1,
   };
 
-  await db.put("blocks", block);
-  return block;
+  const batch = writeBatch(db);
+  batch.set(blockDoc(userId, id), row, { merge: false });
+  await batch.commit();
+  window.dispatchEvent(new Event("blocks-changed"));
 }
 
-export async function updateBlock(block: Block) {
-  const db = await getDb();
-  await db.put("blocks", block);
+export async function updateBlock(userId: string, id: string, patch: Partial<Pick<Block, "name" | "kind">>): Promise<void> {
+  const ref = blockDoc(userId, id);
+  const next: any = {};
+  if (patch.name !== undefined) next.name = patch.name.trim();
+  if (patch.kind !== undefined) next.kind = patch.kind;
+  await updateDoc(ref, next);
+  window.dispatchEvent(new Event("blocks-changed"));
 }
 
-export async function setBlockVisible(blockId: string, isVisible: 0 | 1) {
-  const db = await getDb();
-  const b = await db.get("blocks", blockId);
-  if (!b) return;
-  b.isVisible = isVisible;
-  await db.put("blocks", b);
+export async function setBlockVisible(userId: string, id: string, isVisible: 0 | 1): Promise<void> {
+  await updateDoc(blockDoc(userId, id), { isVisible });
+  window.dispatchEvent(new Event("blocks-changed"));
 }
 
-export async function reorderBlocks(userId: string, orderedIds: string[]) {
-  const db = await getDb();
-  const tx = db.transaction("blocks", "readwrite");
-  const store = tx.store;
+export async function reorderBlocks(userId: string, orderedIds: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  orderedIds.forEach((id, orderIndex) => {
+    batch.update(blockDoc(userId, id), { orderIndex });
+  });
+  await batch.commit();
+  window.dispatchEvent(new Event("blocks-changed"));
+}
 
-  for (let i = 0; i < orderedIds.length; i++) {
-    const id = orderedIds[i];
-    const b = await store.get(id);
-    if (!b || b.userId !== userId) continue;
-    b.orderIndex = i;
-    await store.put(b);
-  }
-
-  await tx.done;
+export async function deleteBlock(userId: string, id: string): Promise<void> {
+  await deleteDoc(blockDoc(userId, id));
+  window.dispatchEvent(new Event("blocks-changed"));
 }

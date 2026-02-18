@@ -1,6 +1,9 @@
-// db/seed.ts
+// src/db/seed.ts (Firestore source-of-truth)
+
 import { nanoid } from "nanoid";
-import { getDb, type Block, type BlockKind } from "./db";
+import { getDocs, orderBy, query, where, writeBatch } from "firebase/firestore";
+import { db } from "../firebase";
+import { blocksCol, blockDoc, type Block, type BlockKind } from "./db";
 import { SLOT_DEFS, type SlotId } from "../rolling/slots";
 
 function kindForSlot(slotId: SlotId): BlockKind {
@@ -11,24 +14,20 @@ function kindForSlot(slotId: SlotId): BlockKind {
 }
 
 export async function ensureDefaultBlocks(userId: string) {
-  const db = await getDb();
+  const snap = await getDocs(query(blocksCol(userId), where("userId", "==", userId)));
+  if (!snap.empty) return;
 
-  const existing = await db.getAllFromIndex("blocks", "byUserId", userId);
-  if (existing.length > 0) return;
-
-  const tx = db.transaction("blocks", "readwrite");
-
+  const batch = writeBatch(db);
   SLOT_DEFS.forEach((s, orderIndex) => {
     const row: Block = {
       id: nanoid(),
       userId,
-      name: s.label,          // EXACT match
+      name: s.label,
       kind: kindForSlot(s.id),
       orderIndex,
       isVisible: 1,
     };
-    tx.store.put(row);
+    batch.set(blockDoc(userId, row.id), row, { merge: false });
   });
-
-  await tx.done;
+  await batch.commit();
 }

@@ -1,4 +1,6 @@
-import { getDb } from "../db/db";
+import { getDocs, writeBatch } from "firebase/firestore";
+import { db } from "../firebase";
+import { slotAssignmentsCol, slotAssignmentDoc } from "../db/db";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, AssignmentKind } from "../db/db";
 
 function normalisePeriodCode(raw: string | null | undefined): string {
@@ -45,49 +47,36 @@ function rankKind(k: AssignmentKind): number {
  * Rebuilds slotAssignments from cycleTemplateEvents, choosing exactly one "best" event per slot.
  * This prevents duplicates and avoids inventing slots that don't exist on that day (e.g. p6).
  */
-export async function buildDraftSlotAssignments() {
-  const db = await getDb();
-  const all = await db.getAll("cycleTemplateEvents");
+export async function buildDraftSlotAssignments(userId: string) {
 
-  // best candidate per (dayLabel,slot)
-  const best = new Map<string, CycleTemplateEvent>();
-
-  for (const e of all) {
-    const slotId = slotForEvent(e.periodCode, e.title);
-    if (!slotId) continue;
-
-    const key = `${e.dayLabel}::${slotId}`;
-    const existing = best.get(key);
-    if (!existing) {
-      best.set(key, e);
-      continue;
-    }
-
-    const ek = kindFromType(existing.type);
-    const nk = kindFromType(e.type);
-
-    const better =
-      rankKind(nk) < rankKind(ek) ||
-      (rankKind(nk) === rankKind(ek) && e.startMinutes < existing.startMinutes);
-
-    if (better) best.set(key, e);
+  // Persist: replace existing slotAssignments (Firestore)
+  const existingSnap = await getDocs(slotAssignmentsCol(userId));
+  if (!existingSnap.empty) {
+    const batchDel = writeBatch(db);
+    for (const d of existingSnap.docs) batchDel.delete(d.ref);
+    await batchDel.commit();
   }
 
-  const tx = db.transaction(["slotAssignments"], "readwrite");
-  const store = tx.objectStore("slotAssignments");
-  await store.clear();
-
+  const rows: SlotAssignment[] = [];
   for (const [key, e] of best.entries()) {
     const [dayLabel, slotId] = key.split("::") as [DayLabel, SlotId];
-    const row: SlotAssignment = {
+    rows.push({
       key,
       dayLabel,
       slotId,
-      kind: kindFromType(e.type),
-      sourceTemplateEventId: e.id,
-    };
-    await store.put(row);
+      kind: e.kind,
+      sourceTemplateEventId: e.sourceTemplateEventId,
+      manualTitle: e.manualTitle,
+      manualCode: e.manualCode,
+      manualRoom: e.manualRoom,
+    });
   }
 
-  await tx.done;
+  const CHUNK = 400;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const batch = writeBatch(db);
+    for (const r of chunk) batch.set(slotAssignmentDoc(userId, r.key), r, { merge: false });
+    await batch.commit();
+  }
 }

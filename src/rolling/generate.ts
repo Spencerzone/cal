@@ -1,54 +1,45 @@
-import { getDb } from "../db/db";
-import type { CycleTemplateEvent } from "../db/db";
+// src/rolling/generate.ts (Firestore-backed)
+
+import type { CycleTemplateEvent, DayLabel, SlotId, SlotAssignment } from "../db/db";
 import type { RollingSettings } from "./settings";
 import { dayLabelForDate } from "./cycle";
 import { getTemplateMeta, applyMetaToLabel } from "./templateMapping";
-import type { DayLabel } from "../db/db";
+import { getAllCycleTemplateEvents } from "../db/templateQueries";
+import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 
 export type GeneratedEvent = {
-  id: string;
-  startUtc: number;
-  endUtc: number;
-  periodCode: string | null;
-  type: CycleTemplateEvent["type"];
-  code: string | null;
-  title: string;
-  room: string | null;
+  slotId: SlotId;
+  kind: SlotAssignment["kind"];
+  templateEvent?: CycleTemplateEvent;
 };
 
-function parseLocalDate(date: string): Date {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(y!, (m! - 1), d!);
-}
+export async function generateForDate(
+  userId: string,
+  localDateKey: string,
+  settings: RollingSettings
+): Promise<GeneratedEvent[]> {
+  const canonical = dayLabelForDate(localDateKey, settings) as DayLabel | null;
+  if (!canonical) return [];
 
-function toUtcMs(localDate: Date, minutes: number): number {
-  const d = new Date(localDate);
-  d.setHours(0, minutes, 0, 0);
-  return d.getTime(); // this Date is local time; getTime() returns UTC ms for that local instant
-}
+  const meta = await getTemplateMeta(userId);
+  const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
 
-export async function generateForDate(localDateKey: string, settings: RollingSettings): Promise<GeneratedEvent[]> {
-  const label = dayLabelForDate(localDateKey, settings);
-  const meta = await getTemplateMeta();
-  const storedLabel: DayLabel = meta ? applyMetaToLabel(label as DayLabel, meta) : (label as DayLabel);
+  const [templateEvents, assignments] = await Promise.all([
+    getAllCycleTemplateEvents(userId),
+    getAssignmentsForDayLabels(userId, [stored]),
+  ]);
 
-  if (!label) return [];
+  const templateById = new Map(templateEvents.map((e) => [e.id, e]));
+  const bySlot = new Map<SlotId, SlotAssignment>();
+  for (const a of assignments) if (a.dayLabel === stored) bySlot.set(a.slotId, a);
 
-  const db = await getDb();
-  const idx = db.transaction("cycleTemplateEvents").store.index("byDayLabel");
-  const template = await idx.getAll(storedLabel);
-
-  template.sort((a, b) => a.startMinutes - b.startMinutes);
-
-  const localDay = parseLocalDate(localDateKey);
-  return template.map((t) => ({
-    id: `${localDateKey}-${t.id}`,
-    startUtc: toUtcMs(localDay, t.startMinutes),
-    endUtc: toUtcMs(localDay, t.endMinutes),
-    periodCode: t.periodCode,
-    type: t.type,
-    code: t.code,
-    title: t.title,
-    room: t.room,
-  }));
+  const out: GeneratedEvent[] = [];
+  for (const a of bySlot.values()) {
+    out.push({
+      slotId: a.slotId,
+      kind: a.kind,
+      templateEvent: a.sourceTemplateEventId ? templateById.get(a.sourceTemplateEventId) : undefined,
+    });
+  }
+  return out;
 }

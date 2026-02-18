@@ -1,6 +1,12 @@
-// src/db/db.ts
-import { openDB, DBSchema, IDBPDatabase } from "idb";
+// src/db/db.ts (Firestore source-of-truth)
+
+import { collection, doc } from "firebase/firestore";
+import { db } from "../firebase";
 import type { BaseEvent } from "../ics/parseIcs";
+
+/**
+ * TYPES (kept)
+ */
 
 export type BlockKind = "class" | "break" | "duty" | "admin" | "other";
 
@@ -14,73 +20,35 @@ export interface UserEventMeta {
 export type ItemType = "class" | "duty" | "break" | "event" | "other";
 
 export type Item = {
-  id: string;          // uuid
+  id: string; // uuid
   userId: string;
   type: ItemType;
-  title: string;       // "10 Sci", "Yard Duty", "Recess"
+  title: string;
   location?: string;
-  color: string;       // "#RRGGBB"
-  metaJson?: string;   // optional JSON string for now
+  color: string;
+  metaJson?: string;
 };
 
 export type Block = {
-  id: string;          // uuid
+  id: string; // uuid
   userId: string;
-  name: string;        // "P1", "Recess", "Before school"
+  name: string;
   kind: BlockKind;
-  orderIndex: number;  // for drag/drop
+  orderIndex: number;
   isVisible: 0 | 1;
 };
 
 export type SubjectKind = "subject" | "duty" | "break" | "other";
 
 export type Subject = {
-  id: string;          // e.g. "code::12INV01", "code::11Roll7", "duty"
-  userId: string;
-  kind: SubjectKind;
-  code: string | null; // "12INV01" etc
-  title: string;       // editable display name
-  color: string;       // #RRGGBB
-};
-
-export type Placement = {
-  key: string;         // `${dayLabel}::${slotId}`
-  userId: string;
-  dayLabel: DayLabel;
-  slotId: SlotId;
-  // subjectId semantics:
-  // - undefined => use template subject
-  // - null      => force blank/free
-  // - string    => override subject
-  subjectId?: string | null;
-  // roomOverride semantics:
-  // - undefined => use template room
-  // - null      => clear room (display blank)
-  // - string    => override room
-  roomOverride?: string | null;
-};
-
-export type LessonPlan = {
-  key: string; // `${dateKey}::${slotId}`
-  userId: string;
-  dateKey: string; // yyyy-MM-dd
-  slotId: SlotId;
-  html: string; // rich text (HTML)
-  updatedAt: number;
-};
-
-export type LessonAttachment = {
   id: string;
   userId: string;
-  planKey: string; // LessonPlan.key
-  name: string;
-  mime: string;
-  size: number;
-  blob: Blob;
-  createdAt: number;
+  kind: SubjectKind;
+  code: string | null;
+  title: string;
+  color: string;
 };
 
-// src/db/db.ts (types)
 export type DayLabel =
   | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
   | "MonB" | "TueB" | "WedB" | "ThuB" | "FriB";
@@ -111,195 +79,139 @@ export type SlotId =
 export type AssignmentKind = "class" | "duty" | "break" | "free";
 
 export interface SlotAssignment {
-  key: string;                 // dayLabel::slotId
+  key: string; // dayLabel::slotId
   dayLabel: DayLabel;
   slotId: SlotId;
   kind: AssignmentKind;
-  // If kind === "class" or "duty"/"break" sourced from template:
   sourceTemplateEventId?: string;
-  // Manual override fields (if you want to type your own):
   manualTitle?: string;
   manualCode?: string | null;
   manualRoom?: string | null;
 }
 
-interface DaybookDB extends DBSchema {
-  baseEvents: {
-    key: string; // BaseEvent.id
-    value: BaseEvent;
-    indexes: {
-      byStartUtc: number;
-      byCode: string;
-      byType: string;
-    };
-  };
-  userEventMeta: {
-    key: string; // eventId
-    value: UserEventMeta;
-  };
-  imports: {
-    key: string; // importId
-    value: ImportRow;
-  };
-  cycleTemplateEvents: {
-  key: string;
-  value: CycleTemplateEvent;
-  indexes: {
-    byDayLabel: string;
-    byStartMinutes: number;
-  };
+export type Placement = {
+  key: string; // `${dayLabel}::${slotId}`
+  userId: string;
+  dayLabel: DayLabel;
+  slotId: SlotId;
+  subjectId?: string | null;
+  roomOverride?: string | null;
 };
-  settings: {
-    key: string;
-    value: { key: string; value: any };
-  };
-  slotAssignments: {
-    key: string; // dayLabel::slotId
-    value: SlotAssignment;
-    indexes: {
-      byDayLabel: DayLabel;
-    };
-  };
-   blocks: {
-    key: string; // Block.id
-    value: Block;
-    indexes: {
-      byUserId: string;
-      byUserIdOrder: [string, number]; // [userId, orderIndex]
-    };
-  };
-  items: {
-    key: string; // Item.id
-    value: Item;
-    indexes: {
-      byUserId: string;
-      byUserIdType: [string, ItemType]; // [userId, type]
-    };
-  };
-    subjects: {
-    key: string; // Subject.id
-    value: Subject;
-    indexes: {
-      byUserId: string;
-      byUserIdKind: [string, SubjectKind];
-    };
-  };
 
-  placements: {
-    key: string; // dayLabel::slotId
-    value: Placement;
-    indexes: {
-      byUserId: string;
-      byUserIdDayLabel: [string, DayLabel];
-    };
-  };
+export type LessonPlan = {
+  key: string; // `${dateKey}::${slotId}`
+  userId: string;
+  dateKey: string; // yyyy-MM-dd
+  slotId: SlotId;
+  html: string;
+  updatedAt: number;
+};
 
-  lessonPlans: {
-    key: string; // dateKey::slotId
-    value: LessonPlan;
-    indexes: {
-      byUserId: string;
-      byUserIdDateKey: [string, string];
-    };
-  };
+export type LessonAttachment = {
+  id: string;
+  userId: string;
+  planKey: string;
+  name: string;
+  mime: string;
+  size: number;
+  storagePath: string;
+  downloadUrl?: string;
+  createdAt: number;
+};
 
-  lessonAttachments: {
-    key: string; // id
-    value: LessonAttachment;
-    indexes: {
-      byUserId: string;
-      byPlanKey: string;
-    };
-  };
-  
+export type SettingRow = { key: string; value: any };
 
+// Kept for compatibility
+export type BaseEventRow = BaseEvent;
+
+/**
+ * FIRESTORE PATH HELPERS (per-user subtree)
+ */
+
+export function userDoc(uid: string) {
+  return doc(db, "users", uid);
 }
 
-let dbPromise: Promise<IDBPDatabase<DaybookDB>> | null = null;
-
-export function getDb() {
-  if (!dbPromise) {
-    dbPromise = openDB<DaybookDB>("daybook", 9, {
-      upgrade(db, oldVersion) {
-        if (oldVersion < 1) {
-          const be = db.createObjectStore("baseEvents", { keyPath: "id" });
-          be.createIndex("byStartUtc", "dtStartUtc");
-          be.createIndex("byCode", "code");
-          be.createIndex("byType", "type");
-
-          db.createObjectStore("userEventMeta", { keyPath: "eventId" });
-          db.createObjectStore("imports", { keyPath: "importId" });
-        }
-
-        if (oldVersion < 2) {
-          if (!db.objectStoreNames.contains("cycleTemplateEvents")) {
-            const te = db.createObjectStore("cycleTemplateEvents", { keyPath: "id" });
-            te.createIndex("byDayLabel", "dayLabel");
-            te.createIndex("byStartMinutes", "startMinutes");
-          }
-        }
-        
-        if (oldVersion < 3) {
-          if (!db.objectStoreNames.contains("settings")) {
-            db.createObjectStore("settings", { keyPath: "key" });
-          }
-        }
-
-        if (oldVersion < 4) {
-          if (!db.objectStoreNames.contains("slotAssignments")) {
-            const sa = db.createObjectStore("slotAssignments", { keyPath: "key" });
-            sa.createIndex("byDayLabel", "dayLabel");
-  }
+export function subjectsCol(uid: string) {
+  return collection(db, "users", uid, "subjects");
 }
-        if (oldVersion < 5) {
-          if (!db.objectStoreNames.contains("blocks")) {
-            const b = db.createObjectStore("blocks", { keyPath: "id" });
-            b.createIndex("byUserId", "userId");
-            b.createIndex("byUserIdOrder", ["userId", "orderIndex"]);
-          }
-
-          if (!db.objectStoreNames.contains("items")) {
-            const it = db.createObjectStore("items", { keyPath: "id" });
-            it.createIndex("byUserId", "userId");
-            it.createIndex("byUserIdType", ["userId", "type"]);
-          }
-        }
-        if (oldVersion < 6) {
-          if (!db.objectStoreNames.contains("subjects")) {
-            const s = db.createObjectStore("subjects", { keyPath: "id" });
-            s.createIndex("byUserId", "userId");
-            s.createIndex("byUserIdKind", ["userId", "kind"]);
-  }
+export function subjectDoc(uid: string, subjectId: string) {
+  return doc(db, "users", uid, "subjects", subjectId);
 }
 
-        if (oldVersion < 7) {
-          if (!db.objectStoreNames.contains("placements")) {
-            const p = db.createObjectStore("placements", { keyPath: "key" });
-            p.createIndex("byUserId", "userId");
-            p.createIndex("byUserIdDayLabel", ["userId", "dayLabel"]);
-          }
-        }
-
-        // v8: Placement shape extended (roomOverride/subjectId optional). No schema changes.
-        if (oldVersion < 8) {
-          // no-op
-        }
-
-        if (oldVersion < 9) {
-          if (!db.objectStoreNames.contains("lessonPlans")) {
-            const lp = db.createObjectStore("lessonPlans", { keyPath: "key" });
-            lp.createIndex("byUserId", "userId");
-            lp.createIndex("byUserIdDateKey", ["userId", "dateKey"]);
-          }
-          if (!db.objectStoreNames.contains("lessonAttachments")) {
-            const la = db.createObjectStore("lessonAttachments", { keyPath: "id" });
-            la.createIndex("byUserId", "userId");
-            la.createIndex("byPlanKey", "planKey");
-          }
-        }
-      },
-    });
-  }
-  return dbPromise;
+export function placementsCol(uid: string) {
+  return collection(db, "users", uid, "placements");
+}
+export function placementDoc(uid: string, key: string) {
+  return doc(db, "users", uid, "placements", key);
 }
 
+export function slotAssignmentsCol(uid: string) {
+  return collection(db, "users", uid, "slotAssignments");
+}
+export function slotAssignmentDoc(uid: string, key: string) {
+  return doc(db, "users", uid, "slotAssignments", key);
+}
+
+export function cycleTemplateEventsCol(uid: string) {
+  return collection(db, "users", uid, "cycleTemplateEvents");
+}
+export function cycleTemplateEventDoc(uid: string, id: string) {
+  return doc(db, "users", uid, "cycleTemplateEvents", id);
+}
+
+export function lessonPlansCol(uid: string) {
+  return collection(db, "users", uid, "lessonPlans");
+}
+export function lessonPlanDoc(uid: string, key: string) {
+  return doc(db, "users", uid, "lessonPlans", key);
+}
+
+export function lessonAttachmentsCol(uid: string) {
+  return collection(db, "users", uid, "lessonAttachments");
+}
+export function lessonAttachmentDoc(uid: string, id: string) {
+  return doc(db, "users", uid, "lessonAttachments", id);
+}
+
+export function importsCol(uid: string) {
+  return collection(db, "users", uid, "imports");
+}
+export function importDoc(uid: string, importId: string) {
+  return doc(db, "users", uid, "imports", importId);
+}
+
+export function settingsCol(uid: string) {
+  return collection(db, "users", uid, "settings");
+}
+export function settingDoc(uid: string, key: string) {
+  return doc(db, "users", uid, "settings", key);
+}
+
+export function baseEventsCol(uid: string) {
+  return collection(db, "users", uid, "baseEvents");
+}
+export function baseEventDoc(uid: string, id: string) {
+  return doc(db, "users", uid, "baseEvents", id);
+}
+
+export function blocksCol(uid: string) {
+  return collection(db, "users", uid, "blocks");
+}
+export function blockDoc(uid: string, id: string) {
+  return doc(db, "users", uid, "blocks", id);
+}
+
+export function itemsCol(uid: string) {
+  return collection(db, "users", uid, "items");
+}
+export function itemDoc(uid: string, id: string) {
+  return doc(db, "users", uid, "items", id);
+}
+
+export function userEventMetaCol(uid: string) {
+  return collection(db, "users", uid, "userEventMeta");
+}
+export function userEventMetaDoc(uid: string, eventId: string) {
+  return doc(db, "users", uid, "userEventMeta", eventId);
+}

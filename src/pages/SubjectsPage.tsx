@@ -1,11 +1,11 @@
 // src/pages/SubjectsPage.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
 import type { Subject, SubjectKind } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { deleteSubject, getSubjectsByUser, upsertSubject } from "../db/subjectQueries";
 import { subjectIdForManual, autoHexColorForKey } from "../db/subjectUtils";
 
-const userId = "local";
 
 const KIND_LABEL: Record<SubjectKind, string> = {
   subject: "Subject",
@@ -15,6 +15,8 @@ const KIND_LABEL: Record<SubjectKind, string> = {
 };
 
 export default function SubjectsPage() {
+  const { user } = useAuth();
+  const userId = user?.uid || "";
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [filter, setFilter] = useState<SubjectKind | "all">("all");
   const [q, setQ] = useState("");

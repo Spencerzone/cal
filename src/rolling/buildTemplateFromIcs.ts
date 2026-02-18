@@ -1,7 +1,10 @@
 import ICAL from "ical.js";
 import { toZonedTime } from "date-fns-tz";
 import { format } from "date-fns";
-import { getDb } from "../db/db";
+import { getDocs, writeBatch } from "firebase/firestore";
+import { db } from "../firebase";
+import { cycleTemplateEventsCol, cycleTemplateEventDoc } from "../db/db";
+import { setTemplateMeta } from "./templateMapping";
 import type { CycleTemplateEvent, DayLabel } from "../db/db";
 
 const TZ = "Australia/Sydney";
@@ -84,7 +87,7 @@ type ParsedEvent = {
   room: string | null;
 };
 
-export async function buildCycleTemplateFromIcs(icsText: string) {
+export async function buildCycleTemplateFromIcs(userId: string, icsText: string) {
   const jcal = ICAL.parse(icsText);
   const comp = new ICAL.Component(jcal);
   const vevents = comp.getAllSubcomponents("vevent");
@@ -192,28 +195,37 @@ export async function buildCycleTemplateFromIcs(icsText: string) {
     }
   }
 
-  // Persist: replace existing template
-  const db = await getDb();
-  const tx = db.transaction(["cycleTemplateEvents"], "readwrite");
-  const store = tx.objectStore("cycleTemplateEvents");
-  await store.clear();
-  for (const te of templateEvents) await store.put(te);
-  await tx.done;
 
-  // after tx.done that writes cycleTemplateEvents
-const db2 = await getDb();
-await db2.put("settings", {
-  key: "templateMeta",
-  value: {
+  // Persist: replace existing template (Firestore)
+  // Delete existing docs
+  const existingSnap = await getDocs(cycleTemplateEventsCol(userId));
+  if (!existingSnap.empty) {
+    const batchDel = writeBatch(db);
+    for (const d of existingSnap.docs) batchDel.delete(d.ref);
+    await batchDel.commit();
+  }
+
+  // Write new docs (chunked under 500 writes)
+  const CHUNK = 400;
+  for (let i = 0; i < templateEvents.length; i += CHUNK) {
+    const chunk = templateEvents.slice(i, i + CHUNK);
+    const batch = writeBatch(db);
+    for (const te of chunk) {
+      batch.set(cycleTemplateEventDoc(userId, te.id), te, { merge: false });
+    }
+    await batch.commit();
+  }
+
+  await setTemplateMeta(userId, {
     anchorMonday,
     cycleDates,
     shift: 0,
     flipped: false,
     builtAt: Date.now(),
-  },
-});
+  });
 
   return {
+
     anchorMonday,
     cycleDates,
     count: templateEvents.length,

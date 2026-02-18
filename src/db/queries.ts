@@ -1,57 +1,41 @@
-// src/db/queries.ts
-import { getDb } from "./db";
+// src/db/queries.ts (Firestore-backed queries)
+
+import { getDocs, orderBy, query, where } from "firebase/firestore";
+import { baseEventsCol, type BaseEventRow } from "./db";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
 
-
-
 const TZ = "Australia/Sydney";
 
-function isWithin(startUtc: number, endUtc: number, rangeStartUtc: number, rangeEndUtc: number) {
-  return startUtc < rangeEndUtc && endUtc > rangeStartUtc;
+export function todayRangeUtc(localDate: Date = new Date()): { startUtc: number; endUtc: number } {
+  const zoned = toZonedTime(localDate, TZ);
+  const s = startOfDay(zoned);
+  const e = endOfDay(zoned);
+  return { startUtc: fromZonedTime(s, TZ).getTime(), endUtc: fromZonedTime(e, TZ).getTime() };
 }
 
-export async function getEventsForRange(rangeStartUtc: number, rangeEndUtc: number) {
-  const db = await getDb();
-  const idx = db.transaction("baseEvents").store.index("byStartUtc");
-
-  // Simple approach: iterate from rangeStart; stop when start > rangeEnd
-  const out: any[] = [];
-  let cursor = await idx.openCursor(rangeStartUtc);
-  while (cursor) {
-    const ev = cursor.value;
-    if (ev.dtStartUtc > rangeEndUtc) break;
-    if (ev.active && isWithin(ev.dtStartUtc, ev.dtEndUtc, rangeStartUtc, rangeEndUtc)) out.push(ev);
-    cursor = await cursor.continue();
-  }
-  return out;
+export function weekRangeUtc(localDate: Date = new Date()): { startUtc: number; endUtc: number } {
+  const zoned = toZonedTime(localDate, TZ);
+  const s = startOfWeek(zoned, { weekStartsOn: 1 });
+  const e = endOfWeek(zoned, { weekStartsOn: 1 });
+  return { startUtc: fromZonedTime(s, TZ).getTime(), endUtc: fromZonedTime(e, TZ).getTime() };
 }
 
-export function todayRangeUtc(now = new Date()) {
-  const local = toZonedTime(now, TZ);
-  const startLocal = startOfDay(local);
-  const endLocal = endOfDay(local);
-  // Convert local boundaries back to UTC ms by constructing Date from ISO with TZ offset
-  // Simplest: use date-fns-tz zonedTimeToUtc, but keep this concise:
-  return {
-    startUtc: fromZonedTime(startLocal, TZ).getTime(),
-    endUtc: fromZonedTime(endLocal, TZ).getTime(),
-  };
+export async function getEventsForRange(userId: string, startUtc: number, endUtc: number): Promise<BaseEventRow[]> {
+  const col = baseEventsCol(userId);
+  const q = query(
+    col,
+    where("dtStartUtc", ">=", startUtc),
+    where("dtStartUtc", "<=", endUtc),
+    orderBy("dtStartUtc", "asc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as BaseEventRow);
 }
 
-export function weekRangeUtc(now = new Date()) {
-  const local = toZonedTime(now, TZ);
-  const startLocal = startOfWeek(local, { weekStartsOn: 1 });
-  const endLocal = endOfWeek(local, { weekStartsOn: 1 });
-  return {
-    startUtc: fromZonedTime(startLocal, TZ).getTime(),
-    endUtc: fromZonedTime(endLocal, TZ).getTime(),
-  };
-}
-
-export async function getLessonsForSubject(code: string, rangeStartUtc: number, rangeEndUtc: number) {
-  const events = await getEventsForRange(rangeStartUtc, rangeEndUtc);
-  return events
-    .filter(e => e.type === "class" && e.code?.toLowerCase() === code.toLowerCase())
-    .sort((a, b) => a.dtStartUtc - b.dtStartUtc);
+export async function getLessonsForSubject(userId: string, code: string): Promise<BaseEventRow[]> {
+  const col = baseEventsCol(userId);
+  const q = query(col, where("code", "==", code.toUpperCase()), orderBy("dtStartUtc", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as BaseEventRow);
 }

@@ -1,14 +1,28 @@
-// src/db/placementQueries.ts
-import { getDb, type DayLabel, type Placement, type SlotId } from "./db";
+// src/db/placementQueries.ts (Firestore source-of-truth)
+
+import {
+  deleteDoc,
+  getDoc,
+  getDocs,
+  query,
+  runTransaction,
+  where,
+} from "firebase/firestore";
+import { db } from "../firebase";
+import {
+  placementDoc,
+  placementsCol,
+  type DayLabel,
+  type Placement,
+  type SlotId,
+} from "./db";
 
 function keyFor(dayLabel: DayLabel, slotId: SlotId) {
   return `${dayLabel}::${slotId}`;
 }
 
 export type PlacementPatch = {
-  // subjectId semantics: undefined=use template, null=blank, string=override
   subjectId?: string | null;
-  // roomOverride semantics: undefined=use template room, null=blank room, string=override
   roomOverride?: string | null;
 };
 
@@ -19,26 +33,13 @@ function normaliseNext(next: PlacementPatch): PlacementPatch {
   return out;
 }
 
-export async function getPlacementsForDayLabels(userId: string, dayLabels: DayLabel[]): Promise<Placement[]> {
-  const db = await getDb();
-  const tx = db.transaction("placements");
-  const idx = tx.store.index("byUserIdDayLabel");
-
-  const out: Placement[] = [];
-  for (const dl of dayLabels) {
-    const rows = await idx.getAll([userId, dl]);
-    out.push(...rows);
-  }
-  await tx.done;
-  return out;
-}
-
-export async function getPlacement(dayLabel: DayLabel, slotId: SlotId): Promise<Placement | undefined> {
-  const db = await getDb();
-  return db.get("placements", keyFor(dayLabel, slotId));
-}
-
-function mergePlacement(existing: Placement | undefined, userId: string, dayLabel: DayLabel, slotId: SlotId, patch: PlacementPatch): Placement | null {
+function mergePlacement(
+  existing: Placement | undefined,
+  userId: string,
+  dayLabel: DayLabel,
+  slotId: SlotId,
+  patch: PlacementPatch
+): Placement | null {
   const next: Placement = {
     key: keyFor(dayLabel, slotId),
     userId,
@@ -59,32 +60,59 @@ function mergePlacement(existing: Placement | undefined, userId: string, dayLabe
   return next;
 }
 
+export async function getPlacementsForDayLabels(userId: string, dayLabels: DayLabel[]): Promise<Placement[]> {
+  if (dayLabels.length === 0) return [];
+  const out: Placement[] = [];
+  const col = placementsCol(userId);
+
+  const CHUNK = 10;
+  for (let i = 0; i < dayLabels.length; i += CHUNK) {
+    const chunk = dayLabels.slice(i, i + CHUNK);
+    const q = query(col, where("dayLabel", "in", chunk));
+    const snap = await getDocs(q);
+    out.push(...snap.docs.map((d) => d.data() as Placement));
+  }
+  return out;
+}
+
+export async function getPlacement(userId: string, dayLabel: DayLabel, slotId: SlotId): Promise<Placement | undefined> {
+  const ref = placementDoc(userId, keyFor(dayLabel, slotId));
+  const snap = await getDoc(ref);
+  return snap.exists() ? (snap.data() as Placement) : undefined;
+}
+
 export async function upsertPlacementPatch(
   userId: string,
   dayLabel: DayLabel,
   slotId: SlotId,
   patch: PlacementPatch
 ): Promise<void> {
-  const db = await getDb();
-  const existing = await db.get("placements", keyFor(dayLabel, slotId));
-  const merged = mergePlacement(existing, userId, dayLabel, slotId, patch);
-  if (!merged) {
-    await db.delete("placements", keyFor(dayLabel, slotId));
-  } else {
-    await db.put("placements", merged);
-  }
+  const ref = placementDoc(userId, keyFor(dayLabel, slotId));
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const existing = snap.exists() ? (snap.data() as Placement) : undefined;
+    const merged = mergePlacement(existing, userId, dayLabel, slotId, patch);
+
+    if (!merged) {
+      if (snap.exists()) tx.delete(ref);
+    } else {
+      tx.set(ref, merged, { merge: false });
+    }
+  });
+
   window.dispatchEvent(new Event("placements-changed"));
 }
 
-// Set the exact override state for this cell (clear fields by omitting them).
 export async function setPlacement(
   userId: string,
   dayLabel: DayLabel,
   slotId: SlotId,
   next: PlacementPatch
 ): Promise<void> {
-  const db = await getDb();
+  const ref = placementDoc(userId, keyFor(dayLabel, slotId));
   const n = normaliseNext(next);
+
   const p: Placement = {
     key: keyFor(dayLabel, slotId),
     userId,
@@ -98,26 +126,25 @@ export async function setPlacement(
   const hasRoomOverride = Object.prototype.hasOwnProperty.call(p, "roomOverride");
 
   if (!hasSubjectOverride && !hasRoomOverride) {
-    await db.delete("placements", p.key);
+    await deleteDoc(ref);
   } else {
-    await db.put("placements", p);
+    await runTransaction(db, async (tx) => {
+      tx.set(ref, p, { merge: false });
+    });
   }
+
   window.dispatchEvent(new Event("placements-changed"));
 }
 
-export async function deletePlacement(dayLabel: DayLabel, slotId: SlotId): Promise<void> {
-  const db = await getDb();
-  await db.delete("placements", keyFor(dayLabel, slotId));
+export async function deletePlacement(userId: string, dayLabel: DayLabel, slotId: SlotId): Promise<void> {
+  await deleteDoc(placementDoc(userId, keyFor(dayLabel, slotId)));
   window.dispatchEvent(new Event("placements-changed"));
 }
 
 export async function deletePlacementsReferencingSubject(userId: string, subjectId: string): Promise<void> {
-  const db = await getDb();
-  const all = await db.getAllFromIndex("placements", "byUserId", userId);
-  for (const p of all) {
-    if (p.subjectId === subjectId) {
-      await db.delete("placements", p.key);
-    }
-  }
+  const col = placementsCol(userId);
+  const q = query(col, where("subjectId", "==", subjectId));
+  const snap = await getDocs(q);
+  for (const d of snap.docs) await deleteDoc(d.ref);
   window.dispatchEvent(new Event("placements-changed"));
 }
