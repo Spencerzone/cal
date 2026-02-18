@@ -41,6 +41,10 @@ function rankKind(k: AssignmentKind): number {
   return k === "class" ? 0 : k === "duty" ? 1 : k === "break" ? 2 : 3;
 }
 
+/**
+ * Rebuilds slotAssignments from cycleTemplateEvents, choosing exactly one "best" event per slot.
+ * This prevents duplicates and avoids inventing slots that don't exist on that day (e.g. p6).
+ */
 export async function buildDraftSlotAssignments() {
   const db = await getDb();
   const all = await db.getAll("cycleTemplateEvents");

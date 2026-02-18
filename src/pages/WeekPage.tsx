@@ -122,14 +122,6 @@ export default function WeekPage() {
     })();
   }, []);
 
-  // Load rolling settings (used for optional term/week display)
-  useEffect(() => {
-    (async () => {
-      const s = await getRollingSettings();
-      setRollingSettingsState(s);
-    })();
-  }, []);
-
   async function loadSubjects() {
     await ensureSubjectsFromTemplates(userId);
     const subs = await getSubjectsByUser(userId);
@@ -181,7 +173,7 @@ export default function WeekPage() {
 
         const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
         if (!canonical) {
-          out.set(dateKey, new Map()); // non-school day
+          out.set(dateKey, new Map());
           continue;
         }
 
@@ -238,8 +230,8 @@ export default function WeekPage() {
   // If an open plan is deleted/emptied, auto-collapse ONLY if it previously had content.
   useEffect(() => {
     if (!openPlanKey) return;
-    // Don't auto-collapse while the editor is focused/active (e.g. user clearing to retype).
     if (activePlanKey === openPlanKey) return;
+
     const [dateKey, slotIdRaw] = openPlanKey.split("::");
     const slotId = slotIdRaw as SlotId;
     const plan = plansByDate.get(dateKey)?.get(slotId);
@@ -253,8 +245,6 @@ export default function WeekPage() {
 
     const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanKey) ?? false;
     if (hadContentBefore) {
-      // After a plan is cleared and deleted, treat future opens as "new" again.
-      // This prevents immediate auto-collapse when reopening the now-empty slot.
       openPlanHasEverHadContentRef.current.delete(openPlanKey);
       setOpenPlanKey(null);
     }
@@ -270,10 +260,11 @@ export default function WeekPage() {
       }
       const ps = await getPlacementsForDayLabels(userId, unique);
 
-      // Build mapping by dayLabel -> slotId -> placement override
       const byLabel = new Map<DayLabel, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const p of ps) {
-        const m = byLabel.get(p.dayLabel) ?? new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
+        const m =
+          byLabel.get(p.dayLabel) ??
+          new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
         const o: { subjectId?: string | null; roomOverride?: string | null } = {};
         if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
         if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
@@ -281,7 +272,6 @@ export default function WeekPage() {
         byLabel.set(p.dayLabel, m);
       }
 
-      // Map into dateKeys for this week
       const byDate = new Map<string, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const [dateKey, dl] of dayLabelByDate) {
         byDate.set(dateKey, byLabel.get(dl) ?? new Map());
@@ -292,18 +282,15 @@ export default function WeekPage() {
 
   // Refresh placements when changed elsewhere
   useEffect(() => {
-    const onChanged = () => {
-      // re-run effect by cloning dayLabelByDate
-      setDayLabelByDate(new Map(dayLabelByDate));
-    };
+    const onChanged = () => setDayLabelByDate(new Map(dayLabelByDate));
     window.addEventListener("placements-changed", onChanged as any);
     return () => window.removeEventListener("placements-changed", onChanged as any);
   }, [dayLabelByDate]);
 
-  // Build grid: rows=blocks, cols=weekDays
+  // Build grid: rows=blocks, cols=weekDays. ALWAYS returns a cell; blank if no slot / no assignment / overridden blank.
   const grid = useMemo(() => {
     return blocks.map((b) => {
-      const slotId = SLOT_LABEL_TO_ID[b.name]; // undefined for custom blocks => blanks
+      const slotId = SLOT_LABEL_TO_ID[b.name];
       const rowCells = weekDays.map((d) => {
         const dateKey = format(d, "yyyy-MM-dd");
         if (!slotId) return { kind: "blank" } as Cell;
@@ -419,12 +406,10 @@ export default function WeekPage() {
           </div>
           <div>
             {(() => {
-              const tw = rollingSettings ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds) : null;
-              return tw ? (
-                <span className="muted">Term {tw.term} · Week {tw.week}</span>
-              ) : (
-                <span className="muted">&nbsp;</span>
-              );
+              const tw = rollingSettings
+                ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds)
+                : null;
+              return tw ? <span className="muted">Term {tw.term} · Week {tw.week}</span> : <span className="muted">&nbsp;</span>;
             })()}
           </div>
         </div>
@@ -445,7 +430,6 @@ export default function WeekPage() {
           <tbody>
             {grid.map(({ block, cells }) => (
               <tr key={block.id}>
-
                 {cells.map((cell, i) => {
                   const dateKey = format(weekDays[i], "yyyy-MM-dd");
                   const slotId = SLOT_LABEL_TO_ID[block.name];
@@ -456,7 +440,8 @@ export default function WeekPage() {
                       ? override.subjectId
                       : undefined;
 
-                  const overrideSubject = typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
+                  const overrideSubject =
+                    typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
 
                   const roomOverride =
                     override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
@@ -466,10 +451,12 @@ export default function WeekPage() {
                   const subject =
                     cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
                   const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
+
                   const strip =
                     overrideSubjectId === null
                       ? "#2a2a2a"
                       : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
+
                   const resolvedRoom =
                     cell.kind === "template"
                       ? roomOverride === undefined
@@ -490,18 +477,30 @@ export default function WeekPage() {
 
                   const timeText = cell.kind === "template" ? timeRangeFromTemplate(weekDays[i], cell.e) : null;
 
+                  const titleText =
+                    cell.kind === "blank"
+                      ? "—"
+                      : cell.kind === "free"
+                      ? "Free"
+                      : cell.kind === "manual"
+                      ? cell.a.manualTitle
+                      : cell.kind === "placed"
+                      ? overrideSubject?.title ?? "—"
+                      : subject
+                      ? displayTitle(subject, detail)
+                      : cell.e.title;
+
                   const plan = slotId ? plansByDate.get(dateKey)?.get(slotId) : undefined;
                   const atts = slotId ? attachmentsByDate.get(dateKey)?.get(slotId) ?? [] : [];
                   const planKey = slotId ? `${dateKey}::${slotId}` : null;
                   const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
                   const showPlanEditor = !!slotId && (hasPlan || (planKey && openPlanKey === planKey));
 
-
                   return (
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div
                         className="slotCard slotClickable"
-                        style={{ ...( { ["--slotStrip" as any]: strip } as any) }}
+                        style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
                         role={slotId ? "button" : undefined}
                         tabIndex={slotId ? 0 : undefined}
                         onClick={() => {
@@ -515,9 +514,9 @@ export default function WeekPage() {
                         onKeyDown={(e) => {
                           const t = e.target as HTMLElement | null;
                           if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-                          
+
                           if (!slotId || !planKey) return;
-                          if (e.key === "Enter") {
+                          if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             const planNow = plansByDate.get(dateKey)?.get(slotId);
                             const attsNow = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
@@ -527,75 +526,43 @@ export default function WeekPage() {
                           }
                         }}
                       >
-                        <div className="slotTitleRow" style={{ marginTop: 0 }}>
-                          <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
-                            {compactBlockLabel(block.name)}
-                          </span>
-                          <div style={{ minWidth: 0, width: "100%" }}>
-                            <div style={{ minWidth: 0 }}>
-                              {overrideSubjectId === null ? (
-                                <div className="muted">—</div>
-                              ) : overrideSubject ? (
-                                <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
-                                  {overrideSubject.title}
-                                </div>
-                              ) : cell.kind === "blank" ? (
-                                <div className="muted">—</div>
-                              ) : cell.kind === "free" ? (
-                                <div className="muted">Free</div>
-                              ) : cell.kind === "manual" ? (
-                                <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
-                                  {cell.a.manualTitle}
-                                </div>
-                              ) : cell.kind === "template" ? (
-                                <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
-                                  {subject ? displayTitle(subject, detail) : cell.e.title}
-                                </div>
-                              ) : (
-                                <div className="muted">—</div>
-                              )}
-                            </div>
+                        <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
+                          <div>
+                            <strong>{titleText}</strong>{" "}
+                            {codeText ? <span className="muted">({codeText})</span> : null}
                           </div>
+                          <div className="muted">{timeText ?? ""}</div>
                         </div>
 
-                        <div className="row slotCompactBadges" style={{ gap: 6, flexWrap: "wrap", marginLeft: 32, marginTop: 6 }}>
-                          {codeText ? <span className="badge">{codeText}</span> : null}
-                          {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}
-                          {timeText ? <span className="badge">{timeText}</span> : null}
+                        <div className="muted" style={{ marginTop: 4 }}>
+                          <span className="badge">{compactBlockLabel(block.name)}</span>{" "}
+                          {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}{" "}
+                          {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
+                          {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+                          {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
                         </div>
 
-                        {showPlanEditor && slotId ? (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            onFocusCapture={() => setActivePlanKey(`${dateKey}::${slotId}`)}
-                            onBlurCapture={(e) => {
-                              const rt = (e.relatedTarget as Node | null) ?? null;
-                              if (!rt || !e.currentTarget.contains(rt)) setActivePlanKey(null);
-                            }}
-                          >
-                            <RichTextPlanEditor
-                              userId={userId}
-                              dateKey={dateKey}
-                              slotId={slotId}
-                              initialHtml={plan?.html ?? ""}
-                              attachments={atts}
-                            />
-                          </div>
-                        ) : null}
+                        {slotId && showPlanEditor ? (
+  <div
+    style={{ marginTop: 10 }}
+    onFocusCapture={() => setActivePlanKey(planKey!)}
+    onBlurCapture={() => setActivePlanKey((cur) => (cur === planKey ? null : cur))}
+  >
+    <RichTextPlanEditor
+      userId={userId}
+      dateKey={dateKey}
+      slotId={slotId}
+      initialHtml={plan?.html ?? ""}
+      attachments={atts}
+    />
+  </div>
+) : null}
                       </div>
                     </td>
                   );
                 })}
               </tr>
             ))}
-
-            {grid.length === 0 ? (
-              <tr>
-                <td colSpan={weekDays.length} className="muted">
-                  No data.
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
       </div>

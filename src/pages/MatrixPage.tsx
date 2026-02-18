@@ -41,7 +41,9 @@ export default function MatrixPage() {
   const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
 
   const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(new Map());
-  const [placementsByKey, setPlacementsByKey] = useState<Map<string, { subjectId?: string | null; roomOverride?: string | null }>>(new Map());
+  const [placementsByKey, setPlacementsByKey] = useState<
+    Map<string, { subjectId?: string | null; roomOverride?: string | null }>
+  >(new Map());
 
   useEffect(() => {
     (async () => {
@@ -91,20 +93,36 @@ export default function MatrixPage() {
     return () => window.removeEventListener("placements-changed", onPlacements as any);
   }, [labels.join(",")]);
 
-  // Default cell content from slotAssignments/template.
+  // Default cell content from slotAssignments/template (one per slot). Now includes manual assignments too.
   const baseCell = useMemo(() => {
-    const m = new Map<string, { kind: SlotAssignment["kind"]; e?: CycleTemplateEvent }>();
+    const m = new Map<
+      string,
+      | { kind: "free" }
+      | { kind: "manual"; a: SlotAssignment }
+      | { kind: SlotAssignment["kind"]; e: CycleTemplateEvent }
+      | { kind: "blank" }
+    >();
 
     for (const a of assignments) {
       const k = `${a.dayLabel}::${a.slotId}`;
+
       if (a.kind === "free") {
         m.set(k, { kind: "free" });
         continue;
       }
+
+      if (a.manualTitle) {
+        m.set(k, { kind: "manual", a });
+        continue;
+      }
+
       if (a.sourceTemplateEventId) {
         const te = templateById.get(a.sourceTemplateEventId);
         if (te) m.set(k, { kind: a.kind, e: te });
+        continue;
       }
+
+      m.set(k, { kind: "blank" });
     }
 
     return m;
@@ -128,15 +146,20 @@ export default function MatrixPage() {
   async function onSelect(dl: DayLabel, slotId: SlotId, value: string) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
-    const roomOverride = existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride") ? existing.roomOverride : undefined;
+    const roomOverride =
+      existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride") ? existing.roomOverride : undefined;
 
     if (value === "") {
-      // Clear subject override only (keep room override if any)
       await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
       return;
     }
     if (value === "__blank__") {
-      await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { subjectId: null, roomOverride } : { subjectId: null });
+      await setPlacement(
+        userId,
+        dl,
+        slotId,
+        roomOverride !== undefined ? { subjectId: null, roomOverride } : { subjectId: null }
+      );
       return;
     }
     await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
@@ -145,10 +168,12 @@ export default function MatrixPage() {
   async function onRoomBlur(dl: DayLabel, slotId: SlotId, nextRoomText: string) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
-    const subjectId = existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+    const subjectId =
+      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+
     const trimmed = nextRoomText.trim();
-    // Empty => clear room override (use template)
     const roomOverride = trimmed ? trimmed : undefined;
+
     await setPlacement(userId, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       ...(roomOverride !== undefined ? { roomOverride } : {}),
@@ -158,7 +183,9 @@ export default function MatrixPage() {
   async function setBlankRoom(dl: DayLabel, slotId: SlotId) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
-    const subjectId = existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+    const subjectId =
+      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+
     await setPlacement(userId, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       roomOverride: null,
@@ -168,7 +195,9 @@ export default function MatrixPage() {
   async function clearRoomOverride(dl: DayLabel, slotId: SlotId) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
-    const subjectId = existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+    const subjectId =
+      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+
     await setPlacement(userId, dl, slotId, subjectId !== undefined ? { subjectId } : {});
   }
 
@@ -187,9 +216,7 @@ export default function MatrixPage() {
         </div>
 
         <div className="space" />
-        <div className="muted">
-          Choose a subject/duty/break for each slot. “Use template” removes the override.
-        </div>
+        <div className="muted">Choose a subject/duty/break for each slot. “Use template” removes the override.</div>
       </div>
 
       {!hasTemplate ? (
@@ -205,135 +232,149 @@ export default function MatrixPage() {
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", width: 160 }} className="muted">
-                  Slot
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", width: 160 }} className="muted">
+                Slot
+              </th>
+              {labels.map((dl) => (
+                <th key={dl} style={{ textAlign: "left", minWidth: 260 }}>
+                  {weekdayFromLabel(dl)} <span className="muted">{set}</span>
                 </th>
-                {labels.map((dl) => (
-                  <th key={dl} style={{ textAlign: "left", minWidth: 260 }}>
-                    {weekdayFromLabel(dl)} <span className="muted">{set}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td style={{ verticalAlign: "top" }}>
-                    <div className="badge">{row.label}</div>
-                  </td>
-
-                  {labels.map((dl) => {
-                    const k = `${dl}::${row.id}`;
-                    const override = placementsByKey.get(k);
-                    const base = baseCell.get(k);
-
-                    const baseSubjectId = base?.e ? subjectIdForTemplateEvent(base.e) : null;
-                    const baseSubject = baseSubjectId ? subjectsById.get(baseSubjectId) : undefined;
-
-                    const overrideSubjectId = override && Object.prototype.hasOwnProperty.call(override, "subjectId") ? override.subjectId : undefined;
-                    const overrideSubject = typeof overrideSubjectId === "string" ? subjectsById.get(overrideSubjectId) : undefined;
-
-                    const bg = overrideSubjectId === null ? "#0f0f0f" : (overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f");
-
-                    const selectValue =
-                      overrideSubjectId === undefined
-                        ? ""
-                        : overrideSubjectId === null
-                        ? "__blank__"
-                        : overrideSubjectId;
-
-                    const labelText =
-                      overrideSubjectId === null
-                        ? "Blank"
-                        : overrideSubject
-                        ? overrideSubject.title
-                        : base?.kind === "free"
-                        ? "Free"
-                        : base?.e
-                        ? base.e.title
-                        : "—";
-
-                    const subText =
-                      overrideSubjectId === undefined
-                        ? "Using template"
-                        : overrideSubjectId === null
-                        ? "Override: blank"
-                        : "Override";
-
-                    const roomOverride = override && Object.prototype.hasOwnProperty.call(override, "roomOverride") ? override.roomOverride : undefined;
-                    const baseRoom = base?.e?.room ?? "";
-                    const resolvedRoom = roomOverride === undefined ? baseRoom : roomOverride === null ? "" : roomOverride;
-
-                    return (
-                      <td key={k} style={{ verticalAlign: "top" }}>
-                        <div className="card" style={{ background: bg, minHeight: 88 }}>
-                          <div>
-                            <strong>{labelText}</strong>
-                          </div>
-                          <div className="muted" style={{ marginTop: 4 }}>
-                            {subText}
-                          </div>
-                          <div className="space" />
-                          <select
-                            value={selectValue}
-                            onChange={(e) => onSelect(dl, row.id, e.target.value)}
-                            style={{ width: "100%" }}
-                          >
-                            <option value="">Use template</option>
-                            <option value="__blank__">Blank</option>
-                            <optgroup label="Subjects">
-                              {subjectsByKind.subject.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.title}{s.code ? ` (${s.code})` : ""}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Duties">
-                              {subjectsByKind.duty.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.title}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Breaks">
-                              {subjectsByKind.break.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.title}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </select>
-
-                          <div className="space" />
-                          <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                            <input
-                              defaultValue={roomOverride === undefined ? "" : roomOverride ?? ""}
-                              placeholder={baseRoom ? `Room (template: ${baseRoom})` : "Room"}
-                              onBlur={(e) => onRoomBlur(dl, row.id, e.target.value)}
-                              style={{ width: "100%" }}
-                            />
-                            <button onClick={() => clearRoomOverride(dl, row.id)} title="Use template room">
-                              ↺
-                            </button>
-                            <button onClick={() => setBlankRoom(dl, row.id)} title="Blank room">
-                              ☐
-                            </button>
-                          </div>
-                          {resolvedRoom ? (
-                            <div className="muted" style={{ marginTop: 4 }}>
-                              Room: {resolvedRoom}
-                            </div>
-                          ) : null}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
               ))}
-            </tbody>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td style={{ verticalAlign: "top" }}>
+                  <div className="badge">{row.label}</div>
+                </td>
+
+                {labels.map((dl) => {
+                  const k = `${dl}::${row.id}`;
+                  const override = placementsByKey.get(k);
+                  const base = baseCell.get(k);
+
+                  const baseSubjectId = base && "e" in base && base.e ? subjectIdForTemplateEvent(base.e) : null;
+                  const baseSubject = baseSubjectId ? subjectsById.get(baseSubjectId) : undefined;
+
+                  const overrideSubjectId =
+                    override && Object.prototype.hasOwnProperty.call(override, "subjectId") ? override.subjectId : undefined;
+                  const overrideSubject =
+                    typeof overrideSubjectId === "string" ? subjectsById.get(overrideSubjectId) : undefined;
+
+                  const bg =
+                    overrideSubjectId === null
+                      ? "#0f0f0f"
+                      : overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f";
+
+                  const selectValue =
+                    overrideSubjectId === undefined
+                      ? ""
+                      : overrideSubjectId === null
+                      ? "__blank__"
+                      : overrideSubjectId;
+
+                  const labelText =
+                    overrideSubjectId === null
+                      ? "Blank"
+                      : overrideSubject
+                      ? overrideSubject.title
+                      : base?.kind === "free"
+                      ? "Free"
+                      : base?.kind === "manual"
+                      ? base.a.manualTitle
+                      : base && "e" in base && base.e
+                      ? base.e.title
+                      : "—";
+
+                  const subText =
+                    overrideSubjectId === undefined
+                      ? "Using template"
+                      : overrideSubjectId === null
+                      ? "Override: blank"
+                      : "Override";
+
+                  const roomOverride =
+                    override && Object.prototype.hasOwnProperty.call(override, "roomOverride") ? override.roomOverride : undefined;
+                  const baseRoom = base && "e" in base && base.e ? base.e.room ?? "" : "";
+                  const resolvedRoom = roomOverride === undefined ? baseRoom : roomOverride === null ? "" : roomOverride;
+
+                  return (
+                    <td key={k} style={{ verticalAlign: "top" }}>
+                      <div className="card" style={{ background: bg, minHeight: 88 }}>
+                        <div>
+                          <strong>{labelText}</strong>
+                        </div>
+                        <div className="muted" style={{ marginTop: 4 }}>
+                          {subText}
+                        </div>
+
+                        <div className="space" />
+                        <select
+                          value={selectValue}
+                          onChange={(e) => onSelect(dl, row.id, e.target.value)}
+                          style={{ width: "100%" }}
+                        >
+                          <option value="">Use template</option>
+                          <option value="__blank__">Blank</option>
+
+                          <optgroup label="Subjects">
+                            {subjectsByKind.subject.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.title}
+                                {s.code ? ` (${s.code})` : ""}
+                              </option>
+                            ))}
+                          </optgroup>
+
+                          <optgroup label="Duties">
+                            {subjectsByKind.duty.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.title}
+                              </option>
+                            ))}
+                          </optgroup>
+
+                          <optgroup label="Breaks">
+                            {subjectsByKind.break.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+
+                        <div className="space" />
+                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                          <input
+                            defaultValue={roomOverride === undefined ? "" : roomOverride ?? ""}
+                            placeholder={baseRoom ? `Room (template: ${baseRoom})` : "Room"}
+                            onBlur={(e) => onRoomBlur(dl, row.id, e.target.value)}
+                            style={{ width: "100%" }}
+                          />
+                          <button onClick={() => clearRoomOverride(dl, row.id)} title="Use template room">
+                            ↺
+                          </button>
+                          <button onClick={() => setBlankRoom(dl, row.id)} title="Blank room">
+                            ☐
+                          </button>
+                        </div>
+
+                        {resolvedRoom ? (
+                          <div className="muted" style={{ marginTop: 4 }}>
+                            Room: {resolvedRoom}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>

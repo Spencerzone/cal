@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format } from "date-fns";
 import { getDb } from "../db/db";
-import type { Block, CycleTemplateEvent, DayLabel, LessonAttachment, LessonPlan, SlotAssignment, SlotId, Subject } from "../db/db";
+import type {
+  Block,
+  CycleTemplateEvent,
+  DayLabel,
+  LessonAttachment,
+  LessonPlan,
+  SlotAssignment,
+  SlotId,
+  Subject,
+} from "../db/db";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
@@ -21,6 +30,7 @@ type Cell =
   | { kind: "blank" }
   | { kind: "free" }
   | { kind: "manual"; a: SlotAssignment }
+  | { kind: "placed"; subjectId: string }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
@@ -36,9 +46,7 @@ function isWeekend(d: Date): boolean {
 
 function adjustToWeekday(d: Date, direction: 1 | -1 = 1): Date {
   let x = new Date(d);
-  while (isWeekend(x)) {
-    x = addDays(x, direction);
-  }
+  while (isWeekend(x)) x = addDays(x, direction);
   return x;
 }
 
@@ -76,6 +84,7 @@ export default function TodayPage() {
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
+
   const [label, setLabel] = useState<DayLabel | null>(null);
   const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
   const [assignmentBySlot, setAssignmentBySlot] = useState<Map<SlotId, SlotAssignment>>(new Map());
@@ -110,11 +119,9 @@ export default function TodayPage() {
     return text.length === 0;
   }
 
-  // coerce weekend selections to Monday (next weekday)
+  // coerce weekend selections to next weekday
   useEffect(() => {
-    if (isWeekend(selectedDate)) {
-      setSelectedDate(adjustToWeekday(selectedDate, 1));
-    }
+    if (isWeekend(selectedDate)) setSelectedDate(adjustToWeekday(selectedDate, 1));
   }, [selectedDate]);
 
   // clock tick
@@ -123,7 +130,7 @@ export default function TodayPage() {
     return () => clearInterval(t);
   }, []);
 
-  // load rolling settings for cycle + optional term weeks
+  // load rolling settings for cycle + optional term/week display
   useEffect(() => {
     (async () => {
       const s = await getRollingSettings();
@@ -175,7 +182,7 @@ export default function TodayPage() {
     })();
   }, []);
 
-  // compute day's DayLabel (canonical), then apply mapping to reach stored label
+  // compute day’s DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
     (async () => {
       const settings = await getRollingSettings();
@@ -196,38 +203,12 @@ export default function TodayPage() {
       const rows = await idx.getAll(stored);
 
       const m = new Map<SlotId, SlotAssignment>();
-      for (const a of rows) m.set(a.slotId, a);
+      for (const a of rows) m.set(a.slotId, a); // one per slotId (keyed store)
       setAssignmentBySlot(m);
     })();
   }, [dateKey]);
 
-  // If a plan is emptied/deleted, collapse the editor back to hidden state.
-  useEffect(() => {
-    if (!openPlanSlot) return;
-    // If the editor is currently focused/active, do not auto-collapse while the user is typing.
-    // Collapse can occur on blur/close if the plan is empty and it previously had content.
-    if (activePlanSlot === openPlanSlot) return;
-    const plan = planBySlot.get(openPlanSlot);
-    const atts = attachmentsBySlot.get(openPlanSlot) ?? [];
-    const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
-    // Mark as having had content once it becomes non-empty.
-    if (hasPlan) {
-      openPlanHasEverHadContentRef.current.set(openPlanSlot, true);
-      return;
-    }
-
-    // Do NOT auto-collapse a freshly-opened, never-before-saved editor.
-    // Only collapse when the slot previously had content and is now empty.
-    const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanSlot) ?? false;
-    if (hadContentBefore) {
-      // Once the user clears a plan and it's deleted, treat future opens as "new" again.
-      // Otherwise the editor will immediately auto-collapse on subsequent opens.
-      openPlanHasEverHadContentRef.current.delete(openPlanSlot);
-      setOpenPlanSlot(null);
-    }
-  }, [openPlanSlot, activePlanSlot, planBySlot, attachmentsBySlot]);
-
-  // Load placements for today's stored label
+  // Load placements for the day’s stored label
   useEffect(() => {
     if (!label) {
       setPlacementBySlot(new Map());
@@ -252,72 +233,14 @@ export default function TodayPage() {
     return () => window.removeEventListener("placements-changed", onChanged as any);
   }, [label]);
 
-  const cells: Array<{ blockId: string; blockLabel: string; slotId: SlotId | null; cell: Cell }> = useMemo(() => {
-    return blocks.map((b) => {
-      const slotId = SLOT_LABEL_TO_ID[b.name];
-      const a = slotId ? assignmentBySlot.get(slotId) : undefined;
-
-      if (!a) return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "blank" } };
-      if (a.kind === "free") return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "free" } };
-      if (a.manualTitle) return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "manual", a } };
-
-      if (a.sourceTemplateEventId) {
-        const e = templateById.get(a.sourceTemplateEventId);
-          if (e) return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "template", a, e } };
-      }
-
-      return { blockId: b.id, blockLabel: b.name, slotId: slotId ?? null, cell: { kind: "blank" } };
-    });
-  }, [blocks, assignmentBySlot, templateById]);
-
-  // current/next computed only from template events (ignore blank/free/manual)
-  const currentNext = useMemo(() => {
-    if (!isViewingToday) return { current: null, next: null };
-    const realEvents = cells
-      .filter((x) => x.cell.kind === "template")
-      .map((x) => {
-        const e = (x.cell as any).e as CycleTemplateEvent;
-        const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
-        const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
-        const slotId = x.slotId;
-
-        // Slot-level placement override
-        const ov = x.slotId ? placementBySlot.get(x.slotId) : undefined;
-        const overrideSubjectId = ov && Object.prototype.hasOwnProperty.call(ov, "subjectId") ? ov.subjectId : undefined;
-        if (overrideSubjectId === null) return null;
-
-        if (typeof overrideSubjectId === "string") {
-          const s = subjectById.get(overrideSubjectId);
-          const title = s ? s.title : e.title;
-          return { title, start, end, color: s?.color ?? null };
-        }
-
-        const subject = subjectById.get(subjectIdForTemplateEvent(e));
-        const detail = detailForTemplateEvent(e);
-        const title = subject ? displayTitle(subject, detail) : e.title;
-        return { title, start, end, color: subject?.color ?? null };
-      })
-      .filter((x): x is { title: string; start: number; end: number; color: string | null } => !!x)
-      .sort((a, b) => a.start - b.start);
-
-    const nowMs = now.getTime();
-    const current = realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
-    const next = realEvents.find((e) => e.start > nowMs) ?? null;
-    return { current, next };
-  }, [cells, now, dateLocal, subjectById, placementBySlot, isViewingToday]);
-
-  // Load lesson plans + attachments for this date
+  // Load lesson plans + attachments for the selected date
   useEffect(() => {
     const load = async () => {
       const plans = await getLessonPlansForDate(userId, dateKey);
       const pMap = new Map<SlotId, LessonPlan>();
       const aMap = new Map<SlotId, LessonAttachment[]>();
 
-      for (const p of plans) {
-        pMap.set(p.slotId, p);
-      }
-
-      // Load attachments per plan (only for plans that exist)
+      for (const p of plans) pMap.set(p.slotId, p);
       for (const [slotId, plan] of pMap) {
         const atts = await getAttachmentsForPlan(plan.key);
         aMap.set(slotId, atts);
@@ -333,28 +256,99 @@ export default function TodayPage() {
     return () => window.removeEventListener("lessonplans-changed", onChanged as any);
   }, [dateKey]);
 
+  // If a plan is emptied/deleted, collapse the editor back to hidden state.
+  useEffect(() => {
+    if (!openPlanSlot) return;
+    if (activePlanSlot === openPlanSlot) return;
+
+    const plan = planBySlot.get(openPlanSlot);
+    const atts = attachmentsBySlot.get(openPlanSlot) ?? [];
+    const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+
+    if (hasPlan) {
+      openPlanHasEverHadContentRef.current.set(openPlanSlot, true);
+      return;
+    }
+
+    const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanSlot) ?? false;
+    if (hadContentBefore) {
+      openPlanHasEverHadContentRef.current.delete(openPlanSlot);
+      setOpenPlanSlot(null);
+    }
+  }, [openPlanSlot, activePlanSlot, planBySlot, attachmentsBySlot]);
+
+  // Build “cells” for each block: ALWAYS render a row, blank if no assignment / overridden blank
+  const cells = useMemo((): Array<{ block: Block; slotId?: SlotId; cell: Cell }> => {
+    return blocks.map((b) => {
+      const slotId = SLOT_LABEL_TO_ID[b.name];
+      if (!slotId) return { block: b, slotId: undefined, cell: { kind: "blank" } };
+
+      // placement override (subjectId)
+      const ov = placementBySlot.get(slotId);
+      if (ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")) {
+        const sid = ov.subjectId;
+        if (sid === null) return { block: b, slotId, cell: { kind: "blank" } };
+        if (typeof sid === "string") return { block: b, slotId, cell: { kind: "placed", subjectId: sid } };
+      }
+
+      const a = assignmentBySlot.get(slotId);
+      if (!a) return { block: b, slotId, cell: { kind: "blank" } };
+      if (a.kind === "free") return { block: b, slotId, cell: { kind: "free" } };
+      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
+
+      if (a.sourceTemplateEventId) {
+        const e = templateById.get(a.sourceTemplateEventId);
+        if (e) return { block: b, slotId, cell: { kind: "template", a, e } };
+      }
+
+      return { block: b, slotId, cell: { kind: "blank" } };
+    });
+  }, [blocks, assignmentBySlot, placementBySlot, templateById]);
+
+  // current/next computed only from template events (ignore blank/free/manual/placed)
+  const currentNext = useMemo(() => {
+    const realEvents = cells
+      .filter((x) => x.cell.kind === "template")
+      .map((x) => {
+        const e = (x.cell as any).e as CycleTemplateEvent;
+        const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
+        const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
+
+        const subject = subjectById.get(subjectIdForTemplateEvent(e));
+        const detail = detailForTemplateEvent(e);
+        const title = subject ? displayTitle(subject, detail) : e.title;
+
+        return { title, start, end };
+      })
+      .sort((a, b) => a.start - b.start);
+
+    const nowMs = now.getTime();
+    const current = realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
+    const next = realEvents.find((e) => e.start > nowMs) ?? null;
+    return { current, next };
+  }, [cells, now, dateLocal, subjectById]);
+
   function onPrevDay() {
     setSelectedDate((d) => adjustToWeekday(addDays(d, -1), -1));
+    setShowDatePicker(false);
   }
   function onNextDay() {
     setSelectedDate((d) => adjustToWeekday(addDays(d, 1), 1));
+    setShowDatePicker(false);
   }
-
   function onGoToday() {
     setSelectedDate(adjustToWeekday(new Date(), 1));
+    setShowDatePicker(false);
   }
 
   function DatePickerPopover() {
     const value = format(selectedDate, "yyyy-MM-dd");
+    const labelText = `${format(selectedDate, "EEE d MMM")}`;
+
     return (
       <div style={{ position: "relative" }}>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => setShowDatePicker((v) => !v)}
-          aria-label="Choose date"
-        >
-          {formatDisplayDate(selectedDate)}
+        <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose date">
+          {labelText}
         </button>
 
         {showDatePicker ? (
@@ -383,7 +377,6 @@ export default function TodayPage() {
                 onChange={(e) => {
                   const next = e.target.value;
                   if (!next) return;
-                  // Use local date without timezone surprises
                   setSelectedDate(adjustToWeekday(new Date(`${next}T00:00:00`), 1));
                   setShowDatePicker(false);
                 }}
@@ -411,201 +404,203 @@ export default function TodayPage() {
       </div>
     );
   }
-function formatDisplayDate(d: Date) {
-    return format(d, "EEE d MMM yyyy");
-  }
 
   return (
     <div className="grid">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-        <h1>Today</h1>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn" type="button" onClick={onPrevDay}>
-            ← Prev
-          </button>
-          <DatePickerPopover />
-          <button className="btn" type="button" onClick={onNextDay}>
-            Next →
-          </button>
-        </div>
-      </div>
+      <h1>Today</h1>
 
       <div className="card">
-        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-          <div>
-            <span className="muted">Cycle day</span>{" "}
-            {label ? (
-              <strong>
-                {weekdayFromLabel(label)} {label.slice(3)}
-              </strong>
-            ) : (
-              <span className="muted">No school day</span>
-            )}
-            {(() => {
-              const tw = rollingSettings ? termWeekForDate(dateLocal, rollingSettings.termStarts, rollingSettings.termEnds) : null;
-              return tw ? (
-                <div style={{ marginTop: 6 }}>
-                  <span className="muted">Term {tw.term} · Week {tw.week}</span>
-                </div>
-              ) : null;
-            })()}
+        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <button className="btn" type="button" onClick={onPrevDay}>
+              ← Prev
+            </button>
+            <DatePickerPopover />
+            <button className="btn" type="button" onClick={onNextDay}>
+              Next →
+            </button>
           </div>
 
-          <div>
-            <span className="muted" style={{ color: currentNext.current?.color ?? undefined }}>Now</span>{" "}
-            {currentNext.current ? (
-              <strong style={{ color: currentNext.current.color ?? undefined }}>{currentNext.current.title}</strong>
-            ) : (
-              <span className="muted">—</span>
-            )}
-          </div>
+          <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <span className="muted">Cycle:</span>{" "}
+              {label ? (
+                <strong>
+                  {weekdayFromLabel(label)} {label.slice(3)}
+                </strong>
+              ) : (
+                <span className="muted">No school day</span>
+              )}
+            </div>
 
-          <div>
-            <span className="muted" style={{ color: currentNext.next?.color ?? undefined }}>Next</span>{" "}
-            {currentNext.next ? (
-              <strong style={{ color: currentNext.next.color ?? undefined }}>{currentNext.next.title}</strong>
-            ) : (
-              <span className="muted">—</span>
-            )}
+            <div>
+              <span className="muted">Now:</span>{" "}
+              {isViewingToday && currentNext.current ? (
+                <strong>{currentNext.current.title}</strong>
+              ) : (
+                <span className="muted">—</span>
+              )}
+            </div>
+
+            <div>
+              <span className="muted">Next:</span>{" "}
+              {isViewingToday && currentNext.next ? <strong>{currentNext.next.title}</strong> : <span className="muted">—</span>}
+            </div>
+
+            <div>
+              {(() => {
+                const tw = rollingSettings
+                  ? termWeekForDate(selectedDate, rollingSettings.termStarts, rollingSettings.termEnds)
+                  : null;
+                return tw ? <span className="muted">Term {tw.term} · Week {tw.week}</span> : <span className="muted">&nbsp;</span>;
+              })()}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="slotsGridFull">
-        {cells.map(({ blockId, blockLabel, slotId, cell }) => {
-          const override = slotId ? placementBySlot.get(slotId) : undefined;
-          const overrideSubjectId =
-            override && Object.prototype.hasOwnProperty.call(override, "subjectId")
-              ? override.subjectId
-              : undefined;
-          const overrideSubject = typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
+      <div className="card" style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", width: 80 }} className="muted">
+                Slot
+              </th>
+              <th style={{ textAlign: "left" }} className="muted">
+                Details
+              </th>
+            </tr>
+          </thead>
 
-          const roomOverride =
-            override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
-              ? override.roomOverride
-              : undefined;
+          <tbody>
+            {cells.map(({ block, slotId, cell }) => {
+              const plan = slotId ? planBySlot.get(slotId) : undefined;
+              const atts = slotId ? attachmentsBySlot.get(slotId) ?? [] : [];
+              const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
 
-          const subject = cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
-          const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
-          const strip =
-            overrideSubjectId === null
-              ? "#2a2a2a"
-              : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
+              const showPlanEditor = !!slotId && (hasPlan || openPlanSlot === slotId);
+              const ov = slotId ? placementBySlot.get(slotId) : undefined;
+              const roomOverride =
+                ov && Object.prototype.hasOwnProperty.call(ov, "roomOverride") ? ov.roomOverride : undefined;
 
-          const resolvedRoom =
-            cell.kind === "template"
-              ? roomOverride === undefined
-                ? cell.e.room
-                : roomOverride
-              : cell.kind === "manual"
-              ? roomOverride === undefined
-                ? cell.a.manualRoom
-                : roomOverride
-              : overrideSubject
-              ? roomOverride
-              : null;
+              const subject =
+                cell.kind === "template"
+                  ? subjectById.get(subjectIdForTemplateEvent(cell.e))
+                  : cell.kind === "placed"
+                  ? subjectById.get(cell.subjectId)
+                  : undefined;
 
-          const codeText =
-            overrideSubject?.code ??
-            (cell.kind === "template" ? cell.e.code : null) ??
-            (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
+              const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
 
-          const timeText = cell.kind === "template" ? timeRangeFromTemplate(dateLocal, cell.e) : null;
+              const strip = subject?.color ?? "#2a2a2a";
 
-          const plan = slotId ? planBySlot.get(slotId) : undefined;
-          const atts = slotId ? attachmentsBySlot.get(slotId) ?? [] : [];
-          const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
-          const showPlanEditor = !!slotId && (hasPlan || openPlanSlot === slotId);
+              const resolvedRoom =
+                cell.kind === "template"
+                  ? roomOverride === undefined
+                    ? cell.e.room
+                    : roomOverride
+                  : cell.kind === "manual"
+                  ? roomOverride === undefined
+                    ? cell.a.manualRoom
+                    : roomOverride
+                  : subject
+                  ? roomOverride
+                  : null;
 
-          return (
-            <div
-              key={blockId}
-              className="slotCard slotClickable"
-              style={{ ...( { ["--slotStrip" as any]: strip } as any) }}
-              role={slotId ? "button" : undefined}
-              tabIndex={slotId ? 0 : undefined}
-              onClick={() => {
-                if (!slotId) return;
-                const planNow = planBySlot.get(slotId);
-                const attsNow = attachmentsBySlot.get(slotId) ?? [];
-                const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
-                if (hasNow) openPlanHasEverHadContentRef.current.set(slotId, true);
-                setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
-              }}
-              onKeyDown={(e) => {
-                const t = e.target as HTMLElement | null;
-                if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+              const codeText =
+                subject?.code ??
+                (cell.kind === "template" ? cell.e.code : null) ??
+                (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
 
-                if (!slotId) return;
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const planNow = planBySlot.get(slotId);
-                  const attsNow = attachmentsBySlot.get(slotId) ?? [];
-                  const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
-                  if (hasNow) openPlanHasEverHadContentRef.current.set(slotId, true);
-                  setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
-                }
-              }}
-            >
-              <div className="slotTitleRow">
-                <span className="slotPeriodDot" style={{ borderColor: strip, color: strip }}>
-                  {compactBlockLabel(blockLabel)}
-                </span>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 0, width: "100%" }}>
-                  <div style={{ minWidth: 0 }}>
-                    {overrideSubjectId === null ? (
-                      <div className="muted">—</div>
-                    ) : overrideSubject ? (
-                      <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
-                        {overrideSubject.title}
+              const titleText =
+                cell.kind === "blank"
+                  ? "—"
+                  : cell.kind === "free"
+                  ? "Free"
+                  : cell.kind === "manual"
+                  ? cell.a.manualTitle
+                  : cell.kind === "placed"
+                  ? subject?.title ?? "—"
+                  : subject
+                  ? displayTitle(subject, detail)
+                  : cell.e.title;
+
+              const timeText = cell.kind === "template" ? timeRangeFromTemplate(dateLocal, cell.e) : null;
+
+              return (
+                <tr key={block.id}>
+                  <td style={{ verticalAlign: "top" }}>
+                    <div className="badge">{compactBlockLabel(block.name)}</div>
+                  </td>
+
+                  <td style={{ verticalAlign: "top" }}>
+                    <div
+                      className="slotCard slotClickable"
+                      style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
+                      role={slotId ? "button" : undefined}
+                      tabIndex={slotId ? 0 : undefined}
+                      onClick={() => {
+                        if (!slotId) return;
+                        if (hasPlan) openPlanHasEverHadContentRef.current.set(slotId, true);
+                        setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+                      }}
+                      onKeyDown={(e) => {
+                        const t = e.target as HTMLElement | null;
+                        if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+                        if (!slotId) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          if (hasPlan) openPlanHasEverHadContentRef.current.set(slotId, true);
+                          setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+                        }
+                      }}
+                    >
+                      <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
+                        <div>
+                          <strong>{titleText}</strong>{" "}
+                          {codeText ? <span className="muted">({codeText})</span> : null}
+                        </div>
+                        <div className="muted">{timeText ?? ""}</div>
                       </div>
-                    ) : cell.kind === "blank" ? (
-                      <div className="muted">—</div>
-                    ) : cell.kind === "free" ? (
-                      <div className="muted">Free</div>
-                    ) : cell.kind === "manual" ? (
-                      <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
-                        {cell.a.manualTitle}
+
+                      <div className="muted" style={{ marginTop: 4 }}>
+                        {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}{" "}
+                        {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
+                        {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+                        {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
                       </div>
-                    ) : cell.kind === "template" ? (
-                      <div className="slotTitle" style={{ color: strip, fontWeight: 700 }}>
-                        {subject ? displayTitle(subject, detail) : cell.e.title}
-                      </div>
-                    ) : null}
-                  </div>
 
-                  <div className="row slotCompactBadges" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {codeText ? <span className="badge">{codeText}</span> : null}
-                    {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}
-                    {timeText ? <span className="badge">{timeText}</span> : null}
-                  </div>
-                </div>
-              </div>
-
-              {/* Meta line: code + room + time (no badges) */}
-
-              {showPlanEditor ? (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  onFocusCapture={() => setActivePlanSlot(slotId)}
-                  onBlurCapture={(e) => {
-                    const rt = (e.relatedTarget as Node | null) ?? null;
-                    if (!rt || !e.currentTarget.contains(rt)) setActivePlanSlot(null);
-                  }}
-                >
-                  <RichTextPlanEditor
-                    userId={userId}
-                    dateKey={dateKey}
-                    slotId={slotId}
-                    initialHtml={plan?.html ?? ""}
-                    attachments={atts}
-                  />
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+                      {slotId && showPlanEditor ? (
+  <div
+    style={{ marginTop: 10 }}
+    onFocusCapture={() => setActivePlanSlot(slotId)}
+    onBlurCapture={() => setActivePlanSlot((cur) => (cur === slotId ? null : cur))}
+  >
+    <RichTextPlanEditor
+      userId={userId}
+      dateKey={dateKey}
+      slotId={slotId}
+      initialHtml={plan?.html ?? ""}
+      attachments={atts}
+    />
+  </div>
+) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+
+      {isViewingToday ? null : (
+        <div className="card">
+          <button className="btn" type="button" onClick={onGoToday}>
+            Back to today
+          </button>
+        </div>
+      )}
     </div>
   );
 }
