@@ -514,7 +514,7 @@ export default function WeekPage() {
                         }}
                         onKeyDown={(e) => {
                           if (!slotId || !planKey) return;
-                          if (e.key === "Enter" || e.key === " ") {
+                          if (e.key === "Enter") {
                             e.preventDefault();
                             const planNow = plansByDate.get(dateKey)?.get(slotId);
                             const attsNow = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];

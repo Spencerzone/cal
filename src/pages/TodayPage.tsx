@@ -534,7 +534,7 @@ function formatDisplayDate(d: Date) {
               }}
               onKeyDown={(e) => {
                 if (!slotId) return;
-                if (e.key === "Enter" || e.key === " ") {
+                if (e.key === "Enter") {
                   e.preventDefault();
                   const planNow = planBySlot.get(slotId);
                   const attsNow = attachmentsBySlot.get(slotId) ?? [];
