@@ -526,16 +526,41 @@ export default function WeekPage() {
                           }
                         }}
                       >
-                        <div className="row" style={{ justifyContent: "space-between", gap: 10 }}>
-                          <div>
-                            <strong>{titleText}</strong>{" "}
-                            {codeText ? <span className="muted">({codeText})</span> : null}
-                          </div>
-                          <div className="muted">{timeText ?? ""}</div>
-                        </div>
+                        <div className="row" style={{ justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+  <div className="row" style={{ gap: 10, alignItems: "center", minWidth: 0 }}>
+    {/* circular slot badge */}
+    <span
+      title={block.name}
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 999,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 12,
+        fontWeight: 700,
+        background: strip,
+        color: "#0b0b0b",
+        flex: "0 0 auto",
+      }}
+    >
+      {compactBlockLabel(block.name)}
+    </span>
+
+    {/* coloured subject title */}
+    <div style={{ minWidth: 0 }}>
+      <strong style={{ color: strip }}>{titleText}</strong>{" "}
+      {codeText ? <span className="muted">({codeText})</span> : null}
+    </div>
+  </div>
+
+  <div className="muted" style={{ whiteSpace: "nowrap" }}>
+    {timeText ?? ""}
+  </div>
+</div>
 
                         <div className="muted" style={{ marginTop: 4 }}>
-                          <span className="badge">{compactBlockLabel(block.name)}</span>{" "}
                           {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}{" "}
                           {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
                           {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
