@@ -513,6 +513,9 @@ export default function WeekPage() {
                           setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
                         }}
                         onKeyDown={(e) => {
+                          const t = e.target as HTMLElement | null;
+                          if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+                          
                           if (!slotId || !planKey) return;
                           if (e.key === "Enter") {
                             e.preventDefault();

@@ -533,6 +533,9 @@ function formatDisplayDate(d: Date) {
                 setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
               }}
               onKeyDown={(e) => {
+                const t = e.target as HTMLElement | null;
+                if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+
                 if (!slotId) return;
                 if (e.key === "Enter") {
                   e.preventDefault();
