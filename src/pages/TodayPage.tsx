@@ -20,7 +20,6 @@ import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
 
-import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
@@ -143,7 +142,6 @@ export default function TodayPage() {
   }, [userId]);
 
   async function loadSubjects() {
-    await ensureSubjectsFromTemplates(userId);
     const subs = await getSubjectsByUser(userId);
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }

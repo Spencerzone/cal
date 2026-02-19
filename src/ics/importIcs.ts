@@ -6,6 +6,7 @@ import { parseIcsToBaseEvents, hashString } from "./parseIcs";
 import { buildCycleTemplateFromIcs } from "../rolling/buildTemplateFromIcs";
 import { buildDraftSlotAssignments } from "../rolling/buildSlotAssignments";
 import { baseEventDoc, baseEventsCol, importDoc, type ImportRow } from "../db/db";
+import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 
 export async function importIcs(userId: string, icsText: string, icsName: string) {
   const importId = `${Date.now()}`;
@@ -45,6 +46,9 @@ export async function importIcs(userId: string, icsText: string, icsName: string
   }
 
   await buildCycleTemplateFromIcs(userId, icsText);
+  // Only seed/update Subjects from the template as part of an explicit import.
+  // Do NOT do this on page load, otherwise deleted/archived subjects will reappear.
+  await ensureSubjectsFromTemplates(userId);
   await buildDraftSlotAssignments(userId);
 
   return { importId, count: parsed.length };

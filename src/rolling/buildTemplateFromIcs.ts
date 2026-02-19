@@ -28,7 +28,18 @@ function extractRoom(location: string | null): string | null {
 
 function splitSummary(summary: string): { code: string | null; title: string } {
   const idx = summary.indexOf(":");
-  if (idx === -1) return { code: null, title: summary.trim() };
+  // Support both:
+  //   CODE: Title
+  //   Title (CODE)   (common in Sentral/Edval exports)
+  if (idx === -1) {
+    const m = summary.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+    if (m) {
+      const title = (m[1] ?? "").trim();
+      const code = (m[2] ?? "").trim();
+      return { code: code ? code : null, title: title || summary.trim() };
+    }
+    return { code: null, title: summary.trim() };
+  }
   const left = summary.slice(0, idx).trim();
   const right = summary.slice(idx + 1).trim();
   return { code: left || null, title: right || summary.trim() };

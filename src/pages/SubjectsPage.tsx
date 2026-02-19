@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import type { Subject, SubjectKind } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
-import { deleteSubject, getSubjectsByUser, upsertSubject } from "../db/subjectQueries";
+import { deleteSubject, getAllSubjectsByUser, restoreSubject, upsertSubject } from "../db/subjectQueries";
 import { subjectIdForManual, autoHexColorForKey } from "../db/subjectUtils";
 
 
@@ -20,6 +20,7 @@ export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [filter, setFilter] = useState<SubjectKind | "all">("all");
   const [q, setQ] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
 
   const [newKind, setNewKind] = useState<SubjectKind>("subject");
   const [newCode, setNewCode] = useState("");
@@ -27,9 +28,15 @@ export default function SubjectsPage() {
   const [newColor, setNewColor] = useState("#3b82f6");
 
   async function refresh() {
-    await ensureSubjectsFromTemplates(userId);
-    const all = await getSubjectsByUser(userId);
+    if (!userId) return;
+    const all = await getAllSubjectsByUser(userId);
     setSubjects(all);
+  }
+
+  async function syncFromTemplate() {
+    if (!userId) return;
+    await ensureSubjectsFromTemplates(userId);
+    await refresh();
   }
 
   useEffect(() => {
@@ -37,11 +44,12 @@ export default function SubjectsPage() {
     const onChanged = () => refresh();
     window.addEventListener("subjects-changed", onChanged as any);
     return () => window.removeEventListener("subjects-changed", onChanged as any);
-  }, []);
+  }, [userId]);
 
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
     return subjects
+      .filter((s) => (showArchived ? true : !s.archived))
       .filter((s) => (filter === "all" ? true : s.kind === filter))
       .filter((s) =>
         query
@@ -94,7 +102,14 @@ export default function SubjectsPage() {
           </select>
 
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" style={{ minWidth: 220 }} />
+          <label className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show archived
+          </label>
           <button onClick={refresh}>Refresh</button>
+          <button onClick={syncFromTemplate} title="Create any missing subjects based on the current timetable template">
+            Sync from template
+          </button>
         </div>
 
         <div className="space" />
@@ -196,13 +211,21 @@ export default function SubjectsPage() {
                 <td style={{ verticalAlign: "top" }}>
                   <button
                     onClick={async () => {
-                      const ok = window.confirm(`Delete “${s.title}”? This removes it from Subjects and clears any matrix overrides that use it.`);
+                      if (s.archived) {
+                        await restoreSubject(userId, s.id);
+                        await refresh();
+                        return;
+                      }
+
+                      const ok = window.confirm(
+                        `Archive “${s.title}”? This hides it from Subjects but keeps historical references. It can be restored by enabling “Show archived”.`
+                      );
                       if (!ok) return;
                       await deleteSubject(userId, s.id);
                       await refresh();
                     }}
                   >
-                    Delete
+                    {s.archived ? "Restore" : "Archive"}
                   </button>
                 </td>
               </tr>
