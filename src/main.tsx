@@ -49,6 +49,40 @@ window.addEventListener("unhandledrejection", (e) => {
   });
 });
 
+async function nukePwaCachesIfRequested() {
+  const url = new URL(window.location.href);
+
+  // Visit /cal/?nuke=1 once
+  if (url.searchParams.get("nuke") !== "1") return;
+
+  try {
+    // Unregister any service workers
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) await r.unregister();
+    }
+
+    // Delete all Cache Storage entries (Workbox precache etc.)
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+
+    // Clear local/session storage (optional but helps)
+    try { localStorage.clear(); } catch {}
+    try { sessionStorage.clear(); } catch {}
+
+    // Reload without the nuke param
+    url.searchParams.delete("nuke");
+    window.location.replace(url.toString());
+  } catch (e) {
+    console.error("NUKE FAILED", e);
+  }
+}
+
+// call it before React mounts
+await nukePwaCachesIfRequested();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <HashRouter>
