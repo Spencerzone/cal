@@ -6,6 +6,10 @@ const BASE = "/cal/"; // set to "/<repo>/" for GitHub Pages project sites
 
 export default defineConfig({
   base: BASE,
+  build: {
+    sourcemap: true,
+    minify: false,
+  },
   plugins: [
     react(),
     VitePWA({
