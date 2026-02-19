@@ -1,10 +1,10 @@
-import { AuthProvider } from "./auth/AuthProvider";
-import RequireAuth from "./auth/RequireAuth";
-import LoginPage from "./pages/LoginPage";
-
 // src/App.tsx
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+
+import { AuthProvider } from "./auth/AuthProvider";
+import RequireAuth from "./auth/RequireAuth";
+
 import ImportPage from "./pages/ImportPage";
 import TodayPage from "./pages/TodayPage";
 import WeekPage from "./pages/WeekPage";
@@ -14,9 +14,11 @@ import TemplateMappingPage from "./pages/TemplateMappingPage";
 import BlocksPage from "./pages/BlocksPage";
 import SubjectsPage from "./pages/SubjectsPage";
 import SetupPage from "./pages/SetupPage";
+import LoginPage from "./pages/LoginPage";
 
 export default function App() {
   const location = useLocation();
+
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem("daybook.sidebarOpen");
@@ -44,6 +46,7 @@ export default function App() {
     if (location.pathname.startsWith("/import")) return "Import";
     if (location.pathname.startsWith("/mapping")) return "Mapping";
     if (location.pathname.startsWith("/blocks")) return "Blocks";
+    if (location.pathname.startsWith("/login")) return "Login";
     return "DayBook";
   }, [location.pathname]);
 
@@ -64,58 +67,121 @@ export default function App() {
       </header>
 
       <div className={sidebarOpen ? "layout" : "layout layout--collapsed"}>
-{sidebarOpen ? (
-        <aside className="sidebar">
-          <nav className="sidenav">
-            <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
-              Today
-            </NavLink>
-            <NavLink to="/week" className={({ isActive }) => (isActive ? "active" : "")}>
-              Week
-            </NavLink>
-            <NavLink to="/matrix" className={({ isActive }) => (isActive ? "active" : "")}>
-              Matrix
-            </NavLink>
-            <NavLink to="/subjects" className={({ isActive }) => (isActive ? "active" : "")}>
-              Subjects
-            </NavLink>
-            <div className="navDivider" />
-            <NavLink to="/setup" className={({ isActive }) => (isActive ? "active" : "")}>
-              Setup
-            </NavLink>
-            <NavLink to="/subject" className={({ isActive }) => (isActive ? "active" : "")}>
-              Subject
-            </NavLink>
-            <NavLink to="/import" className={({ isActive }) => (isActive ? "active" : "")}>
-              Import
-            </NavLink>
-            <NavLink to="/mapping" className={({ isActive }) => (isActive ? "active" : "")}>
-              Mapping
-            </NavLink>
-            <NavLink to="/blocks" className={({ isActive }) => (isActive ? "active" : "")}>
-              Blocks
-            </NavLink>
-          </nav>
-        </aside>
-) : null}
+        {sidebarOpen ? (
+          <aside className="sidebar">
+            <nav className="sidenav">
+              <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
+                Today
+              </NavLink>
+              <NavLink to="/week" className={({ isActive }) => (isActive ? "active" : "")}>
+                Week
+              </NavLink>
+              <NavLink to="/matrix" className={({ isActive }) => (isActive ? "active" : "")}>
+                Matrix
+              </NavLink>
+              <NavLink to="/subjects" className={({ isActive }) => (isActive ? "active" : "")}>
+                Subjects
+              </NavLink>
+              <div className="navDivider" />
+              <NavLink to="/setup" className={({ isActive }) => (isActive ? "active" : "")}>
+                Setup
+              </NavLink>
+              <NavLink to="/subject" className={({ isActive }) => (isActive ? "active" : "")}>
+                Subject
+              </NavLink>
+              <NavLink to="/import" className={({ isActive }) => (isActive ? "active" : "")}>
+                Import
+              </NavLink>
+              <NavLink to="/mapping" className={({ isActive }) => (isActive ? "active" : "")}>
+                Mapping
+              </NavLink>
+              <NavLink to="/blocks" className={({ isActive }) => (isActive ? "active" : "")}>
+                Blocks
+              </NavLink>
+            </nav>
+          </aside>
+        ) : null}
 
         <div className="container">
-        <AuthProvider>
-          <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<RequireAuth><TodayPage /></RequireAuth>} />
-          <Route path="/week" element={<RequireAuth><WeekPage /></RequireAuth>} />
-          <Route path="/subject" element={<RequireAuth><SubjectPage /></RequireAuth>} />
-          <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
-          <Route path="/matrix" element={<RequireAuth><MatrixPage /></RequireAuth>} />
-          <Route path="/mapping" element={<RequireAuth><TemplateMappingPage /></RequireAuth>} />
-          <Route path="/blocks" element={<RequireAuth><BlocksPage /></RequireAuth>} />
-          <Route path="/subjects" element={<RequireAuth><SubjectsPage /></RequireAuth>} />
-          <Route path="/setup" element={<RequireAuth><SetupPage /></RequireAuth>} />
-        </Routes>
-        </BrowserRouter>
-        </AuthProvider>
-      </div>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <TodayPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/week"
+                element={
+                  <RequireAuth>
+                    <WeekPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/subject"
+                element={
+                  <RequireAuth>
+                    <SubjectPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/import"
+                element={
+                  <RequireAuth>
+                    <ImportPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/matrix"
+                element={
+                  <RequireAuth>
+                    <MatrixPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/mapping"
+                element={
+                  <RequireAuth>
+                    <TemplateMappingPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/blocks"
+                element={
+                  <RequireAuth>
+                    <BlocksPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/subjects"
+                element={
+                  <RequireAuth>
+                    <SubjectsPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/setup"
+                element={
+                  <RequireAuth>
+                    <SetupPage />
+                  </RequireAuth>
+                }
+              />
+            </Routes>
+          </AuthProvider>
+        </div>
       </div>
     </>
   );
