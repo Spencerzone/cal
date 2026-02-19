@@ -234,6 +234,29 @@ export default function MatrixPage() {
     await setPlacement(userId, dl, slotId, subjectId !== undefined ? { subjectId } : {});
   }
 
+  useEffect(() => {
+  if (!userId) return;
+
+  console.log("[DBG] templateById size:", templateById.size);
+  console.log("[DBG] subjectsById size:", subjectsById.size);
+
+  const sample = Array.from(templateById.values()).slice(0, 25);
+
+  const rows = sample.map((e: any) => {
+    const sid = subjectIdForTemplateEvent(e);
+    return {
+      title: e.title,
+      code: e.code,
+      room: e.room ?? e.location ?? "",
+      subjectIdForTemplateEvent: sid,
+      subjectExists: subjectsById.has(sid),
+      subjectColor: subjectsById.get(sid)?.color ?? null,
+    };
+  });
+
+  console.table(rows);
+}, [userId, templateById, subjectsById]);
+
   return (
     <div className="grid">
       <h1>Fortnight matrix</h1>
