@@ -14,9 +14,17 @@ function show(label: string, payload: any) {
   pre.style.fontFamily =
     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
-  pre.textContent =
-    `${label}\n\n` +
-    (typeof payload === "string" ? payload : JSON.stringify(payload, null, 2));
+  let body = "";
+  try {
+    body =
+      typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload, null, 2);
+  } catch {
+    body = String(payload);
+  }
+
+  pre.textContent = `${label}\n\n${body}`;
 
   document.body.innerHTML = "";
   document.body.appendChild(pre);
@@ -25,7 +33,6 @@ function show(label: string, payload: any) {
 window.addEventListener("error", (e) => {
   const any = e as any;
 
-  // Firefox often hides .error; so print the rest
   show("WINDOW ERROR", {
     message: any.message ?? null,
     filename: any.filename ?? null,
@@ -33,7 +40,9 @@ window.addEventListener("error", (e) => {
     colno: any.colno ?? null,
     type: any.type ?? null,
     targetTag: (any.target && (any.target as any).tagName) || null,
-    targetSrc: (any.target && ((any.target as any).src || (any.target as any).href)) || null,
+    targetSrc:
+      (any.target && ((any.target as any).src || (any.target as any).href)) ||
+      null,
     errorString: any.error ? String(any.error) : null,
     stack: any.error?.stack ?? null,
   });
@@ -52,7 +61,7 @@ window.addEventListener("unhandledrejection", (e) => {
 async function nukePwaCachesIfRequested() {
   const url = new URL(window.location.href);
 
-  // Visit /cal/?nuke=1 once
+  // Visit /cal/?nuke=1 once (works with HashRouter too)
   if (url.searchParams.get("nuke") !== "1") return;
 
   try {
@@ -69,8 +78,12 @@ async function nukePwaCachesIfRequested() {
     }
 
     // Clear local/session storage (optional but helps)
-    try { localStorage.clear(); } catch {}
-    try { sessionStorage.clear(); } catch {}
+    try {
+      localStorage.clear();
+    } catch {}
+    try {
+      sessionStorage.clear();
+    } catch {}
 
     // Reload without the nuke param
     url.searchParams.delete("nuke");
@@ -80,18 +93,18 @@ async function nukePwaCachesIfRequested() {
   }
 }
 
-// call it before React mounts
-await nukePwaCachesIfRequested();
-
-
-(async () => {
-  await nukePwaCachesIfRequested();
-  // ReactDOM.createRoot(...).render(...)
+function mount() {
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
-  </React.StrictMode>
-);
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </React.StrictMode>
+  );
+}
+
+// No top-level await; do it inside an IIFE
+(async () => {
+  await nukePwaCachesIfRequested();
+  mount();
 })();
