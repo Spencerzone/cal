@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyTemplateMapping, getTemplateMeta, mappingPreview } from "../rolling/templateMapping";
+import { useAuth } from "../auth/AuthProvider";
 
 export default function TemplateMappingPage() {
   const { user } = useAuth();
@@ -13,6 +14,7 @@ export default function TemplateMappingPage() {
 
   useEffect(() => {
     (async () => {
+      if (!userId) return;
       const meta = await getTemplateMeta(userId);
       if (!meta) {
         setStatus("No template metadata found. Import ICS and rebuild the template first.");
@@ -25,7 +27,7 @@ export default function TemplateMappingPage() {
       setCycleDates(meta.cycleDates);
       setMetaLoaded(true);
     })();
-  }, []);
+  }, [userId]);
 
   const preview = useMemo(() => {
     if (!metaLoaded || cycleDates.length !== 10) return [];

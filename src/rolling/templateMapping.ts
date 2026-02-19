@@ -1,6 +1,7 @@
 // src/rolling/templateMapping.ts (Firestore source-of-truth)
 
 import { getDoc, setDoc } from "firebase/firestore";
+import { auth } from "../firebase";
 import type { DayLabel } from "../db/db";
 import { settingDoc } from "../db/db";
 
@@ -53,4 +54,38 @@ export async function getTemplateMeta(userId: string): Promise<TemplateMeta | nu
 export async function setTemplateMeta(userId: string, meta: TemplateMeta): Promise<void> {
   await setDoc(settingDoc(userId, KEY), { key: KEY, value: meta }, { merge: true });
   window.dispatchEvent(new Event("template-meta-changed"));
+}
+
+/**
+ * UI helper: show a 10-day preview of the labels after applying shift/flip.
+ */
+export function mappingPreview(meta: TemplateMeta): { date: string; label: DayLabel }[] {
+  const dates = meta.cycleDates ?? [];
+  const out: { date: string; label: DayLabel }[] = [];
+  for (let i = 0; i < Math.min(10, dates.length); i++) {
+    const canonical = CANON_LABELS[i];
+    out.push({ date: dates[i], label: applyMetaToLabel(canonical, meta) });
+  }
+  return out;
+}
+
+/**
+ * Apply mapping changes for the current user (auth.currentUser).
+ * Kept with the old signature used by TemplateMappingPage.
+ */
+export async function applyTemplateMapping(shift: number, flipped: boolean): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("Not signed in");
+
+  const meta = await getTemplateMeta(uid);
+  if (!meta) throw new Error("No template metadata found");
+
+  const next: TemplateMeta = {
+    ...meta,
+    shift,
+    flipped,
+    builtAt: Date.now(),
+  };
+
+  await setTemplateMeta(uid, next);
 }
