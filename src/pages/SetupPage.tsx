@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
 import { getRollingSettings, setRollingSettings, type RollingSettings } from "../rolling/settings";
 import { NavLink } from "react-router-dom";
 
@@ -16,6 +17,7 @@ export default function SetupPage() {
   const [t4e, setT4e] = useState("");
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       const s = await getRollingSettings(userId);
       setSettings(s);
@@ -28,9 +30,10 @@ export default function SetupPage() {
       setT3e((s.termEnds?.t3 ?? "").trim());
       setT4e((s.termEnds?.t4 ?? "").trim());
     })();
-  }, []);
+  }, [userId]);
 
   async function save() {
+    if (!userId) return;
     const current = (await getRollingSettings(userId)) as any;
     const next: RollingSettings = {
       ...current,
