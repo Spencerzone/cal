@@ -116,16 +116,20 @@ export default function MatrixPage() {
         continue;
       }
 
-      if (a.manualTitle) {
-        m.set(k, { kind: "manual", a });
-        continue;
-      }
+      // Prefer template linkage if present (even if manualTitle is also set)
+if (a.sourceTemplateEventId) {
+  const te = templateById.get(a.sourceTemplateEventId);
+  if (te) {
+    m.set(k, { kind: a.kind, e: te });
+    continue;
+  }
+}
 
-      if (a.sourceTemplateEventId) {
-        const te = templateById.get(a.sourceTemplateEventId);
-        if (te) m.set(k, { kind: a.kind, e: te });
-        continue;
-      }
+// Otherwise, treat as manual
+if (a.manualTitle) {
+  m.set(k, { kind: "manual", a });
+  continue;
+}
 
       m.set(k, { kind: "blank" });
     }
