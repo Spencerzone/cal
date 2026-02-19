@@ -1,25 +1,17 @@
-// src/db/lessonPlanQueries.ts (Firestore + Firebase Storage)
+// src/db/lessonPlanQueries.ts (Firestore-only; attachments disabled)
 
-import { deleteDoc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
-import { deleteObject, getDownloadURL, getStorage, ref as storageRef, uploadBytes } from "firebase/storage";
-import { db } from "../firebase";
 import {
-  lessonAttachmentDoc,
-  lessonAttachmentsCol,
-  lessonPlanDoc,
-  lessonPlansCol,
-  type LessonAttachment,
-  type LessonPlan,
-  type SlotId,
-} from "./db";
+  deleteDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from "firebase/firestore";
+import { lessonAttachmentsCol, lessonAttachmentDoc, lessonPlanDoc, lessonPlansCol } from "./db";
+import type { LessonAttachment, LessonPlan, SlotId } from "./db";
 
 function planKeyFor(dateKey: string, slotId: SlotId) {
   return `${dateKey}::${slotId}`;
-}
-
-function attachmentStoragePath(userId: string, attachmentId: string, filename: string) {
-  const safe = filename.replaceAll("/", "_");
-  return `users/${userId}/attachments/${attachmentId}/${safe}`;
 }
 
 export async function getLessonPlansForDate(userId: string, dateKey: string): Promise<LessonPlan[]> {
@@ -27,7 +19,12 @@ export async function getLessonPlansForDate(userId: string, dateKey: string): Pr
   return snap.docs.map((d) => d.data() as LessonPlan);
 }
 
-export async function upsertLessonPlan(userId: string, dateKey: string, slotId: SlotId, html: string): Promise<void> {
+export async function upsertLessonPlan(
+  userId: string,
+  dateKey: string,
+  slotId: SlotId,
+  html: string
+): Promise<void> {
   const key = planKeyFor(dateKey, slotId);
   const trimmed = html.trim();
 
@@ -53,69 +50,27 @@ export async function upsertLessonPlan(userId: string, dateKey: string, slotId: 
 export async function deleteLessonPlan(userId: string, dateKey: string, slotId: SlotId): Promise<void> {
   const key = planKeyFor(dateKey, slotId);
 
-  const atts = await getAttachmentsForPlan(userId, key);
-  const storage = getStorage();
-
-  for (const a of atts) {
-    try {
-      await deleteObject(storageRef(storage, a.storagePath));
-    } catch {
-      // ignore
-    }
-  }
-
-  if (atts.length) {
-    const batch = writeBatch(db);
-    for (const a of atts) batch.delete(lessonAttachmentDoc(userId, a.id));
-    await batch.commit();
+  // Delete any attachment metadata docs (if they exist from earlier experiments)
+  const snap = await getDocs(query(lessonAttachmentsCol(userId), where("planKey", "==", key)));
+  for (const d of snap.docs) {
+    await deleteDoc(d.ref);
   }
 
   await deleteDoc(lessonPlanDoc(userId, key));
 }
 
-export async function getAttachmentsForPlan(userId: string, planKey: string): Promise<LessonAttachment[]> {
-  const snap = await getDocs(query(lessonAttachmentsCol(userId), where("planKey", "==", planKey)));
-  return snap.docs.map((d) => d.data() as LessonAttachment);
+export async function getAttachmentsForPlan(_userId: string, _planKey: string): Promise<LessonAttachment[]> {
+  // Attachments disabled (no Firebase Storage).
+  return [];
 }
 
-export async function addAttachmentToPlan(userId: string, planKey: string, file: File): Promise<void> {
-  const id = crypto.randomUUID();
-  const storage = getStorage();
-
-  const path = attachmentStoragePath(userId, id, file.name);
-  const sref = storageRef(storage, path);
-
-  await uploadBytes(sref, file, { contentType: file.type || "application/octet-stream" });
-  const url = await getDownloadURL(sref);
-
-  const att: LessonAttachment = {
-    id,
-    userId,
-    planKey,
-    name: file.name,
-    mime: file.type || "application/octet-stream",
-    size: file.size,
-    storagePath: path,
-    downloadUrl: url,
-    createdAt: Date.now(),
-  };
-
-  await setDoc(lessonAttachmentDoc(userId, id), att, { merge: false });
-  window.dispatchEvent(new Event("lessonplans-changed"));
+export async function addAttachmentToPlan(_userId: string, _planKey: string, _file: File): Promise<void> {
+  // Attachments disabled (no Firebase Storage).
+  throw new Error("Attachments are disabled (Firebase Storage not enabled).");
 }
 
 export async function deleteAttachment(userId: string, id: string): Promise<void> {
-  const snap = await getDoc(lessonAttachmentDoc(userId, id));
-  if (snap.exists()) {
-    const att = snap.data() as LessonAttachment;
-    const storage = getStorage();
-    try {
-      await deleteObject(storageRef(storage, att.storagePath));
-    } catch {
-      // ignore
-    }
-  }
-
+  // Delete metadata doc if it exists
   await deleteDoc(lessonAttachmentDoc(userId, id));
   window.dispatchEvent(new Event("lessonplans-changed"));
 }

@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from "react";
-import type { LessonAttachment, SlotId } from "../db/db";
-import { addAttachmentToPlan, deleteAttachment, upsertLessonPlan } from "../db/lessonPlanQueries";
-
-function planKeyForSlot(dateKey: string, slotId: SlotId) {
-  return `${dateKey}::${slotId}`;
-}
+import type { SlotId } from "../db/db";
+import { upsertLessonPlan } from "../db/lessonPlanQueries";
 
 export default function RichTextPlanEditor(props: {
   userId: string;
   dateKey: string;
   slotId: SlotId;
   initialHtml: string;
-  attachments: LessonAttachment[];
+  // kept for compatibility with existing call sites; ignored when attachments disabled
+  attachments: any[];
 }) {
-  const { userId, dateKey, slotId, initialHtml, attachments } = props;
+  const { userId, dateKey, slotId, initialHtml } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -33,7 +30,6 @@ export default function RichTextPlanEditor(props: {
   function isHtmlEffectivelyEmpty(raw: string): boolean {
     const s = (raw ?? "").trim();
     if (!s) return true;
-    // Convert common empty editor outputs into empty.
     const text = s
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/?p[^>]*>/gi, "\n")
@@ -56,18 +52,17 @@ export default function RichTextPlanEditor(props: {
 
   // Hydrate DOM once per open.
   useEffect(() => {
-  if (!active) return;
-  if (hydratedRef.current) return;
-  const el = ref.current;
-  if (!el) return;
+    if (!active) return;
+    if (hydratedRef.current) return;
+    const el = ref.current;
+    if (!el) return;
 
-  // Ensures Enter creates paragraphs consistently
-  // eslint-disable-next-line deprecation/deprecation
-  document.execCommand("defaultParagraphSeparator", false, "p");
+    // eslint-disable-next-line deprecation/deprecation
+    document.execCommand("defaultParagraphSeparator", false, "p");
 
-  el.innerHTML = html || "<p><br></p>";
-  hydratedRef.current = true;
-}, [active]);
+    el.innerHTML = html || "<p><br></p>";
+    hydratedRef.current = true;
+  }, [active]);
 
   function exec(cmd: string, value?: string) {
     dirtyRef.current = true;
@@ -80,7 +75,6 @@ export default function RichTextPlanEditor(props: {
   }
 
   function toolbarMouseDown(e: RMouseEvent) {
-    // Prevent toolbar clicks from stealing focus / collapsing selection.
     e.preventDefault();
   }
 
@@ -92,21 +86,19 @@ export default function RichTextPlanEditor(props: {
   }
 
   function onEditorKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-  if (e.key !== "Enter") return;
+    if (e.key !== "Enter") return;
 
-  // Allow Shift+Enter to insert a simple line break
-  if (e.shiftKey) {
+    if (e.shiftKey) {
+      e.preventDefault();
+      // eslint-disable-next-line deprecation/deprecation
+      document.execCommand("insertLineBreak");
+      return;
+    }
+
     e.preventDefault();
     // eslint-disable-next-line deprecation/deprecation
-    document.execCommand("insertLineBreak");
-    return;
+    document.execCommand("insertParagraph");
   }
-
-  // Plain Enter => new paragraph
-  e.preventDefault();
-  // eslint-disable-next-line deprecation/deprecation
-  document.execCommand("insertParagraph");
-}
 
   // Close editor when clicking outside.
   useEffect(() => {
@@ -122,21 +114,7 @@ export default function RichTextPlanEditor(props: {
     return () => window.removeEventListener("mousedown", onDown);
   }, [active]);
 
-  async function onAddFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const planKey = planKeyForSlot(dateKey, slotId);
-
-    // Ensure plan exists for attachment parent.
-    if (!html.trim()) {
-      await upsertLessonPlan(userId, dateKey, slotId, "<p><br></p>");
-    }
-
-    for (const f of Array.from(files)) {
-      await addAttachmentToPlan(userId, planKey, f);
-    }
-  }
-
-  const hasContent = !isHtmlEffectivelyEmpty(html) || attachments.length > 0;
+  const hasContent = !isHtmlEffectivelyEmpty(html);
 
   return (
     <div
@@ -243,19 +221,6 @@ export default function RichTextPlanEditor(props: {
               Link
             </button>
 
-            <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              Attach
-              <input
-                type="file"
-                multiple
-                onChange={(e) => {
-                  onAddFiles(e.target.files);
-                  e.currentTarget.value = "";
-                }}
-                style={{ display: "none" }}
-              />
-            </label>
-
             <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("removeFormat")}>Clear</button>
 
             <button
@@ -292,35 +257,6 @@ export default function RichTextPlanEditor(props: {
               outline: "none",
             }}
           />
-
-          {attachments.length > 0 ? (
-            <div style={{ marginTop: 10 }}>
-              <div className="muted" style={{ marginBottom: 6 }}>
-                Attachments
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
-                {attachments.map((a) => (
-                  <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
-                    <a
-                      href={URL.createObjectURL(a.blob)}
-                      download={a.name}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => {
-                        const url = (e.currentTarget as HTMLAnchorElement).href;
-                        setTimeout(() => URL.revokeObjectURL(url), 5_000);
-                      }}
-                    >
-                      {a.name}
-                    </a>
-                    <button className="btn" type="button" onClick={() => deleteAttachment(a.id)}>
-                      Delete
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </>
       ) : null}
     </div>
