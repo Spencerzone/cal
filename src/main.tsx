@@ -83,10 +83,15 @@ async function nukePwaCachesIfRequested() {
 // call it before React mounts
 await nukePwaCachesIfRequested();
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+
+(async () => {
+  await nukePwaCachesIfRequested();
+  // ReactDOM.createRoot(...).render(...)
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
     <HashRouter>
       <App />
     </HashRouter>
   </React.StrictMode>
 );
+})();
