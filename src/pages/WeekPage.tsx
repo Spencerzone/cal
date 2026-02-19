@@ -21,6 +21,7 @@ import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 
+import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
@@ -127,6 +128,7 @@ export default function WeekPage() {
   }, [userId]);
 
   async function loadSubjects() {
+    await ensureSubjectsFromTemplates(userId);
     const subs = await getSubjectsByUser(userId);
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }

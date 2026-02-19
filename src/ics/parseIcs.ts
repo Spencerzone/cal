@@ -38,11 +38,30 @@ function extractRoom(location: string | null): string | null {
 }
 
 function splitSummary(summary: string): { code: string | null; title: string } {
-  const idx = summary.indexOf(":");
-  if (idx === -1) return { code: null, title: summary.trim() };
-  const left = summary.slice(0, idx).trim();
-  const right = summary.slice(idx + 1).trim();
-  return { code: left || null, title: right || summary.trim() };
+  const s = summary.trim();
+
+  // Common Sentral formats:
+  // 1) "CODE: Title"
+  // 2) "Title (CODE)"  (often used for roll call / class codes)
+  const idx = s.indexOf(":");
+  if (idx !== -1) {
+    const left = s.slice(0, idx).trim();
+    const right = s.slice(idx + 1).trim();
+    return { code: left || null, title: right || s };
+  }
+
+  // Trailing "(CODE)" pattern
+  const m = s.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (m) {
+    const title = (m[1] ?? "").trim();
+    const code = (m[2] ?? "").trim();
+    // Only treat it as a code if it looks like a short-ish identifier.
+    if (code && code.length <= 24) {
+      return { code, title: title || s };
+    }
+  }
+
+  return { code: null, title: s };
 }
 
 // Stable lightweight hash (not cryptographic) for change detection.

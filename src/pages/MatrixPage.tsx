@@ -4,6 +4,7 @@ import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } from "../db/db";
+import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
 import { getPlacementsForDayLabels, setPlacement } from "../db/placementQueries";
@@ -55,6 +56,7 @@ export default function MatrixPage() {
   }, [userId]);
 
   async function loadSubjects() {
+    await ensureSubjectsFromTemplates(userId);
     const subs = await getSubjectsByUser(userId);
     setSubjectsById(new Map(subs.map((s) => [s.id, s])));
   }

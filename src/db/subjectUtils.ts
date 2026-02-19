@@ -25,7 +25,16 @@ function normaliseCode(code: string) {
  * - Otherwise fall back to title buckets: `title::<normalised title>`.
  */
 export function subjectIdForTemplateEvent(e: CycleTemplateEvent): string {
+  // Prefer explicit code.
   if (e.code && e.code.trim()) return `code::${normaliseCode(e.code)}`;
+
+  // Some ICS sources encode code in the title: "Title (CODE)".
+  // If so, treat that as the identity to keep template <-> subjects consistent.
+  const m = e.title.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (m) {
+    const code = (m[2] ?? "").trim();
+    if (code && code.length <= 24) return `code::${normaliseCode(code)}`;
+  }
 
   if (e.type === "duty") {
     const area = normaliseKey(e.room?.trim() || e.title);
@@ -36,7 +45,9 @@ export function subjectIdForTemplateEvent(e: CycleTemplateEvent): string {
     return `break::${normaliseKey(e.title)}`;
   }
 
-  return `title::${normaliseKey(e.title)}`;
+  // If title included a trailing (CODE), drop it for title-based IDs.
+  const titleOnly = m ? (m[1] ?? e.title).trim() : e.title;
+  return `title::${normaliseKey(titleOnly)}`;
 }
 
 export function subjectKindForTemplateEvent(e: CycleTemplateEvent): SubjectKind {
