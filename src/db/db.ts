@@ -47,6 +47,8 @@ export type Subject = {
   code: string | null;
   title: string;
   color: string;
+  /** Soft-delete. Archived subjects are hidden by default and never auto-recreated from templates. */
+  archived?: boolean;
 };
 
 export type DayLabel =

@@ -31,7 +31,8 @@ export async function ensureSubjectsFromTemplates(userId: string): Promise<void>
       kind,
       code: e.code ? e.code.trim().toUpperCase() : null,
       title: e.title,
-      color: autoHexColorForKey(e.code || e.title),
+      color: autoHexColorForKey(id),
+      archived: false,
     });
   }
 

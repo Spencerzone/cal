@@ -27,7 +27,6 @@ export default function SubjectsPage() {
   const [newColor, setNewColor] = useState("#3b82f6");
 
   async function refresh() {
-    await ensureSubjectsFromTemplates(userId);
     const all = await getSubjectsByUser(userId);
     setSubjects(all);
   }
@@ -95,6 +94,16 @@ export default function SubjectsPage() {
 
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" style={{ minWidth: 220 }} />
           <button onClick={refresh}>Refresh</button>
+          <button
+            onClick={async () => {
+              if (!userId) return;
+              await ensureSubjectsFromTemplates(userId);
+              await refresh();
+            }}
+            title="Creates missing subjects from the current template (does not overwrite your edits)."
+          >
+            Sync from template
+          </button>
         </div>
 
         <div className="space" />
@@ -196,13 +205,15 @@ export default function SubjectsPage() {
                 <td style={{ verticalAlign: "top" }}>
                   <button
                     onClick={async () => {
-                      const ok = window.confirm(`Delete “${s.title}”? This removes it from Subjects and clears any matrix overrides that use it.`);
+                      const ok = window.confirm(
+                        `Archive “${s.title}”? This hides it from Subjects and prevents it being re-created from the template. (You can restore by re-adding the same code/title.)`
+                      );
                       if (!ok) return;
                       await deleteSubject(userId, s.id);
                       await refresh();
                     }}
                   >
-                    Delete
+                    Archive
                   </button>
                 </td>
               </tr>
