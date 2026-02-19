@@ -96,6 +96,8 @@ export default function MatrixPage() {
     return () => window.removeEventListener("placements-changed", onPlacements as any);
   }, [userId, labels.join(",")]);
 
+  
+
   // Default cell content from slotAssignments/template (one per slot). Now includes manual assignments too.
   const baseCell = useMemo(() => {
     const m = new Map<
@@ -132,6 +134,34 @@ export default function MatrixPage() {
   }, [assignments, templateById]);
 
   const hasTemplate = templateById.size > 0;
+
+  useEffect(() => {
+  if (!userId) return;
+
+  const subjectKeys = Array.from(subjectsById.keys());
+  console.log("[DBG] subjectsById keys sample:", subjectKeys.slice(0, 30));
+
+  // sample template events actually being used by cells (via baseCell)
+  const sampleBase = Array.from(baseCell.entries())
+    .filter(([, v]) => v && typeof v === "object" && "e" in (v as any) && (v as any).e)
+    .slice(0, 25);
+
+  const rows = sampleBase.map(([key, v]) => {
+    const e = (v as any).e as CycleTemplateEvent;
+    const sid = subjectIdForTemplateEvent(e);
+    return {
+      cell: key,
+      title: e.title,
+      code: (e as any).code,
+      room: (e as any).room ?? (e as any).location ?? "",
+      subjectIdForTemplateEvent: sid,
+      subjectExists: subjectsById.has(sid),
+      subjectDocColor: subjectsById.get(sid)?.color ?? null,
+    };
+  });
+
+  console.table(rows);
+}, [userId, subjectsById, baseCell]);
 
   const subjectsByKind = useMemo(() => {
     const subs = Array.from(subjectsById.values());
