@@ -170,13 +170,14 @@ export default function TodayPage() {
     };
   }, [userId]);
 
-  // load templateById once
+  // load templateById
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       const template = await getAllCycleTemplateEvents(userId);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
-})();
-  }, []);
+    })();
+  }, [userId]);
 
   // load blocks once
   useEffect(() => {

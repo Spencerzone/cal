@@ -40,7 +40,7 @@ export default function SetupPage() {
       termStarts: { t1: t1s.trim(), t2: t2s.trim(), t3: t3s.trim(), t4: t4s.trim() },
       termEnds: { t1: t1e.trim(), t2: t2e.trim(), t3: t3e.trim(), t4: t4e.trim() },
     };
-    await setRollingSettings(next);
+    await setRollingSettings(userId, next);
     setSettings(next);
   }
 

@@ -48,11 +48,12 @@ export default function MatrixPage() {
   >(new Map());
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       const template = await getAllCycleTemplateEvents(userId);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
-  }, []);
+  }, [userId]);
 
   async function loadSubjects() {
     await ensureSubjectsFromTemplates(userId);
