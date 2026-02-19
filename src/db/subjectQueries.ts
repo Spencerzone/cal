@@ -6,14 +6,22 @@ import { subjectDoc, subjectsCol } from "./db";
 
 export async function getSubjectsByUser(userId: string): Promise<Subject[]> {
   const snap = await getDocs(query(subjectsCol(userId)));
+  // Some older docs may not store the `id` field in the document body.
+  // Always hydrate it from the Firestore doc id so template lookups work.
   return snap.docs
-    .map((d) => d.data() as Subject)
+    .map((d) => {
+      const data = d.data() as any;
+      return { ...(data as Subject), id: (data?.id as string | undefined) ?? d.id } as Subject;
+    })
     .filter((s) => !s.archived);
 }
 
 export async function getAllSubjectsByUser(userId: string): Promise<Subject[]> {
   const snap = await getDocs(query(subjectsCol(userId)));
-  return snap.docs.map((d) => d.data() as Subject);
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return { ...(data as Subject), id: (data?.id as string | undefined) ?? d.id } as Subject;
+  });
 }
 
 export async function upsertSubject(subject: Subject): Promise<void> {

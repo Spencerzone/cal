@@ -30,11 +30,25 @@ function extractPeriodCode(description: string | null): string | null {
   return m ? m[1].trim() : null;
 }
 
-function extractRoom(location: string | null): string | null {
-  if (!location) return null;
-  // Sentral: "Room: A02"
-  const m = location.match(/Room:\s*([^\r\n]+)/i);
-  return m ? m[1].trim() : location.trim() || null;
+function extractRoom(location: string | null, description: string | null): string | null {
+  // Prefer LOCATION if present.
+  const loc = (location ?? "").trim();
+  if (loc) {
+    // Sentral sometimes uses "Room: A02" inside LOCATION.
+    const m = loc.match(/Room:\s*([^\r\n]+)/i);
+    return m ? m[1].trim() : loc;
+  }
+
+  // Fallback: some exports put room inside DESCRIPTION.
+  const desc = (description ?? "").trim();
+  if (desc) {
+    const m = desc.match(/\bRoom:\s*([^\r\n]+)/i);
+    if (m) return m[1].trim();
+    const m2 = desc.match(/\bLocation:\s*([^\r\n]+)/i);
+    if (m2) return m2[1].trim();
+  }
+
+  return null;
 }
 
 function splitSummary(summary: string): { code: string | null; title: string } {
@@ -110,7 +124,7 @@ export function parseIcsToBaseEvents(icsText: string, importId: string): BaseEve
     const dtEndUtc = end.getTime();
 
     const periodCode = extractPeriodCode(description);
-    const room = extractRoom(location);
+    const room = extractRoom(location, description);
 
     const { code, title } = splitSummary(summaryRaw);
     const type = inferType(summaryRaw, periodCode);
