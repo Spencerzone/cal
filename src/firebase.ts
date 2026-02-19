@@ -1,29 +1,42 @@
+// src/firebase.ts
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import {
+  getFirestore,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
 } from "firebase/firestore";
 
+function reqEnv(k: string): string {
+  const v = (import.meta as any).env?.[k];
+  if (!v || typeof v !== "string" || !v.trim()) {
+    throw new Error(`Missing required env var ${k}`);
+  }
+  return v;
+}
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
+  apiKey: reqEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: reqEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: reqEnv("VITE_FIREBASE_PROJECT_ID"),
+  appId: reqEnv("VITE_FIREBASE_APP_ID"),
+  storageBucket: reqEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: reqEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
 };
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-/**
- * Firestore with offline persistence.
- * Firestore web SDK supports offline caching/persistence. :contentReference[oaicite:1]{index=1}
- */
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
+export const db = (() => {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch (e) {
+    console.warn("Firestore persistence unavailable; using non-persistent Firestore.", e);
+    return getFirestore(app);
+  }
+})();
