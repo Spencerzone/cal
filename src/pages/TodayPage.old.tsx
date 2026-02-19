@@ -294,15 +294,12 @@ export default function TodayPage() {
       const a = assignmentBySlot.get(slotId);
       if (!a) return { block: b, slotId, cell: { kind: "blank" } };
       if (a.kind === "free") return { block: b, slotId, cell: { kind: "free" } };
+      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
 
-      // Prefer template linkage if present (even if manualTitle is also set)
       if (a.sourceTemplateEventId) {
         const e = templateById.get(a.sourceTemplateEventId);
         if (e) return { block: b, slotId, cell: { kind: "template", a, e } };
       }
-
-      // Otherwise treat as manual
-      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
 
       return { block: b, slotId, cell: { kind: "blank" } };
     });
