@@ -109,6 +109,22 @@ a { color: inherit; text-decoration: none; }
   background: var(--line);
   margin: 8px 6px;
 }
+
+.logoutBtn {
+  text-align: left;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.logoutBtn:hover {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--panel);
+}
 .card {
   border: 1px solid var(--line);
   background: var(--panel);

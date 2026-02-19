@@ -111,19 +111,21 @@ export default function WeekPage() {
   }
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
-      const s = await getRollingSettings();
+      const s = await getRollingSettings(userId);
       setRollingSettingsState(s);
     })();
-  }, []);
+  }, [userId]);
 
   // Load blocks
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       await ensureDefaultBlocks(userId);
       setBlocks(await getVisibleBlocks(userId));
     })();
-  }, []);
+  }, [userId]);
 
   async function loadSubjects() {
     await ensureSubjectsFromTemplates(userId);
@@ -133,6 +135,7 @@ export default function WeekPage() {
 
   // Load subjects and keep them in sync with edits.
   useEffect(() => {
+    if (!userId) return;
     loadSubjects();
 
     const onChanged = () => loadSubjects();
@@ -150,7 +153,7 @@ export default function WeekPage() {
       window.removeEventListener("focus", onFocus as any);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, []);
+  }, [userId]);
 
   // Load templates
   useEffect(() => {

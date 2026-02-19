@@ -74,25 +74,28 @@ export default function MatrixPage() {
   }
 
   useEffect(() => {
+    if (!userId) return;
     loadSubjects();
     const onSubjects = () => loadSubjects();
     window.addEventListener("subjects-changed", onSubjects as any);
     return () => window.removeEventListener("subjects-changed", onSubjects as any);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
-      const a = await getAssignmentsForDayLabels(labels);
+      const a = await getAssignmentsForDayLabels(userId, labels);
       setAssignments(a);
     })();
-  }, [labels]);
+  }, [userId, labels.join(",")]);
 
   useEffect(() => {
+    if (!userId) return;
     loadPlacements();
     const onPlacements = () => loadPlacements();
     window.addEventListener("placements-changed", onPlacements as any);
     return () => window.removeEventListener("placements-changed", onPlacements as any);
-  }, [labels.join(",")]);
+  }, [userId, labels.join(",")]);
 
   // Default cell content from slotAssignments/template (one per slot). Now includes manual assignments too.
   const baseCell = useMemo(() => {

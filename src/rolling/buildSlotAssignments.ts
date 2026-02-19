@@ -1,6 +1,6 @@
 import { getDocs, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
-import { slotAssignmentsCol, slotAssignmentDoc } from "../db/db";
+import { cycleTemplateEventsCol, slotAssignmentsCol, slotAssignmentDoc } from "../db/db";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, AssignmentKind } from "../db/db";
 
 function normalisePeriodCode(raw: string | null | undefined): string {
@@ -48,6 +48,66 @@ function rankKind(k: AssignmentKind): number {
  * This prevents duplicates and avoids inventing slots that don't exist on that day (e.g. p6).
  */
 export async function buildDraftSlotAssignments(userId: string) {
+
+  // Choose one best event per (dayLabel, slotId)
+  // Priority:
+  //  1) class over duty over break
+  //  2) earlier start
+  //  3) longer duration
+  const best = new Map<
+    string,
+    {
+      kind: AssignmentKind;
+      sourceTemplateEventId: string;
+      manualTitle: string;
+      manualCode: string | null;
+      manualRoom: string | null;
+      startMinutes: number;
+      endMinutes: number;
+    }
+  >();
+
+  const tplSnap = await getDocs(cycleTemplateEventsCol(userId));
+  for (const d of tplSnap.docs) {
+    const e = d.data() as CycleTemplateEvent;
+    const slotId = slotForEvent(e.periodCode, e.title);
+    if (!slotId) continue;
+
+    const key = `${e.dayLabel}::${slotId}`;
+    const candidate = {
+      kind: kindFromType(e.type),
+      sourceTemplateEventId: e.id,
+      manualTitle: e.title,
+      manualCode: e.code ?? null,
+      manualRoom: e.room ?? null,
+      startMinutes: e.startMinutes,
+      endMinutes: e.endMinutes,
+    };
+
+    const prev = best.get(key);
+    if (!prev) {
+      best.set(key, candidate);
+      continue;
+    }
+
+    const prevRank = rankKind(prev.kind);
+    const nextRank = rankKind(candidate.kind);
+    if (nextRank < prevRank) {
+      best.set(key, candidate);
+      continue;
+    }
+    if (nextRank > prevRank) continue;
+
+    if (candidate.startMinutes < prev.startMinutes) {
+      best.set(key, candidate);
+      continue;
+    }
+    if (candidate.startMinutes > prev.startMinutes) continue;
+
+    const prevDur = prev.endMinutes - prev.startMinutes;
+    const nextDur = candidate.endMinutes - candidate.startMinutes;
+    if (nextDur > prevDur) best.set(key, candidate);
+  }
 
   // Persist: replace existing slotAssignments (Firestore)
   const existingSnap = await getDocs(slotAssignmentsCol(userId));

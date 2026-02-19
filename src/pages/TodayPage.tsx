@@ -135,11 +135,12 @@ export default function TodayPage() {
 
   // load rolling settings for cycle + optional term/week display
   useEffect(() => {
+    if (!userId) return;
     (async () => {
-      const s = await getRollingSettings();
+      const s = await getRollingSettings(userId);
       setRollingSettingsState(s);
     })();
-  }, []);
+  }, [userId]);
 
   async function loadSubjects() {
     await ensureSubjectsFromTemplates(userId);
@@ -149,6 +150,7 @@ export default function TodayPage() {
 
   // load subjects and keep in sync with edits
   useEffect(() => {
+    if (!userId) return;
     loadSubjects();
 
     const onChanged = () => loadSubjects();
@@ -166,7 +168,7 @@ export default function TodayPage() {
       window.removeEventListener("focus", onFocus as any);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, []);
+  }, [userId]);
 
   // load templateById once
   useEffect(() => {

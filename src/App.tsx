@@ -1,8 +1,8 @@
 // src/App.tsx
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { AuthProvider } from "./auth/AuthProvider";
+import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import RequireAuth from "./auth/RequireAuth";
 
 import ImportPage from "./pages/ImportPage";
@@ -18,6 +18,24 @@ import LoginPage from "./pages/LoginPage";
 
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  function LogoutButton() {
+    const { user, logout } = useAuth();
+    if (!user) return null;
+    return (
+      <button
+        className="logoutBtn"
+        onClick={async () => {
+          await logout();
+          navigate("/login");
+        }}
+        title="Sign out"
+      >
+        Sign out
+      </button>
+    );
+  }
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     try {
@@ -51,7 +69,7 @@ export default function App() {
   }, [location.pathname]);
 
   return (
-    <>
+    <AuthProvider>
       <header className="topbar">
         <button
           className="hamburger"
@@ -98,14 +116,15 @@ export default function App() {
               <NavLink to="/blocks" className={({ isActive }) => (isActive ? "active" : "")}>
                 Blocks
               </NavLink>
+              <div className="navDivider" />
+              <LogoutButton />
             </nav>
           </aside>
         ) : null}
 
         <div className="container">
-          <AuthProvider>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
 
               <Route
                 path="/"
@@ -179,10 +198,9 @@ export default function App() {
                   </RequireAuth>
                 }
               />
-            </Routes>
-          </AuthProvider>
+          </Routes>
         </div>
       </div>
-    </>
+    </AuthProvider>
   );
 }
