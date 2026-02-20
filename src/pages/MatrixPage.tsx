@@ -30,6 +30,32 @@ function weekdayFromLabel(label: DayLabel): "Mon" | "Tue" | "Wed" | "Thu" | "Fri
   return label.slice(0, 3) as any;
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  if (!hex) return null;
+  const h = hex.trim().replace("#", "");
+  if (h.length !== 6) return null;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+  return { r, g, b };
+}
+
+// Returns a readable text colour (dark on light backgrounds, white on dark)
+function contrastTextColour(bgHex: string): "#111111" | "#ffffff" {
+  const rgb = hexToRgb(bgHex);
+  if (!rgb) return "#ffffff";
+  // perceived luminance
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  return luminance > 0.6 ? "#111111" : "#ffffff";
+}
+
+function rgbaFromHex(hex: string, alpha: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return `rgba(255,255,255,${alpha})`;
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
 
 export default function MatrixPage() {
   const { user } = useAuth();
@@ -330,6 +356,9 @@ if (a.manualTitle) {
                       ? "#0f0f0f"
                       : overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f";
 
+                  const textColour = contrastTextColour(bg);
+                  const mutedColour = rgbaFromHex(textColour, 0.75);
+
                   const selectValue =
                     overrideSubjectId === undefined
                       ? ""
@@ -364,11 +393,11 @@ if (a.manualTitle) {
 
                   return (
                     <td key={k} style={{ verticalAlign: "top" }}>
-                      <div className="card" style={{ background: bg, minHeight: 88 }}>
+                      <div className="card" style={{ background: bg, color: textColour, minHeight: 88 }}>
                         <div>
                           <strong>{labelText}</strong>
                         </div>
-                        <div className="muted" style={{ marginTop: 4 }}>
+                        <div className="muted" style={{ marginTop: 4, color: mutedColour }}>
                           {subText}
                         </div>
 
@@ -424,7 +453,7 @@ if (a.manualTitle) {
                         </div>
 
                         {resolvedRoom ? (
-                          <div className="muted" style={{ marginTop: 4 }}>
+                          <div className="muted" style={{ marginTop: 4, color: mutedColour }}>
                             Room: {resolvedRoom}
                           </div>
                         ) : null}
