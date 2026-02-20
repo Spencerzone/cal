@@ -97,6 +97,9 @@ export default function WeekPage() {
 
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
+  const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+
+
   const subjectPalette = useMemo(() => {
     const cols = Array.from(
       new Set(Array.from(subjectById.values()).map((s) => s.color).filter((c): c is string => !!c))
@@ -430,19 +433,37 @@ export default function WeekPage() {
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
           <thead>
             <tr>
-              {weekDays.map((d) => (
-                <th key={format(d, "yyyy-MM-dd")} style={{ textAlign: "left" }} className="muted">
-                  {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
-                </th>
-              ))}
+              <th style={{ textAlign: "left", width: 56 }} className="muted">
+                Slot
+              </th>
+              {weekDays.map((d) => {
+                const dk = format(d, "yyyy-MM-dd");
+                const isToday = dk === todayKey;
+                return (
+                  <th
+                    key={dk}
+                    style={{
+                      textAlign: "left",
+                      ...(isToday ? { outline: "2px solid rgba(255,255,255,0.25)", borderRadius: 8 } : {}),
+                    }}
+                    className="muted"
+                  >
+                    {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
           <tbody>
             {grid.map(({ block, cells }) => (
               <tr key={block.id}>
+                <td style={{ verticalAlign: "top" }}>
+                  <div className="badge">{compactBlockLabel(block.name)}</div>
+                </td>
                 {cells.map((cell, i) => {
                   const dateKey = format(weekDays[i], "yyyy-MM-dd");
+                  const isToday = dateKey === todayKey;
                   const slotId = SLOT_LABEL_TO_ID[block.name];
                   const override = slotId ? placementsByDate.get(dateKey)?.get(slotId) : undefined;
 
@@ -511,7 +532,10 @@ export default function WeekPage() {
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div
                         className="slotCard slotClickable"
-                        style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
+                        style={{
+                          ...({ ["--slotStrip" as any]: strip } as any),
+                          ...(isToday ? { outline: "2px solid rgba(255,255,255,0.18)", borderRadius: 12 } : {}),
+                        }}
                         role={slotId ? "button" : undefined}
                         tabIndex={slotId ? 0 : undefined}
                         onClick={() => {
