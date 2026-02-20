@@ -111,12 +111,24 @@ export default function WeekPage() {
     return text.length === 0;
   }
 
+  // load rolling settings for cycle + optional term/week display
   useEffect(() => {
     if (!userId) return;
-    (async () => {
+
+    let alive = true;
+    const load = async () => {
       const s = await getRollingSettings(userId);
-      setRollingSettingsState(s);
-    })();
+      if (alive) setRollingSettingsState(s);
+    };
+
+    load();
+    const onChanged = () => load();
+    window.addEventListener("rolling-settings-changed", onChanged as any);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("rolling-settings-changed", onChanged as any);
+    };
   }, [userId]);
 
   // Load blocks
@@ -183,8 +195,10 @@ export default function WeekPage() {
 
   // Load assignments for each Mon-Fri date in the viewed week
   useEffect(() => {
+    if (!userId) return;
+
     (async () => {
-      const settings = await getRollingSettings(userId);
+      const settings = rollingSettings ?? (await getRollingSettings(userId));
       const meta = await getTemplateMeta(userId);
       const out = new Map<string, Map<SlotId, SlotAssignment>>();
       const dlOut = new Map<string, DayLabel>();
@@ -212,7 +226,7 @@ export default function WeekPage() {
       setAssignmentsByDate(out);
       setDayLabelByDate(dlOut);
     })();
-  }, [weekDays]);
+  }, [userId, weekDays, rollingSettings]);
 
   // Load lesson plans + attachments for each day in the viewed week
   useEffect(() => {
@@ -438,7 +452,9 @@ export default function WeekPage() {
               const tw = rollingSettings
                 ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds)
                 : null;
-              return tw ? <span className="muted">Term {tw.term} · Week {tw.week}</span> : <span className="muted">&nbsp;</span>;
+              const mondayKey = format(weekStart, "yyyy-MM-dd");
+              const suffix = (dayLabelByDate.get(mondayKey) ?? "").slice(-1);
+              return tw ? <span className="muted">Term {tw.term} · Week {tw.week}{suffix}</span> : <span className="muted">&nbsp;</span>;
             })()}
           </div>
         </div>

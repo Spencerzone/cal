@@ -135,10 +135,21 @@ export default function TodayPage() {
   // load rolling settings for cycle + optional term/week display
   useEffect(() => {
     if (!userId) return;
-    (async () => {
+
+    let alive = true;
+    const load = async () => {
       const s = await getRollingSettings(userId);
-      setRollingSettingsState(s);
-    })();
+      if (alive) setRollingSettingsState(s);
+    };
+
+    load();
+    const onChanged = () => load();
+    window.addEventListener("rolling-settings-changed", onChanged as any);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("rolling-settings-changed", onChanged as any);
+    };
   }, [userId]);
 
   async function loadSubjects() {
@@ -204,8 +215,10 @@ export default function TodayPage() {
 
   // compute day’s DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
+    if (!userId) return;
+
     (async () => {
-      const settings = await getRollingSettings(userId);
+      const settings = rollingSettings ?? (await getRollingSettings(userId));
       const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
 
       if (!canonical) {
@@ -222,8 +235,8 @@ export default function TodayPage() {
       const m = new Map<SlotId, SlotAssignment>();
       for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
       setAssignmentBySlot(m);
-})();
-  }, [dateKey]);
+    })();
+  }, [userId, dateKey, rollingSettings]);
 
   // Load placements for the day’s stored label
   useEffect(() => {
@@ -475,7 +488,8 @@ export default function TodayPage() {
                 const tw = rollingSettings
                   ? termWeekForDate(selectedDate, rollingSettings.termStarts, rollingSettings.termEnds)
                   : null;
-                return tw ? <span className="muted">Term {tw.term} · Week {tw.week}</span> : <span className="muted">&nbsp;</span>;
+                const suffix = label ? label.slice(-1) : "";
+                return tw ? <span className="muted">Term {tw.term} · Week {tw.week}{suffix}</span> : <span className="muted">&nbsp;</span>;
               })()}
             </div>
           </div>
