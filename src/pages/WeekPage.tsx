@@ -133,6 +133,23 @@ export default function WeekPage() {
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }
 
+  const subjectPalette = useMemo(() => {
+  // works whether you store subjects in a Map or an array
+  const values =
+    subjectById instanceof Map
+      ? Array.from(subjectById.values())
+      : Array.isArray(subjectById)
+      ? subjectById
+      : [];
+
+  const colours = values
+    .map((s: any) => s?.color)
+    .filter((c: any) => typeof c === "string" && c.trim().length > 0)
+    .map((c: string) => c.trim().toLowerCase());
+
+  return Array.from(new Set(colours)).sort();
+}, [subjectById]);
+
   // Load subjects and keep them in sync with edits.
   useEffect(() => {
     if (!userId) return;
@@ -591,6 +608,7 @@ export default function WeekPage() {
       slotId={slotId}
       initialHtml={plan?.html ?? ""}
       attachments={atts}
+      palette={subjectPalette}
     />
   </div>
 ) : null}
