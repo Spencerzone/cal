@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as RMouseEvent } from "react";
+import { type MouseEvent as RMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { SlotId } from "../db/db";
 import { upsertLessonPlan } from "../db/lessonPlanQueries";
 
@@ -22,6 +22,27 @@ export default function RichTextPlanEditor(props: {
   const saveTimer = useRef<number | null>(null);
   const dirtyRef = useRef<boolean>(false);
   const hydratedRef = useRef<boolean>(false);
+
+  const [openPicker, setOpenPicker] = useState<null | "text" | "highlight">(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const customTextRef = useRef<HTMLInputElement | null>(null);
+  const customHiRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (!openPicker) return;
+      const t = e.target as Node;
+      if (popoverRef.current && !popoverRef.current.contains(t)) setOpenPicker(null);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openPicker]);
+
+  const swatches = useMemo(() => {
+    const uniq = Array.from(new Set(palette.map((c) => (c || "").trim().toLowerCase()).filter(Boolean)));
+    return uniq.slice(0, 24);
+  }, [palette]);
+
 
   // Adopt DB/prop updates only when not editing (avoids cursor/focus loss).
   useEffect(() => {
@@ -69,8 +90,21 @@ export default function RichTextPlanEditor(props: {
   function exec(cmd: string, value?: string) {
     dirtyRef.current = true;
     ref.current?.focus();
-    // eslint-disable-next-line deprecation/deprecation
-    document.execCommand(cmd, false, value);
+    try {
+      // eslint-disable-next-line deprecation/deprecation
+      document.execCommand(cmd, false, value);
+    } catch {
+      // ignore
+    }
+    // Some browsers prefer backColor over hiliteColor
+    if (cmd === "hiliteColor") {
+      try {
+        // eslint-disable-next-line deprecation/deprecation
+        document.execCommand("backColor", false, value);
+      } catch {
+        // ignore
+      }
+    }
     const next = ref.current?.innerHTML ?? "";
     setHtml(next);
     scheduleSave(next);
@@ -275,47 +309,105 @@ export default function RichTextPlanEditor(props: {
             <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("insertUnorderedList")}>• List</button>
             <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("insertOrderedList")}>1. List</button>
 
-            <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              Text
-              <input
-                type="color"
-                onChange={(e) => exec("foreColor", e.target.value)}
-                style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
-              />
-            </label>
+            <div style={{ position: "relative", display: "inline-flex", gap: 8, alignItems: "center" }}>
+              <button
+                className="btn"
+                type="button"
+                onMouseDown={toolbarMouseDown}
+                onClick={() => setOpenPicker(openPicker === "text" ? null : "text")}
+                title="Text colour"
+              >
+                Text
+              </button>
 
-            {palette.length > 0 ? (
-              <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                {Array.from(new Set(palette.map((c) => (c || "").trim()).filter(Boolean)))
-                  .slice(0, 16)
-                  .map((c) => (
+              <button
+                className="btn"
+                type="button"
+                onMouseDown={toolbarMouseDown}
+                onClick={() => setOpenPicker(openPicker === "highlight" ? null : "highlight")}
+                title="Highlight colour"
+              >
+                Highlight
+              </button>
+
+              {openPicker ? (
+                <div
+                  ref={popoverRef}
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: 6,
+                    background: "#111",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    borderRadius: 12,
+                    padding: 10,
+                    zIndex: 50,
+                    minWidth: 220,
+                  }}
+                >
+                  <div className="row" style={{ gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {openPicker === "text" ? "Text colour" : "Highlight"}
+                    </div>
+
                     <button
-                      key={c}
+                      className="btn"
                       type="button"
                       onMouseDown={toolbarMouseDown}
-                      onClick={() => exec("foreColor", c)}
-                      title={c}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 6,
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        background: c,
-                        padding: 0,
+                      onClick={() => {
+                        if (openPicker === "text") customTextRef.current?.click();
+                        else customHiRef.current?.click();
                       }}
-                    />
-                  ))}
-              </div>
-            ) : null}
+                      title="Custom colour"
+                    >
+                      🎨
+                    </button>
 
-            <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              Highlight
-              <input
-                type="color"
-                onChange={(e) => exec("hiliteColor", e.target.value)}
-                style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
-              />
-            </label>
+                    <input
+                      ref={customTextRef}
+                      type="color"
+                      style={{ display: "none" }}
+                      onChange={(e) => exec("foreColor", e.target.value)}
+                    />
+                    <input
+                      ref={customHiRef}
+                      type="color"
+                      style={{ display: "none" }}
+                      onChange={(e) => exec("hiliteColor", e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ height: 8 }} />
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+                    {swatches.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onMouseDown={toolbarMouseDown}
+                        onClick={() => exec(openPicker === "text" ? "foreColor" : "hiliteColor", c)}
+                        title={c}
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 6,
+                          border: "1px solid rgba(255,255,255,0.18)",
+                          background: c,
+                          padding: 0,
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  <div style={{ height: 8 }} />
+
+                  <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => setOpenPicker(null)} style={{ width: "100%" }}>
+                    Close
+                  </button>
+                </div>
+              ) : null}
+            </div>
 
             <button
               className="btn"
