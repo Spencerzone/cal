@@ -109,6 +109,15 @@ export default function TodayPage() {
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
 
+  const subjectPalette = useMemo(() => {
+    const cols = Array.from(
+      new Set(Array.from(subjectById.values()).map((s) => s.color).filter((c): c is string => !!c))
+    );
+    // stable ordering so the palette doesn't jump around
+    cols.sort((a, b) => a.localeCompare(b));
+    return cols;
+  }, [subjectById]);
+
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
     const s = (raw ?? "").trim();
     if (!s) return true;
@@ -610,6 +619,7 @@ export default function TodayPage() {
       slotId={slotId}
       initialHtml={plan?.html ?? ""}
       attachments={atts}
+      palette={subjectPalette}
     />
   </div>
 ) : null}

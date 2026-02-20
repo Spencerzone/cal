@@ -97,6 +97,14 @@ export default function WeekPage() {
 
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
+  const subjectPalette = useMemo(() => {
+    const cols = Array.from(
+      new Set(Array.from(subjectById.values()).map((s) => s.color).filter((c): c is string => !!c))
+    );
+    cols.sort((a, b) => a.localeCompare(b));
+    return cols;
+  }, [subjectById]);
+
 
   
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
@@ -310,15 +318,12 @@ export default function WeekPage() {
 
         if (!a) return { kind: "blank" } as Cell;
         if (a.kind === "free") return { kind: "free" } as Cell;
+        if (a.manualTitle) return { kind: "manual", a } as Cell;
 
-        // Prefer template linkage if present (even if manualTitle is also set)
         if (a.sourceTemplateEventId) {
           const e = templateById.get(a.sourceTemplateEventId);
           if (e) return { kind: "template", a, e } as Cell;
         }
-
-        // Otherwise treat as manual
-        if (a.manualTitle) return { kind: "manual", a } as Cell;
 
         return { kind: "blank" } as Cell;
       });
@@ -585,6 +590,7 @@ export default function WeekPage() {
       slotId={slotId}
       initialHtml={plan?.html ?? ""}
       attachments={atts}
+      palette={subjectPalette}
     />
   </div>
 ) : null}
