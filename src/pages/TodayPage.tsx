@@ -500,9 +500,6 @@ export default function TodayPage() {
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", width: 80 }} className="muted">
-                Slot
-              </th>
               <th style={{ textAlign: "left" }} className="muted">
                 Details
               </th>
@@ -566,10 +563,6 @@ export default function TodayPage() {
 
               return (
                 <tr key={block.id}>
-                  <td style={{ verticalAlign: "top" }}>
-                    <div className="badge">{compactBlockLabel(block.name)}</div>
-                  </td>
-
                   <td style={{ verticalAlign: "top" }}>
                     <div
                       className="slotCard slotClickable"
