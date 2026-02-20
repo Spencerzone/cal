@@ -9,8 +9,10 @@ export default function RichTextPlanEditor(props: {
   initialHtml: string;
   // kept for compatibility with existing call sites; ignored when attachments disabled
   attachments: any[];
+  /** Optional colour palette (e.g. subject colours) to render quick swatches. */
+  palette?: string[];
 }) {
-  const { userId, dateKey, slotId, initialHtml } = props;
+  const { userId, dateKey, slotId, initialHtml, palette = [] } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -85,7 +87,89 @@ export default function RichTextPlanEditor(props: {
     scheduleSave(next);
   }
 
+  function getBlockContainer(node: Node | null): HTMLElement | null {
+    let cur: Node | null = node;
+    while (cur && cur !== ref.current) {
+      if (cur instanceof HTMLElement) {
+        const tag = cur.tagName.toLowerCase();
+        if (tag === "p" || tag === "div" || tag === "li") return cur;
+      }
+      cur = cur.parentNode;
+    }
+    return ref.current;
+  }
+
+  function getLineTextBeforeCaret(): string {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return "";
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return "";
+
+    const block = getBlockContainer(range.startContainer);
+    if (!block) return "";
+
+    const r = document.createRange();
+    r.setStart(block, 0);
+    r.setEnd(range.startContainer, range.startOffset);
+    return (r.toString() ?? "").replace(/\u00a0/g, " ");
+  }
+
+  function deleteTextBeforeCaret(chars: number) {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return;
+
+    const startNode = range.startContainer;
+    if (!(startNode instanceof Text)) return;
+    const startOffset = range.startOffset;
+    const from = Math.max(0, startOffset - chars);
+    const r = document.createRange();
+    r.setStart(startNode, from);
+    r.setEnd(startNode, startOffset);
+    r.deleteContents();
+  }
+
   function onEditorKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    // Ctrl/Cmd shortcuts
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod) {
+      const k = e.key.toLowerCase();
+      if (k === "b") {
+        e.preventDefault();
+        exec("bold");
+        return;
+      }
+      if (k === "i") {
+        e.preventDefault();
+        exec("italic");
+        return;
+      }
+      if (k === "u") {
+        e.preventDefault();
+        exec("underline");
+        return;
+      }
+    }
+
+    // Auto-list: "* " / "- " / "1. " / "1) " at start of a line
+    if (e.key === " " && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const before = getLineTextBeforeCaret();
+      const trimmed = before.trim();
+      if (trimmed === "*" || trimmed === "-") {
+        e.preventDefault();
+        deleteTextBeforeCaret(trimmed.length);
+        exec("insertUnorderedList");
+        return;
+      }
+      if (trimmed === "1." || trimmed === "1)") {
+        e.preventDefault();
+        deleteTextBeforeCaret(trimmed.length);
+        exec("insertOrderedList");
+        return;
+      }
+    }
+
     if (e.key !== "Enter") return;
 
     if (e.shiftKey) {
@@ -199,6 +283,30 @@ export default function RichTextPlanEditor(props: {
                 style={{ width: 28, height: 18, padding: 0, border: 0, background: "transparent" }}
               />
             </label>
+
+            {palette.length > 0 ? (
+              <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                {Array.from(new Set(palette.map((c) => (c || "").trim()).filter(Boolean)))
+                  .slice(0, 16)
+                  .map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onMouseDown={toolbarMouseDown}
+                      onClick={() => exec("foreColor", c)}
+                      title={c}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 6,
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        background: c,
+                        padding: 0,
+                      }}
+                    />
+                  ))}
+              </div>
+            ) : null}
 
             <label className="btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               Highlight
