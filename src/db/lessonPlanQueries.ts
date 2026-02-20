@@ -5,6 +5,7 @@ import {
   getDocs,
   query,
   setDoc,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { lessonAttachmentsCol, lessonAttachmentDoc, lessonPlanDoc, lessonPlansCol } from "./db";
@@ -60,13 +61,57 @@ export async function deleteLessonPlan(userId: string, dateKey: string, slotId: 
 }
 
 export async function getAttachmentsForPlan(_userId: string, _planKey: string): Promise<LessonAttachment[]> {
-  // Attachments disabled (no Firebase Storage).
-  return [];
+  const snap = await getDocs(query(lessonAttachmentsCol(_userId), where("planKey", "==", _planKey)));
+  const out = snap.docs.map((d) => {
+    const data = d.data() as LessonAttachment;
+    return { ...data, id: data.id || d.id };
+  });
+  out.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  return out;
 }
 
 export async function addAttachmentToPlan(_userId: string, _planKey: string, _file: File): Promise<void> {
   // Attachments disabled (no Firebase Storage).
   throw new Error("Attachments are disabled (Firebase Storage not enabled).");
+}
+
+function normaliseUrl(raw: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return s;
+  // If it already has a scheme, keep it.
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
+  return `https://${s}`;
+}
+
+export async function addUrlAttachmentToPlan(userId: string, planKey: string, name: string, url: string): Promise<void> {
+  const id = `url_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const normUrl = normaliseUrl(url);
+  const display = (name ?? "").trim() || normUrl;
+
+  const att: LessonAttachment = {
+    id,
+    userId,
+    planKey,
+    kind: "url",
+    name: display,
+    url: normUrl,
+    // Keep legacy fields present to avoid any older render assumptions.
+    mime: "text/url",
+    size: 0,
+    storagePath: "",
+    createdAt: Date.now(),
+  };
+
+  await setDoc(lessonAttachmentDoc(userId, id), att, { merge: false });
+  window.dispatchEvent(new Event("lessonplans-changed"));
+}
+
+export async function updateUrlAttachment(userId: string, id: string, patch: { name?: string; url?: string }): Promise<void> {
+  const next: any = {};
+  if (patch.name !== undefined) next.name = patch.name;
+  if (patch.url !== undefined) next.url = normaliseUrl(patch.url);
+  await updateDoc(lessonAttachmentDoc(userId, id), next);
+  window.dispatchEvent(new Event("lessonplans-changed"));
 }
 
 export async function deleteAttachment(userId: string, id: string): Promise<void> {

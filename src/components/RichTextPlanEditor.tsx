@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
-import type { SlotId } from "../db/db";
-import { upsertLessonPlan } from "../db/lessonPlanQueries";
+import type { LessonAttachment, SlotId } from "../db/db";
+import { addUrlAttachmentToPlan, deleteAttachment, updateUrlAttachment, upsertLessonPlan } from "../db/lessonPlanQueries";
 
 export default function RichTextPlanEditor(props: {
   userId: string;
   dateKey: string;
   slotId: SlotId;
   initialHtml: string;
-  // kept for compatibility with existing call sites; ignored when attachments disabled
-  attachments: any[];
+  attachments: LessonAttachment[];
   palette?: string[];
 }) {
-  const { userId, dateKey, slotId, initialHtml, palette = [] } = props;
+  const { userId, dateKey, slotId, initialHtml, attachments, palette = [] } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -22,6 +21,10 @@ export default function RichTextPlanEditor(props: {
 
   const [html, setHtml] = useState<string>(initialHtml);
   const [active, setActive] = useState<boolean>(false);
+
+  const [urlForm, setUrlForm] = useState<null | { mode: "add" | "edit"; id?: string; name: string; url: string }>(
+    null
+  );
 
   const saveTimer = useRef<number | null>(null);
   const dirtyRef = useRef<boolean>(false);
@@ -110,6 +113,67 @@ export default function RichTextPlanEditor(props: {
   }
 
   function onEditorKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    // Ctrl/Cmd shortcuts
+    const isMod = e.ctrlKey || e.metaKey;
+    if (isMod && (e.key === "b" || e.key === "B")) {
+      e.preventDefault();
+      exec("bold");
+      return;
+    }
+    if (isMod && (e.key === "i" || e.key === "I")) {
+      e.preventDefault();
+      exec("italic");
+      return;
+    }
+    if (isMod && (e.key === "u" || e.key === "U")) {
+      e.preventDefault();
+      exec("underline");
+      return;
+    }
+
+    // List triggers: "* " / "- " / "1. " / "1) " at the start of a line
+    if (e.key === " " && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+      const sel = window.getSelection();
+      const r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+      if (r && r.collapsed) {
+        // Find the current block element
+        let node: Node | null = r.startContainer;
+        if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+        let block: HTMLElement | null = node as HTMLElement | null;
+        while (block && block !== ref.current && !(block.tagName === "P" || block.tagName === "DIV" || block.tagName === "LI")) {
+          block = block.parentElement;
+        }
+        if (block && block !== ref.current) {
+          const text = block.innerText.replace(/\u00a0/g, " ");
+          const uptoCaret = text.slice(0, Math.min(text.length, r.startOffset));
+          const trimmed = uptoCaret.trimEnd();
+          if (trimmed === "*" || trimmed === "-") {
+            e.preventDefault();
+            exec("insertUnorderedList");
+            // remove the marker
+            try {
+              // eslint-disable-next-line deprecation/deprecation
+              document.execCommand("undo");
+              // eslint-disable-next-line deprecation/deprecation
+              document.execCommand("insertUnorderedList");
+            } catch {}
+            return;
+          }
+          if (/^\d+[\.|\)]$/.test(trimmed)) {
+            e.preventDefault();
+            exec("insertOrderedList");
+            try {
+              // eslint-disable-next-line deprecation/deprecation
+              document.execCommand("undo");
+              // eslint-disable-next-line deprecation/deprecation
+              document.execCommand("insertOrderedList");
+            } catch {}
+            return;
+          }
+        }
+      }
+    }
+
     if (e.key !== "Enter") return;
 
     if (e.shiftKey) {
@@ -139,6 +203,31 @@ export default function RichTextPlanEditor(props: {
   }, [active]);
 
   const hasContent = !isHtmlEffectivelyEmpty(html);
+
+  const planKey = `${dateKey}::${slotId}`;
+
+  async function onAddUrl() {
+    setUrlForm({ mode: "add", name: "", url: "" });
+  }
+
+  async function onSubmitUrl() {
+    if (!urlForm) return;
+    const name = urlForm.name.trim();
+    const url = urlForm.url.trim();
+    if (!url) return;
+    if (urlForm.mode === "add") {
+      await addUrlAttachmentToPlan(userId, planKey, name, url);
+    } else if (urlForm.mode === "edit" && urlForm.id) {
+      await updateUrlAttachment(userId, urlForm.id, { name: name || url, url });
+    }
+    setUrlForm(null);
+  }
+
+  function openAttachment(att: LessonAttachment) {
+    const href = att.kind === "url" ? att.url : att.downloadUrl;
+    if (!href) return;
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
 
   return (
     <div
@@ -336,16 +425,8 @@ export default function RichTextPlanEditor(props: {
               ) : null}
             </div>
 
-            <button
-              className="btn"
-              type="button"
-              onMouseDown={toolbarMouseDown}
-              onClick={() => {
-                const url = window.prompt("URL (https://...)");
-                if (url) exec("createLink", url);
-              }}
-            >
-              Link
+            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={onAddUrl}>
+              + URL
             </button>
 
             <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("removeFormat")}>Clear</button>
@@ -363,6 +444,86 @@ export default function RichTextPlanEditor(props: {
               Done
             </button>
           </div>
+
+          {/* URL attachment form */}
+          {urlForm ? (
+            <div className="card" style={{ marginTop: 8, background: "#0f0f0f" }} onMouseDown={(e) => e.stopPropagation()}>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <input
+                  value={urlForm.name}
+                  placeholder="Label (optional)"
+                  onChange={(e) => setUrlForm((cur) => (cur ? { ...cur, name: e.target.value } : cur))}
+                  style={{ flex: "1 1 220px" }}
+                />
+                <input
+                  value={urlForm.url}
+                  placeholder="URL"
+                  onChange={(e) => setUrlForm((cur) => (cur ? { ...cur, url: e.target.value } : cur))}
+                  style={{ flex: "2 1 320px" }}
+                />
+                <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={onSubmitUrl}>
+                  Save
+                </button>
+                <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => setUrlForm(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Attachments list (URLs) */}
+          {attachments && attachments.length ? (
+            <div className="card" style={{ marginTop: 8, background: "#0f0f0f" }} onMouseDown={(e) => e.stopPropagation()}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Links
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {attachments
+                  .filter((a) => (a.kind ?? "file") === "url")
+                  .map((a) => (
+                    <div key={a.id} className="row" style={{ gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <button
+                          className="btn"
+                          type="button"
+                          onMouseDown={toolbarMouseDown}
+                          onClick={() => openAttachment(a)}
+                          style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          title={a.url ?? a.name}
+                        >
+                          {a.name}
+                        </button>
+                        {a.url ? (
+                          <div className="muted" style={{ fontSize: 12, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {a.url}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="row" style={{ gap: 6 }}>
+                        <button
+                          className="btn"
+                          type="button"
+                          onMouseDown={toolbarMouseDown}
+                          onClick={() => setUrlForm({ mode: "edit", id: a.id, name: a.name ?? "", url: a.url ?? "" })}
+                          title="Edit"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn"
+                          type="button"
+                          onMouseDown={toolbarMouseDown}
+                          onClick={() => deleteAttachment(userId, a.id)}
+                          title="Remove"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : null}
 
           <div
             ref={ref}

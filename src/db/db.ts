@@ -114,10 +114,19 @@ export type LessonAttachment = {
   id: string;
   userId: string;
   planKey: string;
+  // kind defaults to "file" for older docs
+  kind?: "file" | "url";
+
+  // Display name/title
   name: string;
-  mime: string;
-  size: number;
-  storagePath: string;
+
+  // URL attachment fields
+  url?: string;
+
+  // File attachment fields (kept for compatibility; file uploads are currently disabled)
+  mime?: string;
+  size?: number;
+  storagePath?: string;
   downloadUrl?: string;
   createdAt: number;
 };
