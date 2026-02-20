@@ -38,6 +38,17 @@ export function termWeekForDate(
   }
   if (!active) return null;
 
+  // NSW convention: Week 1 starts on the Monday of the week that contains the chosen start date.
+  // (e.g. if the start date is Wed, Week 1 begins on the preceding Monday.)
+  const week1Monday = (() => {
+    // Work in local dates to avoid DST/time-of-day drift.
+    const d = new Date(active.d.getFullYear(), active.d.getMonth(), active.d.getDate());
+    // JS: Sun=0..Sat=6. Convert so Mon=0..Sun=6.
+    const monIndex = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - monIndex);
+    return d;
+  })();
+
   // If an end date is provided for the active term, suppress Term/Week outside the range.
   if (termEnds) {
     const endIso = (active.term === 1 ? termEnds.t1 : active.term === 2 ? termEnds.t2 : active.term === 3 ? termEnds.t3 : termEnds.t4) ?? "";
@@ -48,7 +59,8 @@ export function termWeekForDate(
     }
   }
 
-  const diffDays = Math.floor((ms - active.d.getTime()) / (1000 * 60 * 60 * 24));
+  const baseMs = week1Monday.getTime();
+  const diffDays = Math.floor((ms - baseMs) / (1000 * 60 * 60 * 24));
   const week = Math.floor(diffDays / 7) + 1;
   return { term: active.term, week: Math.max(1, week) };
 }

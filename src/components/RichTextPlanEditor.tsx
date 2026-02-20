@@ -1,4 +1,4 @@
-import { type MouseEvent as RMouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import type { SlotId } from "../db/db";
 import { upsertLessonPlan } from "../db/lessonPlanQueries";
 
@@ -9,12 +9,16 @@ export default function RichTextPlanEditor(props: {
   initialHtml: string;
   // kept for compatibility with existing call sites; ignored when attachments disabled
   attachments: any[];
-  /** Optional colour palette (e.g. subject colours) to render quick swatches. */
   palette?: string[];
 }) {
   const { userId, dateKey, slotId, initialHtml, palette = [] } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
+
+  const [openPicker, setOpenPicker] = useState<null | "text" | "highlight">(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const customTextRef = useRef<HTMLInputElement | null>(null);
+  const customHiRef = useRef<HTMLInputElement | null>(null);
 
   const [html, setHtml] = useState<string>(initialHtml);
   const [active, setActive] = useState<boolean>(false);
@@ -22,27 +26,6 @@ export default function RichTextPlanEditor(props: {
   const saveTimer = useRef<number | null>(null);
   const dirtyRef = useRef<boolean>(false);
   const hydratedRef = useRef<boolean>(false);
-
-  const [openPicker, setOpenPicker] = useState<null | "text" | "highlight">(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const customTextRef = useRef<HTMLInputElement | null>(null);
-  const customHiRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (!openPicker) return;
-      const t = e.target as Node;
-      if (popoverRef.current && !popoverRef.current.contains(t)) setOpenPicker(null);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [openPicker]);
-
-  const swatches = useMemo(() => {
-    const uniq = Array.from(new Set(palette.map((c) => (c || "").trim().toLowerCase()).filter(Boolean)));
-    return uniq.slice(0, 24);
-  }, [palette]);
-
 
   // Adopt DB/prop updates only when not editing (avoids cursor/focus loss).
   useEffect(() => {
@@ -90,21 +73,8 @@ export default function RichTextPlanEditor(props: {
   function exec(cmd: string, value?: string) {
     dirtyRef.current = true;
     ref.current?.focus();
-    try {
-      // eslint-disable-next-line deprecation/deprecation
-      document.execCommand(cmd, false, value);
-    } catch {
-      // ignore
-    }
-    // Some browsers prefer backColor over hiliteColor
-    if (cmd === "hiliteColor") {
-      try {
-        // eslint-disable-next-line deprecation/deprecation
-        document.execCommand("backColor", false, value);
-      } catch {
-        // ignore
-      }
-    }
+    // eslint-disable-next-line deprecation/deprecation
+    document.execCommand(cmd, false, value);
     const next = ref.current?.innerHTML ?? "";
     setHtml(next);
     scheduleSave(next);
@@ -114,6 +84,24 @@ export default function RichTextPlanEditor(props: {
     e.preventDefault();
   }
 
+  // Close colour popover on any click that is not inside the popover itself.
+  useEffect(() => {
+    if (!openPicker) return;
+    const onPointerDown = (ev: PointerEvent) => {
+      const t = ev.target as Node | null;
+      if (!t) return;
+      if (popoverRef.current && popoverRef.current.contains(t)) return;
+      setOpenPicker(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [openPicker]);
+
+  const swatches = useMemo(() => {
+    const uniq = Array.from(new Set(palette.map((c) => (c || "").trim().toLowerCase()).filter(Boolean)));
+    return uniq.slice(0, 24);
+  }, [palette]);
+
   function onInput() {
     dirtyRef.current = true;
     const next = ref.current?.innerHTML ?? "";
@@ -121,89 +109,7 @@ export default function RichTextPlanEditor(props: {
     scheduleSave(next);
   }
 
-  function getBlockContainer(node: Node | null): HTMLElement | null {
-    let cur: Node | null = node;
-    while (cur && cur !== ref.current) {
-      if (cur instanceof HTMLElement) {
-        const tag = cur.tagName.toLowerCase();
-        if (tag === "p" || tag === "div" || tag === "li") return cur;
-      }
-      cur = cur.parentNode;
-    }
-    return ref.current;
-  }
-
-  function getLineTextBeforeCaret(): string {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return "";
-    const range = sel.getRangeAt(0);
-    if (!range.collapsed) return "";
-
-    const block = getBlockContainer(range.startContainer);
-    if (!block) return "";
-
-    const r = document.createRange();
-    r.setStart(block, 0);
-    r.setEnd(range.startContainer, range.startOffset);
-    return (r.toString() ?? "").replace(/\u00a0/g, " ");
-  }
-
-  function deleteTextBeforeCaret(chars: number) {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const range = sel.getRangeAt(0);
-    if (!range.collapsed) return;
-
-    const startNode = range.startContainer;
-    if (!(startNode instanceof Text)) return;
-    const startOffset = range.startOffset;
-    const from = Math.max(0, startOffset - chars);
-    const r = document.createRange();
-    r.setStart(startNode, from);
-    r.setEnd(startNode, startOffset);
-    r.deleteContents();
-  }
-
   function onEditorKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    // Ctrl/Cmd shortcuts
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod) {
-      const k = e.key.toLowerCase();
-      if (k === "b") {
-        e.preventDefault();
-        exec("bold");
-        return;
-      }
-      if (k === "i") {
-        e.preventDefault();
-        exec("italic");
-        return;
-      }
-      if (k === "u") {
-        e.preventDefault();
-        exec("underline");
-        return;
-      }
-    }
-
-    // Auto-list: "* " / "- " / "1. " / "1) " at start of a line
-    if (e.key === " " && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
-      const before = getLineTextBeforeCaret();
-      const trimmed = before.trim();
-      if (trimmed === "*" || trimmed === "-") {
-        e.preventDefault();
-        deleteTextBeforeCaret(trimmed.length);
-        exec("insertUnorderedList");
-        return;
-      }
-      if (trimmed === "1." || trimmed === "1)") {
-        e.preventDefault();
-        deleteTextBeforeCaret(trimmed.length);
-        exec("insertOrderedList");
-        return;
-      }
-    }
-
     if (e.key !== "Enter") return;
 
     if (e.shiftKey) {
@@ -309,23 +215,22 @@ export default function RichTextPlanEditor(props: {
             <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("insertUnorderedList")}>• List</button>
             <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("insertOrderedList")}>1. List</button>
 
-            <div style={{ position: "relative", display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <div style={{ position: "relative" }}>
               <button
                 className="btn"
                 type="button"
                 onMouseDown={toolbarMouseDown}
-                onClick={() => setOpenPicker(openPicker === "text" ? null : "text")}
+                onClick={() => setOpenPicker((p) => (p === "text" ? null : "text"))}
                 title="Text colour"
               >
                 Text
               </button>
-
               <button
                 className="btn"
                 type="button"
                 onMouseDown={toolbarMouseDown}
-                onClick={() => setOpenPicker(openPicker === "highlight" ? null : "highlight")}
-                title="Highlight colour"
+                onClick={() => setOpenPicker((p) => (p === "highlight" ? null : "highlight"))}
+                title="Highlight"
               >
                 Highlight
               </button>
@@ -333,24 +238,23 @@ export default function RichTextPlanEditor(props: {
               {openPicker ? (
                 <div
                   ref={popoverRef}
+                  className="card"
                   style={{
                     position: "absolute",
                     top: "100%",
                     left: 0,
                     marginTop: 6,
-                    background: "#111",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    borderRadius: 12,
                     padding: 10,
                     zIndex: 50,
-                    minWidth: 220,
+                    minWidth: 240,
+                    background: "#0b0b0b",
+                    border: "1px solid rgba(255,255,255,0.14)",
                   }}
                 >
-                  <div className="row" style={{ gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                     <div className="muted" style={{ fontSize: 12 }}>
                       {openPicker === "text" ? "Text colour" : "Highlight"}
                     </div>
-
                     <button
                       className="btn"
                       type="button"
@@ -368,13 +272,27 @@ export default function RichTextPlanEditor(props: {
                       ref={customTextRef}
                       type="color"
                       style={{ display: "none" }}
-                      onChange={(e) => exec("foreColor", e.target.value)}
+                      onChange={(e) => {
+                        exec("foreColor", e.target.value);
+                        setOpenPicker(null);
+                      }}
                     />
                     <input
                       ref={customHiRef}
                       type="color"
                       style={{ display: "none" }}
-                      onChange={(e) => exec("hiliteColor", e.target.value)}
+                      onChange={(e) => {
+                        try {
+                          // eslint-disable-next-line deprecation/deprecation
+                          document.execCommand("hiliteColor", false, e.target.value);
+                        } catch {
+                          exec("backColor", e.target.value);
+                        }
+                        const next = ref.current?.innerHTML ?? "";
+                        setHtml(next);
+                        scheduleSave(next);
+                        setOpenPicker(null);
+                      }}
                     />
                   </div>
 
@@ -386,11 +304,26 @@ export default function RichTextPlanEditor(props: {
                         key={c}
                         type="button"
                         onMouseDown={toolbarMouseDown}
-                        onClick={() => exec(openPicker === "text" ? "foreColor" : "hiliteColor", c)}
+                        onClick={() => {
+                          if (openPicker === "text") {
+                            exec("foreColor", c);
+                          } else {
+                            try {
+                              // eslint-disable-next-line deprecation/deprecation
+                              document.execCommand("hiliteColor", false, c);
+                            } catch {
+                              exec("backColor", c);
+                            }
+                            const next = ref.current?.innerHTML ?? "";
+                            setHtml(next);
+                            scheduleSave(next);
+                          }
+                          setOpenPicker(null);
+                        }}
                         title={c}
                         style={{
-                          width: 18,
-                          height: 18,
+                          width: 22,
+                          height: 22,
                           borderRadius: 6,
                           border: "1px solid rgba(255,255,255,0.18)",
                           background: c,
@@ -399,12 +332,6 @@ export default function RichTextPlanEditor(props: {
                       />
                     ))}
                   </div>
-
-                  <div style={{ height: 8 }} />
-
-                  <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => setOpenPicker(null)} style={{ width: "100%" }}>
-                    Close
-                  </button>
                 </div>
               ) : null}
             </div>
