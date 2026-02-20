@@ -214,7 +214,7 @@ export default function WeekPage() {
         for (const [slotId] of pMap) {
           const planKey = `${dateKey}::${slotId}`;
           try {
-            const atts = await getAttachmentsForPlan(planKey);
+            const atts = await getAttachmentsForPlan(userId, planKey);
             aMap.set(slotId, atts);
           } catch (e) {
             console.warn("getAttachmentsForPlan failed", { planKey, e });

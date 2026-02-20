@@ -244,7 +244,7 @@ export default function TodayPage() {
       for (const [slotId] of pMap) {
         const planKey = `${dateKey}::${slotId}`;
         try {
-          const atts = await getAttachmentsForPlan(planKey);
+          const atts = await getAttachmentsForPlan(userId, planKey);
           aMap.set(slotId, atts);
         } catch (e) {
           console.warn("getAttachmentsForPlan failed", { planKey, e });
@@ -300,12 +300,12 @@ export default function TodayPage() {
       const a = assignmentBySlot.get(slotId);
       if (!a) return { block: b, slotId, cell: { kind: "blank" } };
       if (a.kind === "free") return { block: b, slotId, cell: { kind: "free" } };
-      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
-
       if (a.sourceTemplateEventId) {
         const e = templateById.get(a.sourceTemplateEventId);
         if (e) return { block: b, slotId, cell: { kind: "template", a, e } };
       }
+
+      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
 
       return { block: b, slotId, cell: { kind: "blank" } };
     });
