@@ -109,15 +109,6 @@ export default function TodayPage() {
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
 
-  const subjectPalette = useMemo(() => {
-    const cols = Array.from(
-      new Set(Array.from(subjectById.values()).map((s) => s.color).filter((c): c is string => !!c))
-    );
-    // stable ordering so the palette doesn't jump around
-    cols.sort((a, b) => a.localeCompare(b));
-    return cols;
-  }, [subjectById]);
-
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
     const s = (raw ?? "").trim();
     if (!s) return true;
@@ -250,9 +241,15 @@ export default function TodayPage() {
       const aMap = new Map<SlotId, LessonAttachment[]>();
 
       for (const p of plans) pMap.set(p.slotId, p);
-      for (const [slotId, plan] of pMap) {
-        const atts = await getAttachmentsForPlan(plan.key);
-        aMap.set(slotId, atts);
+      for (const [slotId] of pMap) {
+        const planKey = `${dateKey}::${slotId}`;
+        try {
+          const atts = await getAttachmentsForPlan(planKey);
+          aMap.set(slotId, atts);
+        } catch (e) {
+          console.warn("getAttachmentsForPlan failed", { planKey, e });
+          aMap.set(slotId, []);
+        }
       }
 
       setPlanBySlot(pMap);
@@ -303,15 +300,12 @@ export default function TodayPage() {
       const a = assignmentBySlot.get(slotId);
       if (!a) return { block: b, slotId, cell: { kind: "blank" } };
       if (a.kind === "free") return { block: b, slotId, cell: { kind: "free" } };
+      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
 
-      // Prefer template linkage if present (even if manualTitle is also set)
       if (a.sourceTemplateEventId) {
         const e = templateById.get(a.sourceTemplateEventId);
         if (e) return { block: b, slotId, cell: { kind: "template", a, e } };
       }
-
-      // Otherwise treat as manual
-      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
 
       return { block: b, slotId, cell: { kind: "blank" } };
     });
@@ -619,7 +613,6 @@ export default function TodayPage() {
       slotId={slotId}
       initialHtml={plan?.html ?? ""}
       attachments={atts}
-      palette={subjectPalette}
     />
   </div>
 ) : null}

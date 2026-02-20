@@ -97,17 +97,6 @@ export default function WeekPage() {
 
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
-  const todayKey = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
-
-
-  const subjectPalette = useMemo(() => {
-    const cols = Array.from(
-      new Set(Array.from(subjectById.values()).map((s) => s.color).filter((c): c is string => !!c))
-    );
-    cols.sort((a, b) => a.localeCompare(b));
-    return cols;
-  }, [subjectById]);
-
 
   
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
@@ -222,9 +211,15 @@ export default function WeekPage() {
         const aMap = new Map<SlotId, LessonAttachment[]>();
 
         for (const p of plans) pMap.set(p.slotId, p);
-        for (const [slotId, plan] of pMap) {
-          const atts = await getAttachmentsForPlan(plan.key);
-          aMap.set(slotId, atts);
+        for (const [slotId] of pMap) {
+          const planKey = `${dateKey}::${slotId}`;
+          try {
+            const atts = await getAttachmentsForPlan(planKey);
+            aMap.set(slotId, atts);
+          } catch (e) {
+            console.warn("getAttachmentsForPlan failed", { planKey, e });
+            aMap.set(slotId, []);
+          }
         }
 
         pOut.set(dateKey, pMap);
@@ -321,12 +316,15 @@ export default function WeekPage() {
 
         if (!a) return { kind: "blank" } as Cell;
         if (a.kind === "free") return { kind: "free" } as Cell;
-        if (a.manualTitle) return { kind: "manual", a } as Cell;
 
+        // Prefer template linkage if present (even if manualTitle is also set)
         if (a.sourceTemplateEventId) {
           const e = templateById.get(a.sourceTemplateEventId);
           if (e) return { kind: "template", a, e } as Cell;
         }
+
+        // Otherwise treat as manual
+        if (a.manualTitle) return { kind: "manual", a } as Cell;
 
         return { kind: "blank" } as Cell;
       });
@@ -433,37 +431,19 @@ export default function WeekPage() {
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", width: 56 }} className="muted">
-                Slot
-              </th>
-              {weekDays.map((d) => {
-                const dk = format(d, "yyyy-MM-dd");
-                const isToday = dk === todayKey;
-                return (
-                  <th
-                    key={dk}
-                    style={{
-                      textAlign: "left",
-                      ...(isToday ? { outline: "2px solid rgba(255,255,255,0.25)", borderRadius: 8 } : {}),
-                    }}
-                    className="muted"
-                  >
-                    {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
-                  </th>
-                );
-              })}
+              {weekDays.map((d) => (
+                <th key={format(d, "yyyy-MM-dd")} style={{ textAlign: "left" }} className="muted">
+                  {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
+                </th>
+              ))}
             </tr>
           </thead>
 
           <tbody>
             {grid.map(({ block, cells }) => (
               <tr key={block.id}>
-                <td style={{ verticalAlign: "top" }}>
-                  <div className="badge">{compactBlockLabel(block.name)}</div>
-                </td>
                 {cells.map((cell, i) => {
                   const dateKey = format(weekDays[i], "yyyy-MM-dd");
-                  const isToday = dateKey === todayKey;
                   const slotId = SLOT_LABEL_TO_ID[block.name];
                   const override = slotId ? placementsByDate.get(dateKey)?.get(slotId) : undefined;
 
@@ -532,10 +512,7 @@ export default function WeekPage() {
                     <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div
                         className="slotCard slotClickable"
-                        style={{
-                          ...({ ["--slotStrip" as any]: strip } as any),
-                          ...(isToday ? { outline: "2px solid rgba(255,255,255,0.18)", borderRadius: 12 } : {}),
-                        }}
+                        style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
                         role={slotId ? "button" : undefined}
                         tabIndex={slotId ? 0 : undefined}
                         onClick={() => {
@@ -614,7 +591,6 @@ export default function WeekPage() {
       slotId={slotId}
       initialHtml={plan?.html ?? ""}
       attachments={atts}
-      palette={subjectPalette}
     />
   </div>
 ) : null}
