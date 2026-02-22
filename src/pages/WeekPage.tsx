@@ -1,6 +1,6 @@
 // src/pages/WeekPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDays, addWeeks, format, startOfWeek } from "date-fns";
+import { addDays, addWeeks, addMonths, subMonths, format, startOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
@@ -369,35 +369,159 @@ export default function WeekPage() {
   }
 
   function DatePickerPopover() {
+    const anchorRef = useRef<HTMLDivElement | null>(null);
+    const popRef = useRef<HTMLDivElement | null>(null);
+
+    // month shown in mini calendar
+    const [monthCursor, setMonthCursor] = useState<Date>(() => startOfMonth(weekStart));
+
+    // keep month in sync with current weekStart
+    useEffect(() => {
+      setMonthCursor(startOfMonth(weekStart));
+    }, [weekStart]);
+
+    // close on outside click
+    useEffect(() => {
+      if (!showDatePicker) return;
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (popRef.current?.contains(t)) return;
+        if (anchorRef.current?.contains(t)) return;
+        setShowDatePicker(false);
+      };
+      document.addEventListener("mousedown", onDown, true);
+      return () => document.removeEventListener("mousedown", onDown, true);
+    }, [showDatePicker]);
+
+    // viewport-clamp popover position
+    useEffect(() => {
+      if (!showDatePicker) return;
+      const pop = popRef.current;
+      const anchor = anchorRef.current;
+      if (!pop || !anchor) return;
+
+      // Start aligned under the anchor
+      const ar = anchor.getBoundingClientRect();
+      pop.style.position = "fixed";
+      pop.style.top = `${Math.round(ar.bottom + 8)}px`;
+      pop.style.left = `${Math.round(ar.left)}px`;
+      pop.style.right = "auto";
+      pop.style.maxHeight = "calc(100vh - 24px)";
+      pop.style.overflow = "auto";
+
+      // Clamp into viewport
+      const pr = pop.getBoundingClientRect();
+      let left = pr.left;
+      let top = pr.top;
+
+      const pad = 12;
+      if (pr.right > window.innerWidth - pad) left -= pr.right - (window.innerWidth - pad);
+      if (left < pad) left = pad;
+
+      if (pr.bottom > window.innerHeight - pad) top -= pr.bottom - (window.innerHeight - pad);
+      if (top < pad) top = pad;
+
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    }, [showDatePicker, monthCursor]);
+
     const rangeLabel = `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 4), "d MMM")}`;
     const value = format(weekStart, "yyyy-MM-dd");
 
+    const monthStart = startOfMonth(monthCursor);
+    const monthEnd = endOfMonth(monthCursor);
+
+    // Build Monday-start grid (6 weeks x 7 days)
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const gridEnd = addDays(gridStart, 41);
+
+    const days = useMemo(() => eachDayOfInterval({ start: gridStart, end: gridEnd }), [gridStart.getTime(), monthCursor.getTime()]);
+
+    const dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
     return (
-      <div style={{ position: "relative" }}>
-        <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose week">
+      <div ref={anchorRef} style={{ position: "relative" }}>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => setShowDatePicker((v) => !v)}
+          aria-label="Choose week"
+        >
           {rangeLabel}
         </button>
 
         {showDatePicker ? (
           <div
+            ref={popRef}
             className="card"
             style={{
-              position: "absolute",
-              right: 0,
-              top: "calc(100% + 8px)",
               zIndex: 50,
-              width: 280,
+              width: 320,
               background: "#0b0b0b",
             }}
           >
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <div className="muted">Jump to week</div>
-              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
-                ✕
-              </button>
+              <div>
+                <strong>{format(monthCursor, "MMMM yyyy")}</strong>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn" type="button" onClick={() => setMonthCursor((d) => subMonths(d, 1))} title="Previous month">
+                  ←
+                </button>
+                <button className="btn" type="button" onClick={() => setMonthCursor((d) => addMonths(d, 1))} title="Next month">
+                  →
+                </button>
+                <button className="btn" type="button" onClick={() => setShowDatePicker(false)} title="Close">
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div style={{ marginTop: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, fontSize: 12 }} className="muted">
+                {dow.map((d) => (
+                  <div key={d} style={{ textAlign: "center" }}>
+                    {d}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ height: 6 }} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+                {days.map((d) => {
+                  const inMonth = isSameMonth(d, monthCursor);
+                  const isSelectedWeek = d >= weekStart && d <= addDays(weekStart, 6);
+                  const isToday = isSameDay(d, new Date());
+
+                  return (
+                    <button
+                      key={d.toISOString()}
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setWeekStart(startOfWeek(d, { weekStartsOn: 1 }));
+                        setShowDatePicker(false);
+                      }}
+                      style={{
+                        padding: "6px 0",
+                        opacity: inMonth ? 1 : 0.35,
+                        outline: isSelectedWeek ? "2px solid rgba(255,255,255,0.35)" : "none",
+                        boxShadow: isToday ? "0 0 0 2px rgba(255,255,255,0.25) inset" : "none",
+                      }}
+                      title={format(d, "EEE d MMM")}
+                    >
+                      {format(d, "d")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Jump to date
+              </div>
               <input
                 type="date"
                 value={value}
@@ -431,6 +555,7 @@ export default function WeekPage() {
       </div>
     );
   }
+
 
   return (
     <div className="grid">

@@ -37,7 +37,40 @@ export default function App() {
     );
   }
 
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+  
+const [theme, setTheme] = useState<"dark" | "light">(() => {
+  try {
+    const v = localStorage.getItem("daybook.theme");
+    return v === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+});
+
+useEffect(() => {
+  try {
+    localStorage.setItem("daybook.theme", theme);
+  } catch {
+    // ignore
+  }
+  document.documentElement.dataset.theme = theme;
+}, [theme]);
+
+function ThemeToggle() {
+  return (
+    <button
+      className="btn"
+      type="button"
+      onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+      title="Toggle theme"
+      style={{ marginLeft: 8 }}
+    >
+      {theme === "dark" ? "Light mode" : "Dark mode"}
+    </button>
+  );
+}
+
+const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem("daybook.sidebarOpen");
       return v ? v === "1" : true;
@@ -70,7 +103,17 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <header className="topbar">
+      <style>{`
+:root{--accent:#4c8dff;}
+:root[data-theme='dark']{--bg:#0b0b0b;--panel:#111;--panel2:#0f0f0f;--text:#f3f3f3;--muted:#a3a3a3;--border:#2a2a2a;}
+:root[data-theme='light']{--bg:#f6f6f6;--panel:#ffffff;--panel2:#ffffff;--text:#111111;--muted:#555555;--border:#d0d0d0;}
+body{background:var(--bg);color:var(--text);}
+.card{background:var(--panel);border:1px solid var(--border);}
+.btn{background:var(--panel2);color:var(--text);border:1px solid var(--border);} 
+input,select,textarea{background:var(--panel2);color:var(--text);border:1px solid var(--border);} 
+.muted{color:var(--muted);}
+`}</style>
+<header className="topbar">
         <button
           className="hamburger"
           title={sidebarOpen ? "Hide menu" : "Show menu"}
@@ -82,6 +125,7 @@ export default function App() {
           <span className="brand">DayBook</span>
           <span className="pageTitle">{pageTitle}</span>
         </div>
+        <ThemeToggle />
       </header>
 
       <div className={sidebarOpen ? "layout" : "layout layout--collapsed"}>

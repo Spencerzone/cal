@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDays, format } from "date-fns";
+import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
@@ -376,64 +376,198 @@ export default function TodayPage() {
     setSelectedDate(adjustToWeekday(new Date(), 1));
     setShowDatePicker(false);
   }
+function DatePickerPopover() {
+    const anchorRef = useRef<HTMLDivElement | null>(null);
+    const popRef = useRef<HTMLDivElement | null>(null);
+    const [month, setMonth] = useState<Date>(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+    const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
 
-  function DatePickerPopover() {
-    const value = format(selectedDate, "yyyy-MM-dd");
+    useEffect(() => {
+      if (!showDatePicker) return;
+      // keep month in sync when opening
+      setMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+    }, [showDatePicker, selectedDate]);
+
+    useEffect(() => {
+      if (!showDatePicker) return;
+
+      const compute = () => {
+        const a = anchorRef.current?.getBoundingClientRect();
+        const p = popRef.current?.getBoundingClientRect();
+        if (!a || !p) return;
+
+        const margin = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // Default: below anchor, right-aligned
+        let left = a.right - p.width;
+        let top = a.bottom + margin;
+
+        // Clamp horizontally
+        left = Math.max(margin, Math.min(left, vw - p.width - margin));
+
+        // If it overflows bottom, try placing above
+        if (top + p.height > vh - margin) {
+          const above = a.top - p.height - margin;
+          if (above >= margin) top = above;
+        }
+
+        const maxHeight = Math.max(160, vh - top - margin);
+        setPos({ left, top, maxHeight });
+      };
+
+      // compute after paint
+      const t = window.setTimeout(compute, 0);
+      window.addEventListener("resize", compute);
+      window.addEventListener("scroll", compute, true);
+      return () => {
+        window.clearTimeout(t);
+        window.removeEventListener("resize", compute);
+        window.removeEventListener("scroll", compute, true);
+      };
+    }, [showDatePicker, month]);
+
+    useEffect(() => {
+      if (!showDatePicker) return;
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (popRef.current && popRef.current.contains(t)) return;
+        if (anchorRef.current && anchorRef.current.contains(t)) return;
+        setShowDatePicker(false);
+      };
+      document.addEventListener("mousedown", onDown, true);
+      return () => document.removeEventListener("mousedown", onDown, true);
+    }, [showDatePicker]);
+
+    const monthLabel = format(month, "MMMM yyyy");
+    const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
+    const days: Date[] = [];
+    for (let d = start; d <= end; d = addDays(d, 1)) days.push(d);
+
     const labelText = `${format(selectedDate, "EEE d MMM")}`;
 
+    const pick = (d: Date) => {
+      setSelectedDate(adjustToWeekday(d, 1));
+      setShowDatePicker(false);
+    };
+
     return (
-      <div style={{ position: "relative" }}>
+      <div ref={anchorRef} style={{ position: "relative" }}>
         <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose date">
           {labelText}
         </button>
 
         {showDatePicker ? (
           <div
+            ref={popRef}
             className="card"
             style={{
-              position: "absolute",
-              right: 0,
-              top: "calc(100% + 8px)",
-              zIndex: 50,
-              width: 280,
-              background: "#0b0b0b",
+              position: "fixed",
+              left: pos?.left ?? 0,
+              top: pos?.top ?? 0,
+              zIndex: 200,
+              width: 320,
+              maxHeight: pos?.maxHeight ?? undefined,
+              overflow: "auto",
+              background: "var(--panel, #0b0b0b)",
             }}
           >
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <div className="muted">Jump to date</div>
-              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+              <div className="muted">{monthLabel}</div>
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)} title="Close">
                 ✕
               </button>
             </div>
 
-            <div style={{ marginTop: 10 }}>
-              <input
-                type="date"
-                value={value}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (!next) return;
-                  setSelectedDate(adjustToWeekday(new Date(`${next}T00:00:00`), 1));
-                  setShowDatePicker(false);
-                }}
-                style={{ width: "100%" }}
-              />
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 8, gap: 8 }}>
+              <button className="btn" type="button" onClick={() => setMonth((m) => addMonths(m, -1))} title="Previous month">
+                ←
+              </button>
+              <button className="btn" type="button" onClick={() => setMonth(new Date())} title="This month">
+                This month
+              </button>
+              <button className="btn" type="button" onClick={() => setMonth((m) => addMonths(m, 1))} title="Next month">
+                →
+              </button>
             </div>
 
-            <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => {
-                  onGoToday();
-                  setShowDatePicker(false);
+            <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gap: 6,
+                  alignItems: "center",
+                  textAlign: "center",
+                  fontSize: 12,
                 }}
               >
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                  <div key={d} className="muted">
+                    {d}
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gap: 6,
+                  marginTop: 6,
+                }}
+              >
+                {days.map((d) => {
+                  const inMonth = isSameMonth(d, month);
+                  const isSel = isSameDay(d, selectedDate);
+                  const wknd = isWeekend(d);
+                  return (
+                    <button
+                      key={format(d, "yyyy-MM-dd")}
+                      className="btn"
+                      type="button"
+                      onClick={() => pick(d)}
+                      disabled={!inMonth}
+                      style={{
+                        padding: "8px 0",
+                        opacity: inMonth ? 1 : 0.35,
+                        border: isSel ? "2px solid var(--accent, #4c8dff)" : undefined,
+                        filter: wknd ? "grayscale(0.4)" : undefined,
+                      }}
+                      title={format(d, "EEE d MMM")}
+                    >
+                      {format(d, "d")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 10, gap: 8 }}>
+              <button className="btn" type="button" onClick={onGoToday}>
                 Today
               </button>
               <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
                 Close
               </button>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Jump to date
+              </div>
+              <input
+                type="date"
+                value={format(selectedDate, "yyyy-MM-dd")}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  pick(new Date(`${next}T00:00:00`));
+                }}
+                style={{ width: "100%" }}
+              />
             </div>
           </div>
         ) : null}
