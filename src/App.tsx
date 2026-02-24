@@ -143,14 +143,14 @@ input,select,textarea{background:var(--panel2);color:var(--text);border:1px soli
                 Matrix
               </NavLink>
               <NavLink to="/lessons" className={({ isActive }) => (isActive ? "active" : "")}>
-                Subjects
+                Lessons
               </NavLink>
               <div className="navDivider" />
               <NavLink to="/setup" className={({ isActive }) => (isActive ? "active" : "")}>
                 Setup
               </NavLink>
-              <NavLink to="/subject" className={({ isActive }) => (isActive ? "active" : "")}>
-                Subject
+              <NavLink to="/subjects" className={({ isActive }) => (isActive ? "active" : "")}>
+                Subjects
               </NavLink>
               <NavLink to="/import" className={({ isActive }) => (isActive ? "active" : "")}>
                 Import
@@ -188,10 +188,10 @@ input,select,textarea{background:var(--panel2);color:var(--text);border:1px soli
                 }
               />
               <Route
-                path="/subject"
+                path="/subjects"
                 element={
                   <RequireAuth>
-                    <SubjectPage />
+                    <SubjectsPage />
                   </RequireAuth>
                 }
               />
@@ -228,10 +228,10 @@ input,select,textarea{background:var(--panel2);color:var(--text);border:1px soli
                 }
               />
               <Route
-                path="/subjects"
+                path="/lessons"
                 element={
                   <RequireAuth>
-                    <SubjectsPage />
+                    <SubjectPage />
                   </RequireAuth>
                 }
               />
