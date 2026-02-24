@@ -1,69 +1,43 @@
 // src/pages/SubjectPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import type { BaseEventRow, LessonPlan, SlotId, Subject } from "../db/db";
+import type { LessonPlan, Placement, SlotAssignment, SlotId, Subject } from "../db/db";
 import { getAllSubjectsByUser } from "../db/subjectQueries";
-import { getEventsForRange } from "../db/queries";
 import { getLessonPlansForDate } from "../db/lessonPlanQueries";
 import type { RollingSettings } from "../rolling/settings";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { termWeekForDate } from "../rolling/termWeek";
 import { format, addDays, parseISO, isValid } from "date-fns";
-import { toLocalDayKey } from "../util/time";
+import { getAllCycleTemplateEvents } from "../db/templateQueries";
+import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
+import { getPlacementsForDayLabels } from "../db/placementQueries";
+import type { CycleTemplateEvent, DayLabel } from "../db/db";
+import { subjectIdForTemplateEvent } from "../db/subjectUtils";
 
 type TermKey = "t1" | "t2" | "t3" | "t4";
 
 type RangeMode = "term" | "custom";
 
-function normalisePeriodCode(raw: string | null | undefined): string {
-  return (raw ?? "").trim().toUpperCase();
-}
+type SlotDef = { id: SlotId; label: string };
+const SLOT_DEFS: SlotDef[] = [
+  { id: "before", label: "Before school" },
+  { id: "rc", label: "Roll call" },
+  { id: "p1", label: "Period 1" },
+  { id: "p2", label: "Period 2" },
+  { id: "r1", label: "Recess 1" },
+  { id: "r2", label: "Recess 2" },
+  { id: "p3", label: "Period 3" },
+  { id: "p4", label: "Period 4" },
+  { id: "l1", label: "Lunch 1" },
+  { id: "l2", label: "Lunch 2" },
+  { id: "p5", label: "Period 5" },
+  { id: "p6", label: "Period 6" },
+  { id: "after", label: "After school" },
+];
 
-function slotForEvent(periodCode: string | null | undefined, title: string): SlotId | null {
-  const p = normalisePeriodCode(periodCode);
-
-  if (p === "BEFORE SCHOOL" || p === "BEFORE") return "before";
-  if (p === "AFTER SCHOOL" || p === "AFTER") return "after";
-
-  if (p === "RC" || p === "ROLL CALL" || p === "ROLLCALL") return "rc";
-  if (p === "1") return "p1";
-  if (p === "2") return "p2";
-  if (p === "3") return "p3";
-  if (p === "4") return "p4";
-  if (p === "5") return "p5";
-  if (p === "6") return "p6";
-
-  if (p === "R1" || p === "RECESS 1" || p === "RECESS") return "r1";
-  if (p === "R2" || p === "RECESS 2") return "r2";
-  if (p === "L1" || p === "LUNCH 1" || p === "LUNCH") return "l1";
-  if (p === "L2" || p === "LUNCH 2") return "l2";
-
-  const t = (title ?? "").toUpperCase();
-  if (t.includes("BEFORE SCHOOL")) return "before";
-  if (t.includes("AFTER SCHOOL")) return "after";
-
-  return null;
-}
-
-function slotLabel(slotId: SlotId | null, periodCode: string | null): string {
-  if (!slotId) return periodCode ? `Period ${periodCode}` : "Lesson";
-  const m: Record<SlotId, string> = {
-    before: "Before school",
-    rc: "Roll call",
-    p1: "Period 1",
-    p2: "Period 2",
-    r1: "Recess 1",
-    r2: "Recess 2",
-    p3: "Period 3",
-    p4: "Period 4",
-    l1: "Lunch 1",
-    l2: "Lunch 2",
-    p5: "Period 5",
-    p6: "Period 6",
-    after: "After school",
-  };
-  return m[slotId];
+function slotLabel(slotId: SlotId): string {
+  return SLOT_DEFS.find((s) => s.id === slotId)?.label ?? slotId;
 }
 
 function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
@@ -107,12 +81,15 @@ export default function SubjectPage() {
 
   const [showEmpty, setShowEmpty] = useState<boolean>(true);
 
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
   const [rows, setRows] = useState<
     Array<{
-      event: BaseEventRow;
       dateKey: string;
-      slotId: SlotId | null;
+      slotId: SlotId;
+      room: string;
       planHtml: string | null;
+      subjectColor: string;
     }>
   >([]);
 
@@ -162,31 +139,47 @@ export default function SubjectPage() {
   // Load lessons for subject+range
   useEffect(() => {
     if (!userId) return;
-    if (!selectedSubject?.code) {
+    if (!selectedSubject) {
+      setRows([]);
+      return;
+    }
+    if (!rollingSettings) {
       setRows([]);
       return;
     }
 
+    let cancelled = false;
+
     (async () => {
-      // baseEvents query uses UTC ms; for lesson listing, this is sufficient.
+      setIsLoading(true);
+
       const startD = parseISO(effectiveRange.startKey);
       const endD = parseISO(effectiveRange.endKey);
       if (!isValid(startD) || !isValid(endD)) {
         setRows([]);
+        setIsLoading(false);
         return;
       }
 
-      const startUtc = startD.getTime();
-      const endUtc = addDays(endD, 1).getTime() - 1;
-
-      const events = await getEventsForRange(userId, startUtc, endUtc);
-      const code = selectedSubject.code.toUpperCase();
-
-      const matching = events.filter((e) => (e.code ?? "").toUpperCase() === code && (e as any).active !== false);
-
-      // Prefetch lesson plans for all dates in range
       const dayKeys = inclusiveDateKeys(effectiveRange.startKey, effectiveRange.endKey);
-      const plansByDate = new Map<string, Map<string, LessonPlan>>();
+      const dayLabels = Array.from(
+        new Set(dayKeys.map((dk) => dayLabelForDate(dk, rollingSettings)).filter(Boolean))
+      ) as DayLabel[];
+
+      const [templateEvents, assignments, placements] = await Promise.all([
+        getAllCycleTemplateEvents(userId),
+        getAssignmentsForDayLabels(userId, dayLabels),
+        getPlacementsForDayLabels(userId, dayLabels),
+      ]);
+
+      if (cancelled) return;
+
+      const templateById = new Map<string, CycleTemplateEvent>(templateEvents.map((e) => [e.id, e]));
+      const assignmentByKey = new Map<string, SlotAssignment>(assignments.map((a) => [a.key, a]));
+      const placementByKey = new Map<string, Placement>();
+      for (const p of placements) placementByKey.set(`${p.dayLabel}::${p.slotId}`, p);
+
+      const plansByDate = new Map<string, Map<SlotId, LessonPlan>>();
       await Promise.all(
         dayKeys.map(async (dk) => {
           const ps = await getLessonPlansForDate(userId, dk);
@@ -194,22 +187,91 @@ export default function SubjectPage() {
         })
       );
 
-      const out = matching
-        .map((e) => {
-          const dateKey = toLocalDayKey(e.dtStartUtc);
-          const slotId = slotForEvent(e.periodCode, e.title);
-          const plan = slotId ? plansByDate.get(dateKey)?.get(slotId) : undefined;
+      const subjectById = new Map(subjects.map((s) => [s.id, s]));
+      const selectedId = selectedSubject.id;
+
+      function resolveFor(dayLabel: DayLabel, slotId: SlotId): { subjectId: string | null; room: string } {
+        const pk = `${dayLabel}::${slotId}`;
+        const p = placementByKey.get(pk);
+
+        // Placement override (authoritative)
+        if (p && Object.prototype.hasOwnProperty.call(p, "subjectId")) {
+          const sid = p.subjectId === null ? null : (p.subjectId ?? null);
+          const room =
+            p && Object.prototype.hasOwnProperty.call(p, "roomOverride")
+              ? p.roomOverride === null
+                ? ""
+                : p.roomOverride ?? ""
+              : "";
+          return { subjectId: sid, room };
+        }
+
+        const a = assignmentByKey.get(pk);
+        if (!a) return { subjectId: null, room: "" };
+        if (a.kind === "free") return { subjectId: null, room: "" };
+
+        if (a.manualTitle) {
+          const code = (a.manualCode ?? "").trim();
+          const sid = code ? `code::${code.toUpperCase()}` : null;
+          const room = (a.manualRoom ?? "").trim();
+          return { subjectId: sid, room };
+        }
+
+        if (a.sourceTemplateEventId) {
+          const te = templateById.get(a.sourceTemplateEventId);
+          if (!te) return { subjectId: null, room: "" };
+          const sid = subjectIdForTemplateEvent(te);
+
+          // room override might still exist even without subject override
+          const roomOverride =
+            p && Object.prototype.hasOwnProperty.call(p, "roomOverride")
+              ? p.roomOverride === null
+                ? ""
+                : p.roomOverride ?? ""
+              : undefined;
+          const room = roomOverride !== undefined ? roomOverride : (te.room ?? "");
+          return { subjectId: sid, room };
+        }
+
+        return { subjectId: null, room: "" };
+      }
+
+      const out: Array<{ dateKey: string; slotId: SlotId; room: string; planHtml: string | null; subjectColor: string; dtSort: number }> = [];
+
+      for (const dk of dayKeys) {
+        const dl = dayLabelForDate(dk, rollingSettings) as DayLabel;
+        for (const s of SLOT_DEFS) {
+          const resolved = resolveFor(dl, s.id);
+          if (!resolved.subjectId) continue;
+          if (resolved.subjectId !== selectedId) continue;
+
+          const plan = plansByDate.get(dk)?.get(s.id);
           const planHtml = plan?.html ?? null;
-          return { event: e, dateKey, slotId, planHtml };
-        })
-        .filter((r) => (showEmpty ? true : !isHtmlEffectivelyEmpty(r.planHtml)));
+          if (!showEmpty && isHtmlEffectivelyEmpty(planHtml)) continue;
 
-      out.sort((a, b) => a.event.dtStartUtc - b.event.dtStartUtc);
-      setRows(out);
+          const subj = subjectById.get(resolved.subjectId);
+          const color = subj?.color ?? "#f59e0b";
+
+          const dtSort = parseISO(dk).getTime();
+          out.push({ dateKey: dk, slotId: s.id, room: resolved.room, planHtml, subjectColor: color, dtSort });
+        }
+      }
+
+      out.sort(
+        (a, b) =>
+          a.dtSort - b.dtSort ||
+          SLOT_DEFS.findIndex((s) => s.id === a.slotId) - SLOT_DEFS.findIndex((s) => s.id === b.slotId)
+      );
+      setRows(out.map(({ dtSort, ...r }) => r));
+      setIsLoading(false);
     })();
-  }, [userId, selectedSubject?.id, selectedSubject?.code, effectiveRange.startKey, effectiveRange.endKey, showEmpty]);
 
-  function headerForRow(r: { event: BaseEventRow; dateKey: string; slotId: SlotId | null }) {
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, selectedSubject?.id, effectiveRange.startKey, effectiveRange.endKey, showEmpty, rollingSettings, subjects]);
+
+  function headerForRow(r: { dateKey: string; slotId: SlotId }) {
     const d = parseISO(r.dateKey);
     const dow = isValid(d) ? format(d, "EEE") : "";
     const dateLabel = isValid(d) ? format(d, "dd/MM/yyyy") : r.dateKey;
@@ -221,7 +283,7 @@ export default function SubjectPage() {
     const termPart = tw ? `Term ${tw.term}` : "";
     const weekPart = tw ? `Week ${tw.week}${suffix}` : "";
 
-    const pc = slotLabel(r.slotId, r.event.periodCode);
+    const pc = slotLabel(r.slotId);
 
     const parts = [dow, termPart, weekPart, pc].filter(Boolean).join(" ");
     return `${parts} - ${dateLabel}`;
@@ -253,19 +315,10 @@ export default function SubjectPage() {
   <div class="meta">${effectiveRange.startKey} → ${effectiveRange.endKey}${showEmpty ? "" : " (non-empty only)"}</div>
   ${rows
     .map((r) => {
-      const room = r.event.room ? `Room ${r.event.room}` : "";
-      const time = (() => {
-        try {
-          const s = new Date(r.event.dtStartUtc);
-          const e = new Date(r.event.dtEndUtc);
-          return `${format(s, "H:mm")}–${format(e, "H:mm")}`;
-        } catch {
-          return "";
-        }
-      })();
-      const sub = [time, room].filter(Boolean).join(" · ");
+      const room = r.room ? `Room ${r.room}` : "";
+      const sub = room;
       const body = !isHtmlEffectivelyEmpty(r.planHtml) ? r.planHtml! : `<div class="empty">(empty)</div>`;
-      return `<div class="lesson"><div class="hdr">${headerForRow(r)}</div>${sub ? `<div class="sub">${sub}</div>` : ""}${body}</div>`;
+      return `<div class="lesson" style="border-left-color:${r.subjectColor}"><div class="hdr">${headerForRow(r)}</div>${sub ? `<div class="sub">${sub}</div>` : ""}${body}</div>`;
     })
     .join("\n")}
 <script>window.print()</script>
@@ -342,7 +395,11 @@ export default function SubjectPage() {
         </div>
       </div>
 
-      {rows.length === 0 ? (
+      {isLoading ? (
+        <div className="card">
+          <div className="muted">Loading…</div>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="card">
           <div className="muted">No lessons found for the selected subject and period.</div>
         </div>
@@ -350,20 +407,11 @@ export default function SubjectPage() {
         <div className="grid" style={{ gap: 10 }}>
           {rows.map((r) => {
             const header = headerForRow(r);
-            const time = (() => {
-              try {
-                const s = new Date(r.event.dtStartUtc);
-                const e = new Date(r.event.dtEndUtc);
-                return `${format(s, "H:mm")}–${format(e, "H:mm")}`;
-              } catch {
-                return "";
-              }
-            })();
-            const room = r.event.room ? `Room ${r.event.room}` : "";
-            const sub = [time, room].filter(Boolean).join(" · ");
+            const room = r.room ? `Room ${r.room}` : "";
+            const sub = room;
 
             return (
-              <div key={r.event.id} className="card" style={{ borderLeft: "4px solid #f59e0b" }}>
+              <div key={`${r.dateKey}::${r.slotId}`} className="card" style={{ borderLeft: `4px solid ${r.subjectColor}` }}>
                 <div>
                   <strong>{header}</strong>
                   {sub ? (
