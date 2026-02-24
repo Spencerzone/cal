@@ -91,6 +91,7 @@ const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
     if (location.pathname === "/") return "Today";
     if (location.pathname.startsWith("/week")) return "Week";
     if (location.pathname.startsWith("/matrix")) return "Matrix";
+    if (location.pathname.startsWith("/lessons")) return "Lessons";
     if (location.pathname.startsWith("/subjects")) return "Subjects";
     if (location.pathname.startsWith("/setup")) return "Setup";
     if (location.pathname.startsWith("/subject")) return "Subject";
@@ -141,7 +142,7 @@ input,select,textarea{background:var(--panel2);color:var(--text);border:1px soli
               <NavLink to="/matrix" className={({ isActive }) => (isActive ? "active" : "")}>
                 Matrix
               </NavLink>
-              <NavLink to="/subjects" className={({ isActive }) => (isActive ? "active" : "")}>
+              <NavLink to="/lessons" className={({ isActive }) => (isActive ? "active" : "")}>
                 Subjects
               </NavLink>
               <div className="navDivider" />
