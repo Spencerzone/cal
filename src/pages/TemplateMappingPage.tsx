@@ -7,7 +7,7 @@ export default function TemplateMappingPage() {
   const userId = user?.uid || "";
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [shift, setShift] = useState(0);
-  const [flipped, setFlipped] = useState(false);
+  const flipped = false;
   const [anchorMonday, setAnchorMonday] = useState<string>("");
   const [cycleDates, setCycleDates] = useState<string[]>([]);
   const [status, setStatus] = useState<string>("");
@@ -22,7 +22,6 @@ export default function TemplateMappingPage() {
         return;
       }
       setShift(meta.shift);
-      setFlipped(meta.flipped);
       setAnchorMonday(meta.anchorMonday);
       setCycleDates(meta.cycleDates);
       setMetaLoaded(true);
@@ -38,12 +37,12 @@ export default function TemplateMappingPage() {
       flipped,
       builtAt: Date.now(),
     });
-  }, [metaLoaded, anchorMonday, cycleDates, shift, flipped]);
+  }, [metaLoaded, anchorMonday, cycleDates, shift]);
 
   async function apply() {
     setStatus("Applying…");
     try {
-      await applyTemplateMapping(shift, flipped);
+      await applyTemplateMapping(shift, false);
       setStatus("Applied. Matrix/Today/Week will now use this mapping.");
     } catch (e: any) {
       setStatus(e?.message ?? "Apply failed.");
@@ -59,7 +58,7 @@ export default function TemplateMappingPage() {
       <div className="card">
         <div className="muted">
           Adjust the inferred MonA…FriB mapping used to build the template.
-          Use <strong>Shift</strong> if days are offset; use <strong>Flip A/B</strong> if the school declares this term starts on B week.
+          Use <strong>Shift</strong> if days are offset. A/B week starts are configured per term in <strong>Setup</strong>.
         </div>
         <div className="space" />
         <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -72,6 +71,9 @@ export default function TemplateMappingPage() {
           </button>
 
           <div style={{ width: 18 }} />
+
+          {/* A/B flipping is now controlled per-term in Setup (Week 1 set). */}
+          <div className="muted">A/B is controlled in Setup (Week 1 set). This page only supports shift for template alignment.</div>
 
           <label className="row muted" style={{ gap: 6 }}>
             <input

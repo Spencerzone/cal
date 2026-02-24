@@ -76,7 +76,7 @@ export function dayLabelForDate(
   if (tw) {
     const termKey =
       tw.term === 1 ? "t1" : tw.term === 2 ? "t2" : tw.term === 3 ? "t3" : "t4";
-    const week1Set: WeekSet = (settings.termWeek1Sets as any)?.[termKey] ?? "A";
+    const week1Set: WeekSet = settings.termWeek1Sets?.[termKey] ?? "A";
     const flips = (Math.max(1, tw.week) - 1) % 2;
     const set: WeekSet = flips === 0 ? week1Set : week1Set === "A" ? "B" : "A";
     const wd = target.getDay();
