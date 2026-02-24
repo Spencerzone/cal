@@ -1,14 +1,23 @@
 import type { RollingSettings, WeekSet } from "./settings";
+import { termWeekForDate } from "./termWeek";
 
 export type DayLabel =
-  | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
-  | "MonB" | "TueB" | "WedB" | "ThuB" | "FriB";
+  | "MonA"
+  | "TueA"
+  | "WedA"
+  | "ThuA"
+  | "FriA"
+  | "MonB"
+  | "TueB"
+  | "WedB"
+  | "ThuB"
+  | "FriB";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 
 function parseLocalDate(date: string): Date {
   const [y, m, d] = date.split("-").map(Number);
-  return new Date(y!, (m! - 1), d!);
+  return new Date(y!, m! - 1, d!);
 }
 function formatLocalDate(d: Date): string {
   const y = d.getFullYear();
@@ -26,7 +35,10 @@ function addDays(d: Date, n: number): Date {
   return x;
 }
 
-function latestOverrideAnchor(target: string, overrides: RollingSettings["overrides"]) {
+function latestOverrideAnchor(
+  target: string,
+  overrides: RollingSettings["overrides"],
+) {
   let best: { date: string; set: WeekSet } | null = null;
   for (const o of overrides) {
     if (o.date <= target && (!best || o.date > best.date)) best = o;
@@ -34,7 +46,11 @@ function latestOverrideAnchor(target: string, overrides: RollingSettings["overri
   return best;
 }
 
-function countSchoolDaysInclusive(start: Date, end: Date, excluded: Set<string>): number {
+function countSchoolDaysInclusive(
+  start: Date,
+  end: Date,
+  excluded: Set<string>,
+): number {
   let count = 0;
   for (let cur = new Date(start); cur <= end; cur = addDays(cur, 1)) {
     const key = formatLocalDate(cur);
@@ -45,11 +61,29 @@ function countSchoolDaysInclusive(start: Date, end: Date, excluded: Set<string>)
   return count;
 }
 
-export function dayLabelForDate(targetDate: string, settings: RollingSettings): DayLabel | null {
+export function dayLabelForDate(
+  targetDate: string,
+  settings: RollingSettings,
+): DayLabel | null {
   const excluded = new Set(settings.excludedDates ?? []);
   const target = parseLocalDate(targetDate);
   if (isWeekend(target)) return null;
   if (excluded.has(targetDate)) return null;
+
+  // Prefer term-based A/B when term dates are configured.
+  // Week 1 set is configured per term in Setup.
+  const tw = termWeekForDate(target, settings.termStarts, settings.termEnds);
+  if (tw) {
+    const termKey =
+      tw.term === 1 ? "t1" : tw.term === 2 ? "t2" : tw.term === 3 ? "t3" : "t4";
+    const week1Set: WeekSet = (settings.termWeek1Sets as any)?.[termKey] ?? "A";
+    const flips = (Math.max(1, tw.week) - 1) % 2;
+    const set: WeekSet = flips === 0 ? week1Set : week1Set === "A" ? "B" : "A";
+    const wd = target.getDay();
+    const weekdayIdx = wd - 1;
+    if (weekdayIdx < 0 || weekdayIdx > 4) return null;
+    return `${DOW[weekdayIdx]}${set}` as DayLabel;
+  }
 
   const ov = latestOverrideAnchor(targetDate, settings.overrides ?? []);
   const anchorDateStr = ov?.date ?? settings.cycleStartDate;
@@ -67,7 +101,8 @@ export function dayLabelForDate(targetDate: string, settings: RollingSettings): 
 
   const weekdayIdx = (anchorDowIdx + (offset % 5)) % 5;
   const weekBlocks = Math.floor((anchorDowIdx + offset) / 5);
-  const set: WeekSet = (weekBlocks % 2 === 0) ? anchorSet : (anchorSet === "A" ? "B" : "A");
+  const set: WeekSet =
+    weekBlocks % 2 === 0 ? anchorSet : anchorSet === "A" ? "B" : "A";
 
   return `${DOW[weekdayIdx]}${set}` as DayLabel;
 }
