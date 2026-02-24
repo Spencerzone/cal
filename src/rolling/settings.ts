@@ -24,6 +24,7 @@ export interface RollingSettings {
     t4?: string;
   };
 
+  // Which set (A/B) is Week 1 for each term
   termWeek1Sets?: {
     t1?: WeekSet;
     t2?: WeekSet;
@@ -53,9 +54,9 @@ export async function setRollingSettings(
   userId: string,
   next: RollingSettings,
 ): Promise<void> {
-  // Defensive merge: some callers construct partial objects. Persist by merging with existing
-  // so optional nested objects (e.g. termWeek1Sets) are not accidentally dropped.
+  // Deep-merge with existing settings so optional nested fields aren't dropped by partial updates.
   const current = await getRollingSettings(userId);
+
   const merged: RollingSettings = {
     ...current,
     ...next,
@@ -67,10 +68,6 @@ export async function setRollingSettings(
     },
   };
 
-  await setDoc(
-    settingDoc(userId, KEY),
-    { key: KEY, value: merged },
-    { merge: true },
-  );
+  await setDoc(settingDoc(userId, KEY), { key: KEY, value: merged });
   window.dispatchEvent(new Event("rolling-settings-changed"));
 }
