@@ -4,6 +4,7 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
+  setDoc,
   query,
   runTransaction,
   where,

@@ -1,6 +1,6 @@
 // src/db/templateQueries.ts (Firestore source-of-truth)
 
-import { getDocs } from "firebase/firestore";
+import { getDocs, setDoc } from "firebase/firestore";
 import type { CycleTemplateEvent, DayLabel } from "./db";
 import { cycleTemplateEventsCol } from "./db";
 

@@ -1,6 +1,6 @@
 // src/db/assignmentQueries.ts (Firestore source-of-truth)
 
-import { getDocs, query, where } from "firebase/firestore";
+import { getDocs, query, where, setDoc } from "firebase/firestore";
 import type { DayLabel, SlotAssignment } from "./db";
 import { slotAssignmentsCol } from "./db";
 
