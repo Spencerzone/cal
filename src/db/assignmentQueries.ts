@@ -7,9 +7,9 @@ import { slotAssignmentsCol } from "./db";
 export async function getAssignmentsForDayLabels(
   userId: string,
   year: number,
-  labels: DayLabel[]
+  labels: DayLabel[] = []
 ): Promise<SlotAssignment[]> {
-  if (labels.length === 0) return [];
+  if (!userId || !year || !labels || labels.length === 0) return [];
   const out: SlotAssignment[] = [];
   const col = slotAssignmentsCol(userId);
 

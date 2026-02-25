@@ -74,6 +74,8 @@ export default function SubjectPage() {
 
   const [rollingSettings, setRollingSettingsState] = useState<RollingSettings | null>(null);
 
+  const activeYear = (rollingSettings?.activeYear ?? new Date().getFullYear()) as number;
+
   const [rangeMode, setRangeMode] = useState<RangeMode>("term");
   const [term, setTerm] = useState<TermKey>("t1");
   const [startKey, setStartKey] = useState<string>("2026-02-01");
@@ -113,7 +115,7 @@ export default function SubjectPage() {
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      const all = await getAllSubjectsByUser(userId);
+      const all = await getAllSubjectsByUser(userId, activeYear);
       const subs = all.filter((s) => s.kind === "subject" && !s.archived);
       subs.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
       setSubjects(subs);
@@ -167,9 +169,9 @@ export default function SubjectPage() {
       ) as DayLabel[];
 
       const [templateEvents, assignments, placements] = await Promise.all([
-        getAllCycleTemplateEvents(userId),
-        getAssignmentsForDayLabels(userId, dayLabels),
-        getPlacementsForDayLabels(userId, dayLabels),
+        getAllCycleTemplateEvents(userId, activeYear),
+        getAssignmentsForDayLabels(userId, activeYear, dayLabels),
+        getPlacementsForDayLabels(userId, activeYear, dayLabels),
       ]);
 
       if (cancelled) return;
@@ -182,7 +184,7 @@ export default function SubjectPage() {
       const plansByDate = new Map<string, Map<SlotId, LessonPlan>>();
       await Promise.all(
         dayKeys.map(async (dk) => {
-          const ps = await getLessonPlansForDate(userId, dk);
+          const ps = await getLessonPlansForDate(userId, activeYear, dk);
           plansByDate.set(dk, new Map(ps.map((p) => [p.slotId, p])));
         })
       );
