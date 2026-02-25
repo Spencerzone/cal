@@ -56,7 +56,7 @@ export default function RichTextPlanEditor(props: {
   function scheduleSave(nextHtml: string) {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      upsertLessonPlan(userId, dateKey, slotId, normaliseForDb(nextHtml));
+      upsertLessonPlan(userId, year, dateKey, slotId, normaliseForDb(nextHtml ?? ""));
     }, 600);
   }
 

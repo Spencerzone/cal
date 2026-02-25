@@ -25,10 +25,10 @@ export async function upsertLessonPlan(
   year: number,
   dateKey: string,
   slotId: SlotId,
-  html: string
+  html: string | undefined | null
 ): Promise<void> {
   const key = planKeyFor(dateKey, slotId);
-  const trimmed = html.trim();
+  const trimmed = (html ?? "").trim();
 
   if (!trimmed) {
     await deleteLessonPlan(userId, year, dateKey, slotId);
@@ -42,7 +42,7 @@ export async function upsertLessonPlan(
     userId,
     dateKey,
     slotId,
-    html,
+    html: html ?? "",
     updatedAt: Date.now(),
   };
 

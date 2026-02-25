@@ -234,7 +234,7 @@ export default function TodayPage() {
       const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
       setLabel(stored);
 
-      const rows = await getAssignmentsForDayLabels(userId, activeYear, [stored]);
+      const rows = await getAssignmentsForDayLabels(userId, [stored]);
       const m = new Map<SlotId, SlotAssignment>();
       for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
       setAssignmentBySlot(m);
@@ -249,7 +249,7 @@ export default function TodayPage() {
     }
 
     const load = async () => {
-      const ps = await getPlacementsForDayLabels(userId, activeYear, [label]);
+      const ps = await getPlacementsForDayLabels(userId, [label]);
       const m = new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
       for (const p of ps) {
         const o: { subjectId?: string | null; roomOverride?: string | null } = {};
@@ -277,7 +277,7 @@ export default function TodayPage() {
       for (const [slotId] of pMap) {
         const planKey = `${dateKey}::${slotId}`;
         try {
-          const atts = await getAttachmentsForPlan(userId, activeYear, planKey);
+          const atts = await getAttachmentsForPlan(userId, planKey);
           aMap.set(slotId, atts);
         } catch (e) {
           console.warn("getAttachmentsForPlan failed", { planKey, e });

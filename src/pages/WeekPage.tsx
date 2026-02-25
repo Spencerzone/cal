@@ -218,7 +218,7 @@ export default function WeekPage() {
         const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
         dlOut.set(dateKey, stored);
 
-        const rows = await getAssignmentsForDayLabels(userId, activeYear, [stored]);
+        const rows = await getAssignmentsForDayLabels(userId, [stored]);
 
         const m = new Map<SlotId, SlotAssignment>();
         for (const a of rows) m.set(a.slotId, a);
@@ -248,7 +248,7 @@ export default function WeekPage() {
         for (const [slotId] of pMap) {
           const planKey = `${dateKey}::${slotId}`;
           try {
-            const atts = await getAttachmentsForPlan(userId, activeYear, planKey);
+            const atts = await getAttachmentsForPlan(userId, planKey);
             aMap.set(slotId, atts);
           } catch (e) {
             console.warn("getAttachmentsForPlan failed", { planKey, e });
@@ -301,7 +301,7 @@ export default function WeekPage() {
         setPlacementsByDate(new Map());
         return;
       }
-      const ps = await getPlacementsForDayLabels(userId, activeYear, unique);
+      const ps = await getPlacementsForDayLabels(userId, unique);
 
       const byLabel = new Map<DayLabel, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const p of ps) {
