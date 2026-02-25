@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getRollingSettings } from "../rolling/settings";
 import { dayLabelsForSet } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { useAuth } from "../auth/AuthProvider";
@@ -60,6 +61,7 @@ function rgbaFromHex(hex: string, alpha: number): string {
 export default function MatrixPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
+  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
   const [set, setSet] = useState<"A" | "B">("A");
   const labels = useMemo(() => dayLabelsForSet(set), [set]);
   const rows = useMemo(() => SLOT_DEFS, []);
@@ -71,6 +73,21 @@ export default function MatrixPage() {
   const [placementsByKey, setPlacementsByKey] = useState<
     Map<string, { subjectId?: string | null; roomOverride?: string | null }>
   >(new Map());
+
+  useEffect(() => {
+    if (!userId) return;
+    const load = async () => {
+      const s = await getRollingSettings(userId);
+      const ay = (s as any)?.activeYear;
+      if (typeof ay === "number" && Number.isFinite(ay)) setActiveYear(ay);
+      else if (typeof (s as any)?.termYears?.[0]?.year === "number") setActiveYear((s as any).termYears[0].year);
+      else setActiveYear(new Date().getFullYear());
+    };
+    load();
+    const on = () => load();
+    window.addEventListener("rolling-settings-changed", on as any);
+    return () => window.removeEventListener("rolling-settings-changed", on as any);
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -213,7 +230,7 @@ if (a.manualTitle) {
       existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride") ? existing.roomOverride : undefined;
 
     if (value === "") {
-      await setPlacement(userId, activeYear, activeYear, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
+      await setPlacement(userId, activeYear, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
       return;
     }
     if (value === "__blank__") {
@@ -225,7 +242,7 @@ if (a.manualTitle) {
       );
       return;
     }
-    await setPlacement(userId, activeYear, activeYear, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
+    await setPlacement(userId, activeYear, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
   }
 
   async function onRoomBlur(dl: DayLabel, slotId: SlotId, nextRoomText: string) {
@@ -237,7 +254,7 @@ if (a.manualTitle) {
     const trimmed = nextRoomText.trim();
     const roomOverride = trimmed ? trimmed : undefined;
 
-    await setPlacement(userId, activeYear, activeYear, dl, slotId, {
+    await setPlacement(userId, activeYear, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       ...(roomOverride !== undefined ? { roomOverride } : {}),
     });
@@ -249,7 +266,7 @@ if (a.manualTitle) {
     const subjectId =
       existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
 
-    await setPlacement(userId, activeYear, activeYear, dl, slotId, {
+    await setPlacement(userId, activeYear, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       roomOverride: null,
     });
@@ -261,7 +278,7 @@ if (a.manualTitle) {
     const subjectId =
       existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
 
-    await setPlacement(userId, activeYear, activeYear, dl, slotId, subjectId !== undefined ? { subjectId } : {});
+    await setPlacement(userId, activeYear, dl, slotId, subjectId !== undefined ? { subjectId } : {});
   }
 
   useEffect(() => {

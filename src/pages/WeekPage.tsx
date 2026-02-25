@@ -95,6 +95,9 @@ export default function WeekPage() {
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
 
+
+  const activeYear = (rollingSettings?.activeYear ?? weekStart.getFullYear()) as number;
+
   const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
 

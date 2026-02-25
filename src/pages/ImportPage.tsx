@@ -1,5 +1,5 @@
 // src/pages/ImportPage.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { importIcs } from "../ics/importIcs";
 import { getRollingSettings } from "../rolling/settings";
 import { useAuth } from "../auth/AuthProvider";

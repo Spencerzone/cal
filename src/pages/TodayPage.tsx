@@ -105,6 +105,9 @@ export default function TodayPage() {
 
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
 
+
+  const activeYear = (rollingSettings?.activeYear ?? selectedDate.getFullYear()) as number;
+
   const dateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
