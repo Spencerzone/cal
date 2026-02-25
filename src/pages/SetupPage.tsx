@@ -28,8 +28,6 @@ export default function SetupPage() {
     if (!userId) return;
     (async () => {
       const s = await getRollingSettings(userId);
-      const after = await getRollingSettings(userId);
-      console.log("[DBG] rolling settings after save", after);
       setSettings(s);
       setT1s((s.termStarts?.t1 ?? "").trim());
       setT2s((s.termStarts?.t2 ?? "").trim());
@@ -39,6 +37,10 @@ export default function SetupPage() {
       setT2e((s.termEnds?.t2 ?? "").trim());
       setT3e((s.termEnds?.t3 ?? "").trim());
       setT4e((s.termEnds?.t4 ?? "").trim());
+      setT1w((s.termWeek1Sets?.t1 ?? "A") as any);
+      setT2w((s.termWeek1Sets?.t2 ?? "A") as any);
+      setT3w((s.termWeek1Sets?.t3 ?? "A") as any);
+      setT4w((s.termWeek1Sets?.t4 ?? "A") as any);
     })();
   }, [userId]);
 
