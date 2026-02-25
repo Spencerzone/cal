@@ -25,7 +25,7 @@ import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
 import { getAttachmentsForPlan, getLessonPlansForDate } from "../db/lessonPlanQueries";
-import { termWeekForDate } from "../rolling/termWeek";
+import { termInfoForDate, nextTermStartAfter } from "../rolling/termWeek";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 
 type Cell =
@@ -574,16 +574,50 @@ export default function WeekPage() {
           </div>
           <div>
             {(() => {
-              const tw = rollingSettings
-                ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds)
-                : null;
               const mondayKey = format(weekStart, "yyyy-MM-dd");
+              const termInfo = rollingSettings ? termInfoForDate(weekStart, rollingSettings) : null;
               const suffix = (dayLabelByDate.get(mondayKey) ?? "").slice(-1);
-              return tw ? <span className="muted">Term {tw.term} · Week {tw.week}{suffix}</span> : <span className="muted">&nbsp;</span>;
+              return termInfo ? (
+                <span className="muted">Term {termInfo.term} · Week {termInfo.week}{suffix}</span>
+              ) : (
+                <span className="muted">Holiday / non-term</span>
+              );
             })()}
           </div>
         </div>
       </div>
+
+      
+      {(() => {
+        const mondayKey = format(weekStart, "yyyy-MM-dd");
+        const hasAnyTerms =
+          (rollingSettings?.termYears && rollingSettings.termYears.length > 0) ||
+          !!rollingSettings?.termStarts;
+        const inTerm = rollingSettings ? !!termInfoForDate(weekStart, rollingSettings) : false;
+        if (!hasAnyTerms || inTerm) return null;
+        const next = rollingSettings ? nextTermStartAfter(mondayKey, rollingSettings) : null;
+        return (
+          <div className="card">
+            <div><strong>Holiday / non-term</strong></div>
+            <div className="muted">No lessons shown for weeks outside configured terms.</div>
+            {next ? <div className="space" /> : null}
+            {next ? (
+              <button
+                className="btn"
+                onClick={() => {
+                  const d = new Date(next + "T00:00:00");
+                  // jump to Monday of that week
+                  const monIndex = (d.getDay() + 6) % 7;
+                  d.setDate(d.getDate() - monIndex);
+                  setWeekStart(d);
+                }}
+              >
+                Skip to next term
+              </button>
+            ) : null}
+          </div>
+        );
+      })()}
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>

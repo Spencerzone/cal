@@ -4,11 +4,23 @@ import { getDoc, setDoc } from "firebase/firestore";
 import { settingDoc } from "../db/db";
 
 export type WeekSet = "A" | "B";
+export type TermKey = "t1" | "t2" | "t3" | "t4";
+
+export interface TermYear {
+  year: number;
+  starts?: Partial<Record<TermKey, string>>;
+  ends?: Partial<Record<TermKey, string>>;
+  week1Sets?: Partial<Record<TermKey, WeekSet>>;
+}
+
 
 export interface RollingSettings {
   cycleStartDate: string; // YYYY-MM-DD meaning this date is MonA
   excludedDates: string[];
   overrides: Array<{ date: string; set: WeekSet }>;
+
+  // NEW: term configuration for multiple years
+  termYears?: TermYear[];
 
   termStarts?: {
     t1?: string;
@@ -46,7 +58,30 @@ export async function getRollingSettings(
 ): Promise<RollingSettings> {
   const snap = await getDoc(settingDoc(userId, KEY));
   const v = snap.exists() ? (snap.data() as any).value : null;
-  if (v) return v as RollingSettings;
+  if (v) {
+    // MIGRATE termStarts/termEnds/termWeek1Sets -> termYears (one-time, backwards compatible)
+    if (!v.termYears && (v.termStarts || v.termEnds || v.termWeek1Sets)) {
+      const pickYear = () => {
+        const cands = [v.termStarts?.t1, v.termStarts?.t2, v.termStarts?.t3, v.termStarts?.t4].filter(Boolean);
+        const first = (cands[0] ?? "").trim();
+        const y = parseInt(first.slice(0, 4), 10);
+        return Number.isFinite(y) ? y : new Date().getFullYear();
+      };
+      const year = pickYear();
+      v.termYears = [
+        {
+          year,
+          starts: { ...(v.termStarts ?? {}) },
+          ends: { ...(v.termEnds ?? {}) },
+          week1Sets: { ...(v.termWeek1Sets ?? {}) },
+        },
+      ];
+      // Persist migration without altering other fields
+      await setDoc(settingDoc(userId, KEY), { key: KEY, value: v });
+      window.dispatchEvent(new Event("rolling-settings-changed"));
+    }
+    return v as RollingSettings;
+  }
   return DEFAULTS;
 }
 
@@ -66,6 +101,7 @@ export async function setRollingSettings(
       ...(current.termWeek1Sets ?? {}),
       ...(next.termWeek1Sets ?? {}),
     },
+    termYears: next.termYears ?? current.termYears,
   };
 
   await setDoc(settingDoc(userId, KEY), { key: KEY, value: merged });

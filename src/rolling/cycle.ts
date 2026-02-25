@@ -1,5 +1,5 @@
 import type { RollingSettings, WeekSet } from "./settings";
-import { termWeekForDate } from "./termWeek";
+import { termInfoForDate, termWeekForDate } from "./termWeek";
 
 export type DayLabel =
   | "MonA"
@@ -70,20 +70,19 @@ export function dayLabelForDate(
   if (isWeekend(target)) return null;
   if (excluded.has(targetDate)) return null;
 
-  // Prefer term-based A/B when term dates are configured.
-  // Week 1 set is configured per term in Setup.
-  const tw = termWeekForDate(target, settings.termStarts, settings.termEnds);
-  if (tw) {
-    const termKey =
-      tw.term === 1 ? "t1" : tw.term === 2 ? "t2" : tw.term === 3 ? "t3" : "t4";
-    const week1Set: WeekSet = settings.termWeek1Sets?.[termKey] ?? "A";
-    const flips = (Math.max(1, tw.week) - 1) % 2;
-    const set: WeekSet = flips === 0 ? week1Set : week1Set === "A" ? "B" : "A";
+  // Prefer term-based A/B when term dates are configured. Outside term ranges are treated as holidays.
+  const hasAnyTerms =
+    (settings.termYears && settings.termYears.length > 0) ||
+    !!settings.termStarts;
+  if (hasAnyTerms) {
+    const ti = termInfoForDate(target, settings);
+    if (!ti) return null; // holiday / non-term
     const wd = target.getDay();
     const weekdayIdx = wd - 1;
     if (weekdayIdx < 0 || weekdayIdx > 4) return null;
-    return `${DOW[weekdayIdx]}${set}` as DayLabel;
+    return `${DOW[weekdayIdx]}${ti.set}` as DayLabel;
   }
+
 
   const ov = latestOverrideAnchor(targetDate, settings.overrides ?? []);
   const anchorDateStr = ov?.date ?? settings.cycleStartDate;
