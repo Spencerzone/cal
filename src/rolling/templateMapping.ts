@@ -43,16 +43,16 @@ export function applyMetaFromLabel(stored: DayLabel, meta: TemplateMeta): DayLab
   return CANON_LABELS[i] ?? stored;
 }
 
-const KEY = "templateMeta";
+function keyForYear(year: number) { return `templateMeta::${year}`; }
 
-export async function getTemplateMeta(userId: string): Promise<TemplateMeta | null> {
-  const snap = await getDoc(settingDoc(userId, KEY));
+export async function getTemplateMeta(userId: string, year: number): Promise<TemplateMeta | null> {
+  const snap = await getDoc(settingDoc(userId, keyForYear(year)));
   const v = snap.exists() ? (snap.data() as any).value : null;
   return v ? (v as TemplateMeta) : null;
 }
 
-export async function setTemplateMeta(userId: string, meta: TemplateMeta): Promise<void> {
-  await setDoc(settingDoc(userId, KEY), { key: KEY, value: meta }, { merge: true });
+export async function setTemplateMeta(userId: string, year: number, meta: TemplateMeta): Promise<void> {
+  await setDoc(settingDoc(userId, keyForYear(year)), { key: keyForYear(year), value: meta }, { merge: true });
   window.dispatchEvent(new Event("template-meta-changed"));
 }
 

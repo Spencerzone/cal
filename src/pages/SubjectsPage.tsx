@@ -1,6 +1,7 @@
 // src/pages/SubjectsPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { getRollingSettings } from "../rolling/settings";
 import type { Subject, SubjectKind } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 import { deleteSubject, getAllSubjectsByUser, restoreSubject, upsertSubject } from "../db/subjectQueries";
@@ -18,7 +19,25 @@ export default function SubjectsPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
   const [filter, setFilter] = useState<SubjectKind | "all">("all");
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const s = await getRollingSettings(userId);
+      setActiveYear(s.activeYear ?? new Date().getFullYear());
+    })();
+    const on = () => {
+      (async () => {
+        const s = await getRollingSettings(userId);
+        setActiveYear(s.activeYear ?? new Date().getFullYear());
+      })();
+    };
+    window.addEventListener("rolling-settings-changed", on as any);
+    return () => window.removeEventListener("rolling-settings-changed", on as any);
+  }, [userId]);
+
   const [q, setQ] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
@@ -29,13 +48,13 @@ export default function SubjectsPage() {
 
   async function refresh() {
     if (!userId) return;
-    const all = await getAllSubjectsByUser(userId);
+    const all = await getAllSubjectsByUser(userId, activeYear);
     setSubjects(all);
   }
 
   async function syncFromTemplate() {
     if (!userId) return;
-    await ensureSubjectsFromTemplates(userId);
+    await ensureSubjectsFromTemplates(userId, activeYear);
     await refresh();
   }
 
@@ -74,6 +93,7 @@ export default function SubjectsPage() {
 
     const id = subjectIdForManual(newKind, code ? code : null, title);
     const next: Subject = {
+      year: activeYear,
       id,
       userId,
       kind: newKind,

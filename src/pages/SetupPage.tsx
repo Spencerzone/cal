@@ -157,7 +157,14 @@ export default function SetupPage() {
 
         <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
           <div className="muted">Year</div>
-          <select value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))}>
+          <select value={year} onChange={async (e) => {
+            const y = parseInt(e.target.value, 10);
+            setYear(y);
+            if (!settings) return;
+            const next = { ...settings, activeYear: y };
+            await setRollingSettings(userId, next as any);
+            setSettings(next as any);
+          }}>
             {((settings?.termYears ?? [])
               .map((y) => y.year)
               .slice()
@@ -177,6 +184,11 @@ export default function SetupPage() {
               const years = (settings?.termYears ?? []).map((y) => y.year);
               const nextYear = years.length ? Math.max(...years) + 1 : year + 1;
               setYear(nextYear);
+              if (settings) {
+                const next = { ...settings, activeYear: nextYear, termYears: [...(settings.termYears ?? []), { year: nextYear, starts: {}, ends: {}, week1Sets: {} }] } as any;
+                void setRollingSettings(userId, next);
+                setSettings(next);
+              }
               // ensure UI clears for new year
               setT1s(""); setT2s(""); setT3s(""); setT4s("");
               setT1e(""); setT2e(""); setT3e(""); setT4e("");

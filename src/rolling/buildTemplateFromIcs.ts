@@ -1,7 +1,7 @@
 import ICAL from "ical.js";
 import { toZonedTime } from "date-fns-tz";
 import { format } from "date-fns";
-import { getDocs, writeBatch } from "firebase/firestore";
+import { getDocs, writeBatch, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { cycleTemplateEventsCol, cycleTemplateEventDoc } from "../db/db";
 import { setTemplateMeta } from "./templateMapping";
@@ -108,7 +108,7 @@ type ParsedEvent = {
   room: string | null;
 };
 
-export async function buildCycleTemplateFromIcs(userId: string, icsText: string) {
+export async function buildCycleTemplateFromIcs(userId: string, year: number, icsText: string) {
   const jcal = ICAL.parse(icsText);
   const comp = new ICAL.Component(jcal);
   const vevents = comp.getAllSubcomponents("vevent");
@@ -202,9 +202,11 @@ export async function buildCycleTemplateFromIcs(userId: string, icsText: string)
     evs.sort((a, b) => (a.startMinutes - b.startMinutes) || (String(a.periodCode).localeCompare(String(b.periodCode))));
 
     for (const e of evs) {
-      const id = `${label}-${stableId([e.periodCode, e.startMinutes, e.endMinutes, e.code, e.title, e.room, e.type])}`;
+      const idBase = `${label}-${stableId([e.periodCode, e.startMinutes, e.endMinutes, e.code, e.title, e.room, e.type])}`;
+      const id = `${year}::${idBase}`;
       templateEvents.push({
         id,
+        year,
         dayLabel: label,
         startMinutes: e.startMinutes,
         endMinutes: e.endMinutes,
@@ -220,7 +222,7 @@ export async function buildCycleTemplateFromIcs(userId: string, icsText: string)
 
   // Persist: replace existing template (Firestore)
   // Delete existing docs
-  const existingSnap = await getDocs(cycleTemplateEventsCol(userId));
+  const existingSnap = await getDocs(query(cycleTemplateEventsCol(userId), where("year", "==", year)));
   if (!existingSnap.empty) {
     const batchDel = writeBatch(db);
     for (const d of existingSnap.docs) batchDel.delete(d.ref);
@@ -238,7 +240,7 @@ export async function buildCycleTemplateFromIcs(userId: string, icsText: string)
     await batch.commit();
   }
 
-  await setTemplateMeta(userId, {
+  await setTemplateMeta(userId, year, {
     anchorMonday,
     cycleDates,
     shift: 0,

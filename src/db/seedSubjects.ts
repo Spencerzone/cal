@@ -12,13 +12,20 @@ import {
 } from "./subjectUtils";
 import { getAllCycleTemplateEvents } from "./templateQueries";
 
-export async function ensureSubjectsFromTemplates(userId: string): Promise<void> {
-  const template = await getAllCycleTemplateEvents(userId);
+export async function ensureSubjectsFromTemplates(userId: string, year: number): Promise<void> {
+  const template = await getAllCycleTemplateEvents(userId, year);
   if (!template.length) return;
 
   const existingSnap = await getDocs(subjectsCol(userId));
   const existingById = new Map(existingSnap.docs.map((d) => [d.id, d.data() as any]));
-  const existingIds = new Set(existingById.keys());
+  // Backfill legacy subjects and scope to this year
+  for (const [id, data] of existingById) {
+    if (data.year === undefined) {
+      await setDoc(subjectDoc(userId, id), { year }, { merge: true });
+      data.year = year;
+    }
+  }
+  const existingIds = new Set(Array.from(existingById.entries()).filter(([,d]) => (d.year ?? year) === year && !d.archived).map(([id]) => id));
 
   const needed = new Map<string, Subject>();
 

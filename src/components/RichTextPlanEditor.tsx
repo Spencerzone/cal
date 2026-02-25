@@ -4,13 +4,14 @@ import { addUrlAttachmentToPlan, deleteAttachment, updateUrlAttachment, upsertLe
 
 export default function RichTextPlanEditor(props: {
   userId: string;
+  year: number;
   dateKey: string;
   slotId: SlotId;
   initialHtml: string;
   attachments: LessonAttachment[];
   palette?: string[];
 }) {
-  const { userId, dateKey, slotId, initialHtml, attachments, palette = [] } = props;
+  const { userId, year, dateKey, slotId, initialHtml, attachments, palette = [] } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -216,9 +217,9 @@ export default function RichTextPlanEditor(props: {
     const url = urlForm.url.trim();
     if (!url) return;
     if (urlForm.mode === "add") {
-      await addUrlAttachmentToPlan(userId, planKey, name, url);
+      await addUrlAttachmentToPlan(userId, year, planKey, name, url);
     } else if (urlForm.mode === "edit" && urlForm.id) {
-      await updateUrlAttachment(userId, urlForm.id, { name: name || url, url });
+      await updateUrlAttachment(userId, year, urlForm.id, { name: name || url, url });
     }
     setUrlForm(null);
   }
@@ -513,7 +514,7 @@ export default function RichTextPlanEditor(props: {
                           className="btn"
                           type="button"
                           onMouseDown={toolbarMouseDown}
-                          onClick={() => deleteAttachment(userId, a.id)}
+                          onClick={() => deleteAttachment(userId, year, a.id)}
                           title="Remove"
                         >
                           Remove

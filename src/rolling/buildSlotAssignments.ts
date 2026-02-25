@@ -1,4 +1,4 @@
-import { getDocs, writeBatch } from "firebase/firestore";
+import { getDocs, writeBatch, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { cycleTemplateEventsCol, slotAssignmentsCol, slotAssignmentDoc } from "../db/db";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, AssignmentKind } from "../db/db";
@@ -47,7 +47,7 @@ function rankKind(k: AssignmentKind): number {
  * Rebuilds slotAssignments from cycleTemplateEvents, choosing exactly one "best" event per slot.
  * This prevents duplicates and avoids inventing slots that don't exist on that day (e.g. p6).
  */
-export async function buildDraftSlotAssignments(userId: string) {
+export async function buildDraftSlotAssignments(userId: string, year: number) {
 
   // Choose one best event per (dayLabel, slotId)
   // Priority:
@@ -67,7 +67,7 @@ export async function buildDraftSlotAssignments(userId: string) {
     }
   >();
 
-  const tplSnap = await getDocs(cycleTemplateEventsCol(userId));
+  const tplSnap = await getDocs(query(cycleTemplateEventsCol(userId), where("year", "==", year)));
   for (const d of tplSnap.docs) {
     const e = d.data() as CycleTemplateEvent;
     const slotId = slotForEvent(e.periodCode, e.title);

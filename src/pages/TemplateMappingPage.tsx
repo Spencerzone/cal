@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyTemplateMapping, getTemplateMeta, mappingPreview } from "../rolling/templateMapping";
 import { useAuth } from "../auth/AuthProvider";
+import { getRollingSettings } from "../rolling/settings";
 
 export default function TemplateMappingPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
+  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [shift, setShift] = useState(0);
   const flipped = false;
@@ -13,9 +15,17 @@ export default function TemplateMappingPage() {
   const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
+    if (!userId) return;
+    (async () => { const s = await getRollingSettings(userId); setActiveYear(s.activeYear ?? new Date().getFullYear()); })();
+    const on = () => { (async () => { const s = await getRollingSettings(userId); setActiveYear(s.activeYear ?? new Date().getFullYear()); })(); };
+    window.addEventListener("rolling-settings-changed", on as any);
+    return () => window.removeEventListener("rolling-settings-changed", on as any);
+  }, [userId]);
+
+  useEffect(() => {
     (async () => {
       if (!userId) return;
-      const meta = await getTemplateMeta(userId);
+      const meta = await getTemplateMeta(userId, activeYear);
       if (!meta) {
         setStatus("No template metadata found. Import ICS and rebuild the template first.");
         setMetaLoaded(true);

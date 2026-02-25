@@ -75,18 +75,18 @@ export default function MatrixPage() {
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      const template = await getAllCycleTemplateEvents(userId);
+      const template = await getAllCycleTemplateEvents(userId, activeYear);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
   }, [userId]);
 
   async function loadSubjects() {
-    const subs = await getSubjectsByUser(userId);
+    const subs = await getSubjectsByUser(userId, activeYear);
     setSubjectsById(new Map(subs.map((s) => [s.id, s])));
   }
 
   async function loadPlacements() {
-    const ps = await getPlacementsForDayLabels(userId, labels);
+    const ps = await getPlacementsForDayLabels(userId, activeYear, labels);
     const m = new Map<string, { subjectId?: string | null; roomOverride?: string | null }>();
     for (const p of ps) {
       const key = `${p.dayLabel}::${p.slotId}`;
@@ -109,7 +109,7 @@ export default function MatrixPage() {
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      const a = await getAssignmentsForDayLabels(userId, labels);
+      const a = await getAssignmentsForDayLabels(userId, activeYear, labels);
       setAssignments(a);
     })();
   }, [userId, labels.join(",")]);
@@ -213,7 +213,7 @@ if (a.manualTitle) {
       existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride") ? existing.roomOverride : undefined;
 
     if (value === "") {
-      await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
+      await setPlacement(userId, activeYear, activeYear, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
       return;
     }
     if (value === "__blank__") {
@@ -225,7 +225,7 @@ if (a.manualTitle) {
       );
       return;
     }
-    await setPlacement(userId, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
+    await setPlacement(userId, activeYear, activeYear, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
   }
 
   async function onRoomBlur(dl: DayLabel, slotId: SlotId, nextRoomText: string) {
@@ -237,7 +237,7 @@ if (a.manualTitle) {
     const trimmed = nextRoomText.trim();
     const roomOverride = trimmed ? trimmed : undefined;
 
-    await setPlacement(userId, dl, slotId, {
+    await setPlacement(userId, activeYear, activeYear, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       ...(roomOverride !== undefined ? { roomOverride } : {}),
     });
@@ -249,7 +249,7 @@ if (a.manualTitle) {
     const subjectId =
       existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
 
-    await setPlacement(userId, dl, slotId, {
+    await setPlacement(userId, activeYear, activeYear, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       roomOverride: null,
     });
@@ -261,7 +261,7 @@ if (a.manualTitle) {
     const subjectId =
       existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
 
-    await setPlacement(userId, dl, slotId, subjectId !== undefined ? { subjectId } : {});
+    await setPlacement(userId, activeYear, activeYear, dl, slotId, subjectId !== undefined ? { subjectId } : {});
   }
 
   useEffect(() => {

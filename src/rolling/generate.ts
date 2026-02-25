@@ -21,12 +21,13 @@ export async function generateForDate(
   const canonical = dayLabelForDate(localDateKey, settings) as DayLabel | null;
   if (!canonical) return [];
 
-  const meta = await getTemplateMeta(userId);
+  const activeYear = settings.activeYear ?? new Date().getFullYear();
+  const meta = await getTemplateMeta(userId, activeYear);
   const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
 
   const [templateEvents, assignments] = await Promise.all([
-    getAllCycleTemplateEvents(userId),
-    getAssignmentsForDayLabels(userId, [stored]),
+    getAllCycleTemplateEvents(userId, activeYear),
+    getAssignmentsForDayLabels(userId, activeYear, [stored]),
   ]);
 
   const templateById = new Map(templateEvents.map((e) => [e.id, e]));

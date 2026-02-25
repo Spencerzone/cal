@@ -43,6 +43,7 @@ export type SubjectKind = "subject" | "duty" | "break" | "other";
 export type Subject = {
   id: string;
   userId: string;
+  year?: number;
   kind: SubjectKind;
   code: string | null;
   title: string;
@@ -58,6 +59,7 @@ export type DayLabel =
 
 export interface CycleTemplateEvent {
   id: string;
+  year?: number;
   dayLabel: DayLabel;
   startMinutes: number;
   endMinutes: number;
@@ -82,7 +84,8 @@ export type SlotId =
 export type AssignmentKind = "class" | "duty" | "break" | "free";
 
 export interface SlotAssignment {
-  key: string; // dayLabel::slotId
+  key: string; // `${year}::${dayLabel}::${slotId}` (or legacy without year)
+  year?: number;
   dayLabel: DayLabel;
   slotId: SlotId;
   kind: AssignmentKind;
@@ -93,7 +96,8 @@ export interface SlotAssignment {
 }
 
 export type Placement = {
-  key: string; // `${dayLabel}::${slotId}`
+  key: string; // `${year}::${dayLabel}::${slotId}` (or legacy without year)
+  year?: number;
   userId: string;
   dayLabel: DayLabel;
   slotId: SlotId;
@@ -103,6 +107,7 @@ export type Placement = {
 
 export type LessonPlan = {
   key: string; // `${dateKey}::${slotId}`
+  year?: number;
   userId: string;
   dateKey: string; // yyyy-MM-dd
   slotId: SlotId;
@@ -112,6 +117,7 @@ export type LessonPlan = {
 
 export type LessonAttachment = {
   id: string;
+  year?: number;
   userId: string;
   planKey: string;
   // kind defaults to "file" for older docs

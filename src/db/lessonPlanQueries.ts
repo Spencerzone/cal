@@ -15,13 +15,14 @@ function planKeyFor(dateKey: string, slotId: SlotId) {
   return `${dateKey}::${slotId}`;
 }
 
-export async function getLessonPlansForDate(userId: string, dateKey: string): Promise<LessonPlan[]> {
-  const snap = await getDocs(query(lessonPlansCol(userId), where("dateKey", "==", dateKey)));
+export async function getLessonPlansForDate(userId: string, year: number, dateKey: string): Promise<LessonPlan[]> {
+  const snap = await getDocs(query(lessonPlansCol(userId), where("dateKey", "==", dateKey), where("year", "==", year)));
   return snap.docs.map((d) => d.data() as LessonPlan);
 }
 
 export async function upsertLessonPlan(
   userId: string,
+  year: number,
   dateKey: string,
   slotId: SlotId,
   html: string
@@ -30,12 +31,13 @@ export async function upsertLessonPlan(
   const trimmed = html.trim();
 
   if (!trimmed) {
-    await deleteLessonPlan(userId, dateKey, slotId);
+    await deleteLessonPlan(userId, year, dateKey, slotId);
     window.dispatchEvent(new Event("lessonplans-changed"));
     return;
   }
 
   const plan: LessonPlan = {
+    year,
     key,
     userId,
     dateKey,
@@ -48,11 +50,11 @@ export async function upsertLessonPlan(
   window.dispatchEvent(new Event("lessonplans-changed"));
 }
 
-export async function deleteLessonPlan(userId: string, dateKey: string, slotId: SlotId): Promise<void> {
+export async function deleteLessonPlan(userId: string, year: number, dateKey: string, slotId: SlotId): Promise<void> {
   const key = planKeyFor(dateKey, slotId);
 
   // Delete any attachment metadata docs (if they exist from earlier experiments)
-  const snap = await getDocs(query(lessonAttachmentsCol(userId), where("planKey", "==", key)));
+  const snap = await getDocs(query(lessonAttachmentsCol(userId), where("planKey", "==", key), where("year", "==", year)));
   for (const d of snap.docs) {
     await deleteDoc(d.ref);
   }
@@ -60,8 +62,8 @@ export async function deleteLessonPlan(userId: string, dateKey: string, slotId: 
   await deleteDoc(lessonPlanDoc(userId, key));
 }
 
-export async function getAttachmentsForPlan(_userId: string, _planKey: string): Promise<LessonAttachment[]> {
-  const snap = await getDocs(query(lessonAttachmentsCol(_userId), where("planKey", "==", _planKey)));
+export async function getAttachmentsForPlan(_userId: string, year: number, _planKey: string): Promise<LessonAttachment[]> {
+  const snap = await getDocs(query(lessonAttachmentsCol(_userId), where("planKey", "==", _planKey), where("year", "==", year)));
   const out = snap.docs.map((d) => {
     const data = d.data() as LessonAttachment;
     return { ...data, id: data.id || d.id };

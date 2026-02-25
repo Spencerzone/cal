@@ -153,7 +153,7 @@ export default function TodayPage() {
   }, [userId]);
 
   async function loadSubjects() {
-    const subs = await getSubjectsByUser(userId);
+    const subs = await getSubjectsByUser(userId, activeYear);
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }
 
@@ -200,7 +200,7 @@ export default function TodayPage() {
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      const template = await getAllCycleTemplateEvents(userId);
+      const template = await getAllCycleTemplateEvents(userId, activeYear);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
   }, [userId]);
@@ -227,7 +227,7 @@ export default function TodayPage() {
         return;
       }
 
-      const meta = await getTemplateMeta(userId);
+      const meta = await getTemplateMeta(userId, activeYear);
       const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
       setLabel(stored);
 
@@ -266,7 +266,7 @@ export default function TodayPage() {
   // Load lesson plans + attachments for the selected date
   useEffect(() => {
     const load = async () => {
-      const plans = await getLessonPlansForDate(userId, dateKey);
+      const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
       const pMap = new Map<SlotId, LessonPlan>();
       const aMap = new Map<SlotId, LessonAttachment[]>();
 
@@ -794,11 +794,13 @@ function DatePickerPopover() {
   >
     <RichTextPlanEditor
       userId={userId}
+                          year={activeYear}
       dateKey={dateKey}
       slotId={slotId}
       initialHtml={plan?.html ?? ""}
       attachments={atts}
-      palette={subjectPalette}
+      year={activeYear}
+                          palette={subjectPalette}
     />
   </div>
 ) : null}

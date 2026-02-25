@@ -8,7 +8,7 @@ import { buildDraftSlotAssignments } from "../rolling/buildSlotAssignments";
 import { baseEventDoc, baseEventsCol, importDoc, type ImportRow } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
 
-export async function importIcs(userId: string, icsText: string, icsName: string) {
+export async function importIcs(userId: string, year: number, icsText: string, icsName: string) {
   const importId = `${Date.now()}`;
   const icsHash = hashString(icsText);
 
@@ -45,11 +45,11 @@ export async function importIcs(userId: string, icsText: string, icsName: string
     await batch.commit();
   }
 
-  await buildCycleTemplateFromIcs(userId, icsText);
+  await buildCycleTemplateFromIcs(userId, year, icsText);
   // Only seed/update Subjects from the template as part of an explicit import.
   // Do NOT do this on page load, otherwise deleted/archived subjects will reappear.
-  await ensureSubjectsFromTemplates(userId);
-  await buildDraftSlotAssignments(userId);
+  await ensureSubjectsFromTemplates(userId, year);
+  await buildDraftSlotAssignments(userId, year);
 
   return { importId, count: parsed.length };
 }

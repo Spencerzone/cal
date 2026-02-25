@@ -19,6 +19,9 @@ export interface RollingSettings {
   excludedDates: string[];
   overrides: Array<{ date: string; set: WeekSet }>;
 
+  // Which academic year is currently active for all year-scoped data (subjects, template, plans, etc.)
+  activeYear?: number;
+
   // NEW: term configuration for multiple years
   termYears?: TermYear[];
 
@@ -51,6 +54,7 @@ const DEFAULTS: RollingSettings = {
   cycleStartDate: "2026-01-01",
   excludedDates: [],
   overrides: [],
+  activeYear: new Date().getFullYear(),
 };
 
 export async function getRollingSettings(
@@ -77,6 +81,19 @@ export async function getRollingSettings(
         },
       ];
       // Persist migration without altering other fields
+      await setDoc(settingDoc(userId, KEY), { key: KEY, value: v });
+      window.dispatchEvent(new Event("rolling-settings-changed"));
+    }
+
+    // Ensure an activeYear exists (used to scope year-based data)
+    if (!v.activeYear) {
+      const years = (v.termYears ?? []).map((t: any) => t.year).filter((n: any) => Number.isFinite(n));
+      if (years.length) v.activeYear = years.slice().sort((a: number, b: number) => a - b)[0];
+      else {
+        const infer = (v.termStarts?.t1 || v.termStarts?.t2 || v.termStarts?.t3 || v.termStarts?.t4 || "").trim();
+        const y = parseInt(infer.slice(0,4),10);
+        v.activeYear = Number.isFinite(y) ? y : new Date().getFullYear();
+      }
       await setDoc(settingDoc(userId, KEY), { key: KEY, value: v });
       window.dispatchEvent(new Event("rolling-settings-changed"));
     }
