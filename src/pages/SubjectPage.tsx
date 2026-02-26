@@ -130,6 +130,13 @@ export default function SubjectPage() {
     if (e) setEndKey(e);
   }, [rollingSettings, term]);
 
+  const activeYear = useMemo(() => {
+    const y = (rollingSettings as any)?.activeYear;
+    if (typeof y === "number" && Number.isFinite(y)) return y;
+    const fromStart = parseInt(String(startKey).slice(0, 4), 10);
+    return Number.isFinite(fromStart) ? fromStart : new Date().getFullYear();
+  }, [rollingSettings, startKey]);
+
   const selectedSubject = useMemo(() => subjects.find((s) => s.id === subjectId) ?? null, [subjects, subjectId]);
 
   const effectiveRange = useMemo(() => {
@@ -167,9 +174,9 @@ export default function SubjectPage() {
       ) as DayLabel[];
 
       const [templateEvents, assignments, placements] = await Promise.all([
-        getAllCycleTemplateEvents(userId),
-        getAssignmentsForDayLabels(userId, dayLabels),
-        getPlacementsForDayLabels(userId, dayLabels),
+        getAllCycleTemplateEvents(userId, activeYear),
+        getAssignmentsForDayLabels(userId, activeYear, dayLabels),
+        getPlacementsForDayLabels(userId, activeYear, dayLabels),
       ]);
 
       if (cancelled) return;
@@ -182,7 +189,7 @@ export default function SubjectPage() {
       const plansByDate = new Map<string, Map<SlotId, LessonPlan>>();
       await Promise.all(
         dayKeys.map(async (dk) => {
-          const ps = await getLessonPlansForDate(userId, dk);
+          const ps = await getLessonPlansForDate(userId, activeYear, dk);
           plansByDate.set(dk, new Map(ps.map((p) => [p.slotId, p])));
         })
       );

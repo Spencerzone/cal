@@ -188,7 +188,7 @@ export default function TodayPage() {
       alive = false;
       window.removeEventListener("rolling-settings-changed", onChanged as any);
     };
-  }, [userId]);
+  }, [userId, activeYear]);
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
@@ -269,12 +269,12 @@ export default function TodayPage() {
       const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
       setLabel(stored);
 
-      const rows = await getAssignmentsForDayLabels(userId, [stored]);
+      const rows = await getAssignmentsForDayLabels(userId, activeYear, [stored].filter(Boolean) as any);
       const m = new Map<SlotId, SlotAssignment>();
       for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
       setAssignmentBySlot(m);
     })();
-  }, [userId, dateKey, rollingSettings]);
+  }, [userId, dateKey, rollingSettings, activeYear]);
 
   // Load placements for the day’s stored label
   useEffect(() => {

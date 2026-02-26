@@ -168,7 +168,7 @@ export default function WeekPage() {
       alive = false;
       window.removeEventListener("rolling-settings-changed", onChanged as any);
     };
-  }, [userId]);
+  }, [userId, activeYear]);
 
   // Load blocks
   useEffect(() => {
@@ -254,7 +254,7 @@ export default function WeekPage() {
         const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
         dlOut.set(dateKey, stored);
 
-        const rows = await getAssignmentsForDayLabels(userId, [stored]);
+        const rows = await getAssignmentsForDayLabels(userId, activeYear, [stored].filter(Boolean) as any);
 
         const m = new Map<SlotId, SlotAssignment>();
         for (const a of rows) m.set(a.slotId, a);
@@ -265,7 +265,7 @@ export default function WeekPage() {
       setAssignmentsByDate(out);
       setDayLabelByDate(dlOut);
     })();
-  }, [userId, weekDays, rollingSettings]);
+  }, [userId, weekDays, rollingSettings, activeYear]);
 
   // Load lesson plans + attachments for each day in the viewed week
   useEffect(() => {
