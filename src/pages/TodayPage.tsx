@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addDays, format } from 'date-fns';
+import {
+    addDays,
+    addMonths,
+    endOfMonth,
+    endOfWeek,
+    format,
+    isSameDay,
+    isSameMonth,
+    startOfMonth,
+    startOfWeek,
+} from 'date-fns';
 import { useAuth } from '../auth/AuthProvider';
 import { getAllCycleTemplateEvents } from '../db/templateQueries';
 import { getAssignmentsForDayLabels } from '../db/assignmentQueries';
@@ -29,7 +39,7 @@ import {
 import { getPlacementsForDayLabels } from '../db/placementQueries';
 import { getAttachmentsForPlan, getLessonPlansForDate } from '../db/lessonPlanQueries';
 import RichTextPlanEditor from '../components/RichTextPlanEditor';
-import { termWeekForDate } from '../rolling/termWeek';
+import { termInfoForDate, nextTermStartAfter } from '../rolling/termWeek';
 
 type Cell =
     | { kind: 'blank' }
@@ -111,10 +121,8 @@ export default function TodayPage() {
     const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
     const [rollingSettings, setRollingSettingsState] = useState<any>(null);
-    const activeYear = useMemo(
-        () => (rollingSettings?.activeYear ?? selectedDate.getFullYear()) as number,
-        [rollingSettings, selectedDate],
-    );
+
+    const activeYear = (rollingSettings?.activeYear ?? selectedDate.getFullYear()) as number;
 
     const dateKey = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
     const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
@@ -146,18 +154,20 @@ export default function TodayPage() {
     // load rolling settings for cycle + optional term/week display
     useEffect(() => {
         if (!userId) return;
+
         let alive = true;
         const load = async () => {
             const s = await getRollingSettings(userId);
-            if (!alive) return;
-            setRollingSettingsState(s);
+            if (alive) setRollingSettingsState(s);
         };
+
         load();
-        const onChange = () => load();
-        window.addEventListener('rolling-settings-changed', onChange as any);
+        const onChanged = () => load();
+        window.addEventListener('rolling-settings-changed', onChanged as any);
+
         return () => {
             alive = false;
-            window.removeEventListener('rolling-settings-changed', onChange as any);
+            window.removeEventListener('rolling-settings-changed', onChanged as any);
         };
     }, [userId]);
 
@@ -165,6 +175,23 @@ export default function TodayPage() {
         const subs = await getSubjectsByUser(userId, activeYear);
         setSubjectById(new Map(subs.map((s) => [s.id, s])));
     }
+
+    const subjectPalette = useMemo(() => {
+        // works whether you store subjects in a Map or an array
+        const values =
+            subjectById instanceof Map
+                ? Array.from(subjectById.values())
+                : Array.isArray(subjectById)
+                  ? subjectById
+                  : [];
+
+        const colours = values
+            .map((s: any) => s?.color)
+            .filter((c: any) => typeof c === 'string' && c.trim().length > 0)
+            .map((c: string) => c.trim().toLowerCase());
+
+        return Array.from(new Set(colours)).sort();
+    }, [subjectById]);
 
     // load subjects and keep in sync with edits
     useEffect(() => {
@@ -207,8 +234,10 @@ export default function TodayPage() {
 
     // compute day’s DayLabel (canonical), then apply mapping to reach stored label
     useEffect(() => {
+        if (!userId) return;
+
         (async () => {
-            const settings = await getRollingSettings(userId);
+            const settings = rollingSettings ?? (await getRollingSettings(userId));
             const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
 
             if (!canonical) {
@@ -226,7 +255,7 @@ export default function TodayPage() {
             for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
             setAssignmentBySlot(m);
         })();
-    }, [dateKey]);
+    }, [userId, dateKey, rollingSettings]);
 
     // Load placements for the day’s stored label
     useEffect(() => {
@@ -260,14 +289,21 @@ export default function TodayPage() {
     // Load lesson plans + attachments for the selected date
     useEffect(() => {
         const load = async () => {
+            if (!userId || !activeYear || !dateKey) return;
             const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
             const pMap = new Map<SlotId, LessonPlan>();
             const aMap = new Map<SlotId, LessonAttachment[]>();
 
             for (const p of plans) pMap.set(p.slotId, p);
-            for (const [slotId, plan] of pMap) {
-                const atts = await getAttachmentsForPlan(userId, activeYear, plan.key);
-                aMap.set(slotId, atts);
+            for (const [slotId] of pMap) {
+                const planKey = `${dateKey}::${slotId}`;
+                try {
+                    const atts = await getAttachmentsForPlan(userId, activeYear, planKey);
+                    aMap.set(slotId, atts);
+                } catch (e) {
+                    console.warn('getAttachmentsForPlan failed', { planKey, e });
+                    aMap.set(slotId, []);
+                }
             }
 
             setPlanBySlot(pMap);
@@ -278,7 +314,7 @@ export default function TodayPage() {
         const onChanged = () => load();
         window.addEventListener('lessonplans-changed', onChanged as any);
         return () => window.removeEventListener('lessonplans-changed', onChanged as any);
-    }, [dateKey]);
+    }, [userId, activeYear, dateKey]);
 
     // If a plan is emptied/deleted, collapse the editor back to hidden state.
     useEffect(() => {
@@ -319,12 +355,12 @@ export default function TodayPage() {
             const a = assignmentBySlot.get(slotId);
             if (!a) return { block: b, slotId, cell: { kind: 'blank' } };
             if (a.kind === 'free') return { block: b, slotId, cell: { kind: 'free' } };
-            if (a.manualTitle) return { block: b, slotId, cell: { kind: 'manual', a } };
-
             if (a.sourceTemplateEventId) {
                 const e = templateById.get(a.sourceTemplateEventId);
                 if (e) return { block: b, slotId, cell: { kind: 'template', a, e } };
             }
+
+            if (a.manualTitle) return { block: b, slotId, cell: { kind: 'manual', a } };
 
             return { block: b, slotId, cell: { kind: 'blank' } };
         });
@@ -365,13 +401,91 @@ export default function TodayPage() {
         setSelectedDate(adjustToWeekday(new Date(), 1));
         setShowDatePicker(false);
     }
-
     function DatePickerPopover() {
-        const value = format(selectedDate, 'yyyy-MM-dd');
+        const anchorRef = useRef<HTMLDivElement | null>(null);
+        const popRef = useRef<HTMLDivElement | null>(null);
+        const [month, setMonth] = useState<Date>(
+            () => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+        );
+        const [pos, setPos] = useState<{
+            left: number;
+            top: number;
+            maxHeight: number;
+        } | null>(null);
+
+        useEffect(() => {
+            if (!showDatePicker) return;
+            // keep month in sync when opening
+            setMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+        }, [showDatePicker, selectedDate]);
+
+        useEffect(() => {
+            if (!showDatePicker) return;
+
+            const compute = () => {
+                const a = anchorRef.current?.getBoundingClientRect();
+                const p = popRef.current?.getBoundingClientRect();
+                if (!a || !p) return;
+
+                const margin = 8;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+
+                // Default: below anchor, right-aligned
+                let left = a.right - p.width;
+                let top = a.bottom + margin;
+
+                // Clamp horizontally
+                left = Math.max(margin, Math.min(left, vw - p.width - margin));
+
+                // If it overflows bottom, try placing above
+                if (top + p.height > vh - margin) {
+                    const above = a.top - p.height - margin;
+                    if (above >= margin) top = above;
+                }
+
+                const maxHeight = Math.max(160, vh - top - margin);
+                setPos({ left, top, maxHeight });
+            };
+
+            // compute after paint
+            const t = window.setTimeout(compute, 0);
+            window.addEventListener('resize', compute);
+            window.addEventListener('scroll', compute, true);
+            return () => {
+                window.clearTimeout(t);
+                window.removeEventListener('resize', compute);
+                window.removeEventListener('scroll', compute, true);
+            };
+        }, [showDatePicker, month]);
+
+        useEffect(() => {
+            if (!showDatePicker) return;
+            const onDown = (e: MouseEvent) => {
+                const t = e.target as Node;
+                if (popRef.current && popRef.current.contains(t)) return;
+                if (anchorRef.current && anchorRef.current.contains(t)) return;
+                setShowDatePicker(false);
+            };
+            document.addEventListener('mousedown', onDown, true);
+            return () => document.removeEventListener('mousedown', onDown, true);
+        }, [showDatePicker]);
+
+        const monthLabel = format(month, 'MMMM yyyy');
+        const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
+        const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
+        const days: Date[] = [];
+        for (let d = start; d <= end; d = addDays(d, 1)) days.push(d);
+
         const labelText = `${format(selectedDate, 'EEE d MMM')}`;
 
+        const pick = (d: Date) => {
+            setSelectedDate(adjustToWeekday(d, 1));
+            setShowDatePicker(false);
+        };
+
         return (
-            <div style={{ position: 'relative' }}>
+            <div ref={anchorRef} style={{ position: 'relative' }}>
                 <button
                     className='btn'
                     type='button'
@@ -383,58 +497,123 @@ export default function TodayPage() {
 
                 {showDatePicker ? (
                     <div
+                        ref={popRef}
                         className='card'
                         style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 'calc(100% + 8px)',
-                            zIndex: 50,
-                            width: 280,
-                            background: '#0b0b0b',
+                            position: 'fixed',
+                            left: pos?.left ?? 0,
+                            top: pos?.top ?? 0,
+                            zIndex: 200,
+                            width: 320,
+                            maxHeight: pos?.maxHeight ?? undefined,
+                            overflow: 'auto',
+                            background: 'var(--panel, #0b0b0b)',
                         }}
                     >
                         <div
                             className='row'
                             style={{ justifyContent: 'space-between', alignItems: 'center' }}
                         >
-                            <div className='muted'>Jump to date</div>
+                            <div className='muted'>{monthLabel}</div>
                             <button
                                 className='btn'
                                 type='button'
                                 onClick={() => setShowDatePicker(false)}
+                                title='Close'
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div style={{ marginTop: 10 }}>
-                            <input
-                                type='date'
-                                value={value}
-                                onChange={(e) => {
-                                    const next = e.target.value;
-                                    if (!next) return;
-                                    setSelectedDate(
-                                        adjustToWeekday(new Date(`${next}T00:00:00`), 1),
-                                    );
-                                    setShowDatePicker(false);
-                                }}
-                                style={{ width: '100%' }}
-                            />
-                        </div>
-
                         <div
                             className='row'
-                            style={{ justifyContent: 'space-between', marginTop: 10 }}
+                            style={{ justifyContent: 'space-between', marginTop: 8, gap: 8 }}
                         >
                             <button
                                 className='btn'
                                 type='button'
-                                onClick={() => {
-                                    onGoToday();
-                                    setShowDatePicker(false);
+                                onClick={() => setMonth((m) => addMonths(m, -1))}
+                                title='Previous month'
+                            >
+                                ←
+                            </button>
+                            <button
+                                className='btn'
+                                type='button'
+                                onClick={() => setMonth(new Date())}
+                                title='This month'
+                            >
+                                This month
+                            </button>
+                            <button
+                                className='btn'
+                                type='button'
+                                onClick={() => setMonth((m) => addMonths(m, 1))}
+                                title='Next month'
+                            >
+                                →
+                            </button>
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(7, 1fr)',
+                                    gap: 6,
+                                    alignItems: 'center',
+                                    textAlign: 'center',
+                                    fontSize: 12,
                                 }}
                             >
+                                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                                    <div key={d} className='muted'>
+                                        {d}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(7, 1fr)',
+                                    gap: 6,
+                                    marginTop: 6,
+                                }}
+                            >
+                                {days.map((d) => {
+                                    const inMonth = isSameMonth(d, month);
+                                    const isSel = isSameDay(d, selectedDate);
+                                    const wknd = isWeekend(d);
+                                    return (
+                                        <button
+                                            key={format(d, 'yyyy-MM-dd')}
+                                            className='btn'
+                                            type='button'
+                                            onClick={() => pick(d)}
+                                            disabled={!inMonth}
+                                            style={{
+                                                padding: '8px 0',
+                                                opacity: inMonth ? 1 : 0.35,
+                                                border: isSel
+                                                    ? '2px solid var(--accent, #4c8dff)'
+                                                    : undefined,
+                                                filter: wknd ? 'grayscale(0.4)' : undefined,
+                                            }}
+                                            title={format(d, 'EEE d MMM')}
+                                        >
+                                            {format(d, 'd')}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div
+                            className='row'
+                            style={{ justifyContent: 'space-between', marginTop: 10, gap: 8 }}
+                        >
+                            <button className='btn' type='button' onClick={onGoToday}>
                                 Today
                             </button>
                             <button
@@ -444,6 +623,22 @@ export default function TodayPage() {
                             >
                                 Close
                             </button>
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                            <div className='muted' style={{ fontSize: 12, marginBottom: 6 }}>
+                                Jump to date
+                            </div>
+                            <input
+                                type='date'
+                                value={format(selectedDate, 'yyyy-MM-dd')}
+                                onChange={(e) => {
+                                    const next = e.target.value;
+                                    if (!next) return;
+                                    pick(new Date(`${next}T00:00:00`));
+                                }}
+                                style={{ width: '100%' }}
+                            />
                         </div>
                     </div>
                 ) : null}
@@ -505,19 +700,17 @@ export default function TodayPage() {
 
                         <div>
                             {(() => {
-                                const tw = rollingSettings
-                                    ? termWeekForDate(
-                                          selectedDate,
-                                          rollingSettings.termStarts,
-                                          rollingSettings.termEnds,
-                                      )
+                                const termInfo = rollingSettings
+                                    ? termInfoForDate(selectedDate, rollingSettings)
                                     : null;
-                                return tw ? (
+                                const suffix = label ? label.slice(-1) : '';
+                                return termInfo ? (
                                     <span className='muted'>
-                                        Term {tw.term} · Week {tw.week}
+                                        Term {termInfo.term} · Week {termInfo.week}
+                                        {suffix}
                                     </span>
                                 ) : (
-                                    <span className='muted'>&nbsp;</span>
+                                    <span className='muted'>Holiday / non-term</span>
                                 );
                             })()}
                         </div>
@@ -525,13 +718,47 @@ export default function TodayPage() {
                 </div>
             </div>
 
+            {(() => {
+                const dateKey = format(selectedDate, 'yyyy-MM-dd');
+                const hasAnyTerms =
+                    (rollingSettings?.termYears && rollingSettings.termYears.length > 0) ||
+                    !!rollingSettings?.termStarts;
+                const inTerm = rollingSettings
+                    ? !!termInfoForDate(selectedDate, rollingSettings)
+                    : false;
+                if (!hasAnyTerms || inTerm) return null;
+                const next = rollingSettings ? nextTermStartAfter(dateKey, rollingSettings) : null;
+                return (
+                    <div className='card'>
+                        <div>
+                            <strong>Holiday / non-term</strong>
+                        </div>
+                        <div className='muted'>
+                            No lessons shown for dates outside configured terms.
+                        </div>
+                        {next ? <div className='space' /> : null}
+                        {next ? (
+                            <button
+                                className='btn'
+                                onClick={() => setSelectedDate(new Date(next + 'T00:00:00'))}
+                            >
+                                Skip to next term
+                            </button>
+                        ) : null}
+                    </div>
+                );
+            })()}
+
             <div className='card' style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 8 }}>
+                <table
+                    style={{
+                        width: '100%',
+                        borderCollapse: 'separate',
+                        borderSpacing: 8,
+                    }}
+                >
                     <thead>
                         <tr>
-                            <th style={{ textAlign: 'left', width: 80 }} className='muted'>
-                                Slot
-                            </th>
                             <th style={{ textAlign: 'left' }} className='muted'>
                                 Details
                             </th>
@@ -602,10 +829,6 @@ export default function TodayPage() {
 
                             return (
                                 <tr key={block.id}>
-                                    <td style={{ verticalAlign: 'top' }}>
-                                        <div className='badge'>{compactBlockLabel(block.name)}</div>
-                                    </td>
-
                                     <td style={{ verticalAlign: 'top' }}>
                                         <div
                                             className='slotCard slotClickable'
@@ -731,11 +954,12 @@ export default function TodayPage() {
                                                 >
                                                     <RichTextPlanEditor
                                                         userId={userId}
+                                                        year={activeYear}
                                                         dateKey={dateKey}
                                                         slotId={slotId}
                                                         initialHtml={plan?.html ?? ''}
                                                         attachments={atts}
-                                                        year={activeYear}
+                                                        palette={subjectPalette}
                                                     />
                                                 </div>
                                             ) : null}
