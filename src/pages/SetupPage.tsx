@@ -10,10 +10,8 @@ import { NavLink } from "react-router-dom";
 export default function SetupPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
-  const [activeYear, setActiveYear] = useState<number>(
-    new Date().getFullYear(),
-  );
   const [settings, setSettings] = useState<RollingSettings | null>(null);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
   const [t1s, setT1s] = useState("");
   const [t1e, setT1e] = useState("");
   const [t2s, setT2s] = useState("");
@@ -22,51 +20,101 @@ export default function SetupPage() {
   const [t3e, setT3e] = useState("");
   const [t4s, setT4s] = useState("");
   const [t4e, setT4e] = useState("");
+  const [t1w, setT1w] = useState<"A" | "B">("A");
+  const [t2w, setT2w] = useState<"A" | "B">("A");
+  const [t3w, setT3w] = useState<"A" | "B">("A");
+  const [t4w, setT4w] = useState<"A" | "B">("A");
 
   useEffect(() => {
     if (!userId) return;
-    let alive = true;
-    const load = async () => {
+    (async () => {
       const s = await getRollingSettings(userId);
-      if (!alive) return;
       setSettings(s);
-      setT1s((s.termStarts?.t1 ?? "").trim());
-      setT2s((s.termStarts?.t2 ?? "").trim());
-      setT3s((s.termStarts?.t3 ?? "").trim());
-      setT4s((s.termStarts?.t4 ?? "").trim());
-      setT1e((s.termEnds?.t1 ?? "").trim());
-      setT2e((s.termEnds?.t2 ?? "").trim());
-      setT3e((s.termEnds?.t3 ?? "").trim());
-      setT4e((s.termEnds?.t4 ?? "").trim());
-    };
-    load();
-    const onChange = () => load();
-    window.addEventListener("rolling-settings-changed", onChange as any);
-    return () => {
-      alive = false;
-      window.removeEventListener("rolling-settings-changed", onChange as any);
-    };
+
+      const years =
+        (s.termYears && s.termYears.length ? s.termYears.map((y) => y.year) : [])
+          .slice()
+          .sort((a, b) => a - b);
+
+      // Pick current year if available, else first configured year, else infer from legacy termStarts, else current year.
+      const inferredYear = (() => {
+        const any = s.termStarts?.t1 || s.termStarts?.t2 || s.termStarts?.t3 || s.termStarts?.t4;
+        const y = any ? parseInt(String(any).slice(0, 4), 10) : NaN;
+        return Number.isFinite(y) ? y : new Date().getFullYear();
+      })();
+
+      const initialYear =
+        years.includes(new Date().getFullYear())
+          ? new Date().getFullYear()
+          : years.length
+          ? years[0]!
+          : inferredYear;
+
+      setYear(initialYear);
+
+      const ty =
+        (s.termYears && s.termYears.find((y) => y.year === initialYear)) ?? null;
+
+      const starts: any = ty?.starts ?? s.termStarts ?? {};
+      const ends: any = ty?.ends ?? s.termEnds ?? {};
+      const w1: any = ty?.week1Sets ?? s.termWeek1Sets ?? {};
+
+      setT1s((starts.t1 ?? "").trim());
+      setT2s((starts.t2 ?? "").trim());
+      setT3s((starts.t3 ?? "").trim());
+      setT4s((starts.t4 ?? "").trim());
+      setT1e((ends.t1 ?? "").trim());
+      setT2e((ends.t2 ?? "").trim());
+      setT3e((ends.t3 ?? "").trim());
+      setT4e((ends.t4 ?? "").trim());
+      setT1w((w1.t1 ?? "A") as any);
+      setT2w((w1.t2 ?? "A") as any);
+      setT3w((w1.t3 ?? "A") as any);
+      setT4w((w1.t4 ?? "A") as any);
+    })();
   }, [userId]);
+
+  useEffect(() => {
+    if (!settings) return;
+    const ty = settings.termYears?.find((y) => y.year === year) ?? null;
+    const starts: any = ty?.starts ?? {};
+    const ends: any = ty?.ends ?? {};
+    const w1: any = ty?.week1Sets ?? {};
+
+    setT1s((starts.t1 ?? "").trim());
+    setT2s((starts.t2 ?? "").trim());
+    setT3s((starts.t3 ?? "").trim());
+    setT4s((starts.t4 ?? "").trim());
+    setT1e((ends.t1 ?? "").trim());
+    setT2e((ends.t2 ?? "").trim());
+    setT3e((ends.t3 ?? "").trim());
+    setT4e((ends.t4 ?? "").trim());
+    setT1w((w1.t1 ?? "A") as any);
+    setT2w((w1.t2 ?? "A") as any);
+    setT3w((w1.t3 ?? "A") as any);
+    setT4w((w1.t4 ?? "A") as any);
+  }, [settings, year]);
+
 
   async function save() {
     if (!userId) return;
-    const current = (await getRollingSettings(userId)) as any;
+    const current = await getRollingSettings(userId);
+
+    const nextTermYear = {
+      year,
+      starts: { t1: t1s.trim(), t2: t2s.trim(), t3: t3s.trim(), t4: t4s.trim() },
+      ends: { t1: t1e.trim(), t2: t2e.trim(), t3: t3e.trim(), t4: t4e.trim() },
+      week1Sets: { t1: t1w, t2: t2w, t3: t3w, t4: t4w },
+    };
+
+    const others = (current.termYears ?? []).filter((y) => y.year !== year);
+    const termYears = [...others, nextTermYear].sort((a, b) => a.year - b.year);
+
     const next: RollingSettings = {
       ...current,
-      termStarts: {
-        t1: t1s.trim(),
-        t2: t2s.trim(),
-        t3: t3s.trim(),
-        t4: t4s.trim(),
-      },
-      termEnds: {
-        t1: t1e.trim(),
-        t2: t2e.trim(),
-        t3: t3e.trim(),
-        t4: t4e.trim(),
-      },
-      activeYear,
+      termYears,
     };
+
     await setRollingSettings(userId, next);
     setSettings(next);
   }
@@ -102,57 +150,67 @@ export default function SetupPage() {
       </div>
 
       <div className="card">
-        <h2>Active year</h2>
-        <div className="muted" style={{ marginBottom: 10 }}>
-          Changing this switches your subjects, timetable template, matrix
-          overrides, and lesson plans to a different year.
-        </div>
-
-        <div
-          className="row"
-          style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}
-        >
-          <select
-            value={activeYear}
-            onChange={async (e) => {
-              const y = parseInt(e.target.value, 10);
-              if (!Number.isFinite(y)) return;
-              setActiveYear(y);
-              await setRollingSettings(userId, {
-                ...(settings ?? ({} as any)),
-                activeYear: y,
-              } as any);
-            }}
-          >
-            {Array.from(
-              { length: 7 },
-              (_, i) => new Date().getFullYear() - 3 + i,
-            ).map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-          <div className="muted">Applies globally</div>
-        </div>
-      </div>
-
-      <div className="card">
         <h2>NSW term dates</h2>
         <div className="muted" style={{ marginBottom: 10 }}>
-          Used to display Term/Week in Today and Week. Leave blank to hide.
+          Used to display Term/Week and determine A/B weeks. Dates outside terms are treated as holidays.
+        </div>
+
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          <div className="muted">Year</div>
+          <select value={year} onChange={async (e) => {
+            const y = parseInt(e.target.value, 10);
+            setYear(y);
+            if (!settings) return;
+            const next = { ...settings, activeYear: y };
+            await setRollingSettings(userId, next as any);
+            setSettings(next as any);
+          }}>
+            {((settings?.termYears ?? [])
+              .map((y) => y.year)
+              .slice()
+              .sort((a, b) => a - b)
+              .map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              )))}
+            {((settings?.termYears ?? []).length === 0) ? (
+              <option value={year}>{year}</option>
+            ) : null}
+          </select>
+          <button
+            className="btn"
+            onClick={() => {
+              const years = (settings?.termYears ?? []).map((y) => y.year);
+              const nextYear = years.length ? Math.max(...years) + 1 : year + 1;
+              setYear(nextYear);
+              if (settings) {
+                const next = { ...settings, activeYear: nextYear, termYears: [...(settings.termYears ?? []), { year: nextYear, starts: {}, ends: {}, week1Sets: {} }] } as any;
+                void setRollingSettings(userId, next);
+                setSettings(next);
+              }
+              // ensure UI clears for new year
+              setT1s(""); setT2s(""); setT3s(""); setT4s("");
+              setT1e(""); setT2e(""); setT3e(""); setT4e("");
+              setT1w("A"); setT2w("A"); setT3w("A"); setT4w("A");
+            }}
+            type="button"
+          >
+            + Add year
+          </button>
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
+            gridTemplateColumns: "repeat(5, minmax(140px, 1fr))",
             gap: 10,
           }}
         >
           <div className="muted">Term</div>
           <div className="muted">Start</div>
           <div className="muted">Finish</div>
+          <div className="muted">Week 1 set</div>
           <div />
 
           <div>Term 1</div>
@@ -166,6 +224,10 @@ export default function SetupPage() {
             value={t1e}
             onChange={(e) => setT1e(e.target.value)}
           />
+          <select value={t1w} onChange={(e) => setT1w(e.target.value as any)}>
+            <option value="A">A</option>
+            <option value="B">B</option>
+          </select>
           <div />
 
           <div>Term 2</div>
@@ -179,6 +241,10 @@ export default function SetupPage() {
             value={t2e}
             onChange={(e) => setT2e(e.target.value)}
           />
+          <select value={t2w} onChange={(e) => setT2w(e.target.value as any)}>
+            <option value="A">A</option>
+            <option value="B">B</option>
+          </select>
           <div />
 
           <div>Term 3</div>
@@ -192,6 +258,10 @@ export default function SetupPage() {
             value={t3e}
             onChange={(e) => setT3e(e.target.value)}
           />
+          <select value={t3w} onChange={(e) => setT3w(e.target.value as any)}>
+            <option value="A">A</option>
+            <option value="B">B</option>
+          </select>
           <div />
 
           <div>Term 4</div>
@@ -205,6 +275,10 @@ export default function SetupPage() {
             value={t4e}
             onChange={(e) => setT4e(e.target.value)}
           />
+          <select value={t4w} onChange={(e) => setT4w(e.target.value as any)}>
+            <option value="A">A</option>
+            <option value="B">B</option>
+          </select>
           <div />
         </div>
 
