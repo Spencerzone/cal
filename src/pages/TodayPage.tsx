@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, startOfMonth, startOfWeek } from "date-fns";
+import {
+  addDays,
+  addMonths,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+} from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
@@ -21,9 +31,16 @@ import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
 
 import { getSubjectsByUser } from "../db/subjectQueries";
-import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
+import {
+  subjectIdForTemplateEvent,
+  detailForTemplateEvent,
+  displayTitle,
+} from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
-import { getAttachmentsForPlan, getLessonPlansForDate } from "../db/lessonPlanQueries";
+import {
+  getAttachmentsForPlan,
+  getLessonPlansForDate,
+} from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 import { termInfoForDate, nextTermStartAfter } from "../rolling/termWeek";
 
@@ -35,9 +52,8 @@ type Cell =
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
-  SLOT_DEFS.map((s) => [s.label, s.id])
+  SLOT_DEFS.map((s) => [s.label, s.id]),
 ) as Record<string, SlotId>;
-
 
 function isWeekend(d: Date): boolean {
   const day = d.getDay();
@@ -83,34 +99,52 @@ function compactBlockLabel(label: string): string {
 export default function TodayPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
-  const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
+  const [subjectById, setSubjectById] = useState<Map<string, Subject>>(
+    new Map(),
+  );
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
 
   const [label, setLabel] = useState<DayLabel | null>(null);
-  const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
-  const [assignmentBySlot, setAssignmentBySlot] = useState<Map<SlotId, SlotAssignment>>(new Map());
+  const [templateById, setTemplateById] = useState<
+    Map<string, CycleTemplateEvent>
+  >(new Map());
+  const [assignmentBySlot, setAssignmentBySlot] = useState<
+    Map<SlotId, SlotAssignment>
+  >(new Map());
   const [placementBySlot, setPlacementBySlot] = useState<
     Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
   >(new Map());
 
-  const [planBySlot, setPlanBySlot] = useState<Map<SlotId, LessonPlan>>(new Map());
-  const [attachmentsBySlot, setAttachmentsBySlot] = useState<Map<SlotId, LessonAttachment[]>>(new Map());
+  const [planBySlot, setPlanBySlot] = useState<Map<SlotId, LessonPlan>>(
+    new Map(),
+  );
+  const [attachmentsBySlot, setAttachmentsBySlot] = useState<
+    Map<SlotId, LessonAttachment[]>
+  >(new Map());
   const [openPlanSlot, setOpenPlanSlot] = useState<SlotId | null>(null);
   const [activePlanSlot, setActivePlanSlot] = useState<SlotId | null>(null);
   const openPlanHasEverHadContentRef = useRef<Map<SlotId, boolean>>(new Map());
 
-  const [selectedDate, setSelectedDate] = useState<Date>(() => adjustToWeekday(new Date(), 1));
+  const [selectedDate, setSelectedDate] = useState<Date>(() =>
+    adjustToWeekday(new Date(), 1),
+  );
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
 
+  const activeYear = (rollingSettings?.activeYear ??
+    selectedDate.getFullYear()) as number;
 
-  const activeYear = (rollingSettings?.activeYear ?? selectedDate.getFullYear()) as number;
-
-  const dateKey = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
+  const dateKey = useMemo(
+    () => format(selectedDate, "yyyy-MM-dd"),
+    [selectedDate],
+  );
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
-  const isViewingToday = useMemo(() => format(new Date(), "yyyy-MM-dd") === dateKey, [dateKey]);
+  const isViewingToday = useMemo(
+    () => format(new Date(), "yyyy-MM-dd") === dateKey,
+    [dateKey],
+  );
 
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
     const s = (raw ?? "").trim();
@@ -126,7 +160,8 @@ export default function TodayPage() {
 
   // coerce weekend selections to next weekday
   useEffect(() => {
-    if (isWeekend(selectedDate)) setSelectedDate(adjustToWeekday(selectedDate, 1));
+    if (isWeekend(selectedDate))
+      setSelectedDate(adjustToWeekday(selectedDate, 1));
   }, [selectedDate]);
 
   // clock tick
@@ -161,21 +196,21 @@ export default function TodayPage() {
   }
 
   const subjectPalette = useMemo(() => {
-  // works whether you store subjects in a Map or an array
-  const values =
-    subjectById instanceof Map
-      ? Array.from(subjectById.values())
-      : Array.isArray(subjectById)
-      ? subjectById
-      : [];
+    // works whether you store subjects in a Map or an array
+    const values =
+      subjectById instanceof Map
+        ? Array.from(subjectById.values())
+        : Array.isArray(subjectById)
+          ? subjectById
+          : [];
 
-  const colours = values
-    .map((s: any) => s?.color)
-    .filter((c: any) => typeof c === "string" && c.trim().length > 0)
-    .map((c: string) => c.trim().toLowerCase());
+    const colours = values
+      .map((s: any) => s?.color)
+      .filter((c: any) => typeof c === "string" && c.trim().length > 0)
+      .map((c: string) => c.trim().toLowerCase());
 
-  return Array.from(new Set(colours)).sort();
-}, [subjectById]);
+    return Array.from(new Set(colours)).sort();
+  }, [subjectById]);
 
   // load subjects and keep in sync with edits
   useEffect(() => {
@@ -249,12 +284,18 @@ export default function TodayPage() {
     }
 
     const load = async () => {
-      const ps = await getPlacementsForDayLabels(userId, [label]);
-      const m = new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
+      const ps = await getPlacementsForDayLabels(userId, activeYear, [label]);
+      const m = new Map<
+        SlotId,
+        { subjectId?: string | null; roomOverride?: string | null }
+      >();
       for (const p of ps) {
-        const o: { subjectId?: string | null; roomOverride?: string | null } = {};
-        if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
-        if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
+        const o: { subjectId?: string | null; roomOverride?: string | null } =
+          {};
+        if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
+          o.subjectId = p.subjectId;
+        if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
+          o.roomOverride = p.roomOverride;
         m.set(p.slotId, o);
       }
       setPlacementBySlot(m);
@@ -263,7 +304,8 @@ export default function TodayPage() {
     load();
     const onChanged = () => load();
     window.addEventListener("placements-changed", onChanged as any);
-    return () => window.removeEventListener("placements-changed", onChanged as any);
+    return () =>
+      window.removeEventListener("placements-changed", onChanged as any);
   }, [label]);
 
   // Load lesson plans + attachments for the selected date
@@ -277,7 +319,7 @@ export default function TodayPage() {
       for (const [slotId] of pMap) {
         const planKey = `${dateKey}::${slotId}`;
         try {
-          const atts = await getAttachmentsForPlan(userId, planKey);
+          const atts = await getAttachmentsForPlan(userId, activeYear, planKey);
           aMap.set(slotId, atts);
         } catch (e) {
           console.warn("getAttachmentsForPlan failed", { planKey, e });
@@ -292,7 +334,8 @@ export default function TodayPage() {
     load();
     const onChanged = () => load();
     window.addEventListener("lessonplans-changed", onChanged as any);
-    return () => window.removeEventListener("lessonplans-changed", onChanged as any);
+    return () =>
+      window.removeEventListener("lessonplans-changed", onChanged as any);
   }, [dateKey]);
 
   // If a plan is emptied/deleted, collapse the editor back to hidden state.
@@ -302,14 +345,16 @@ export default function TodayPage() {
 
     const plan = planBySlot.get(openPlanSlot);
     const atts = attachmentsBySlot.get(openPlanSlot) ?? [];
-    const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+    const hasPlan =
+      (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
 
     if (hasPlan) {
       openPlanHasEverHadContentRef.current.set(openPlanSlot, true);
       return;
     }
 
-    const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanSlot) ?? false;
+    const hadContentBefore =
+      openPlanHasEverHadContentRef.current.get(openPlanSlot) ?? false;
     if (hadContentBefore) {
       openPlanHasEverHadContentRef.current.delete(openPlanSlot);
       setOpenPlanSlot(null);
@@ -317,28 +362,36 @@ export default function TodayPage() {
   }, [openPlanSlot, activePlanSlot, planBySlot, attachmentsBySlot]);
 
   // Build “cells” for each block: ALWAYS render a row, blank if no assignment / overridden blank
-  const cells = useMemo((): Array<{ block: Block; slotId?: SlotId; cell: Cell }> => {
+  const cells = useMemo((): Array<{
+    block: Block;
+    slotId?: SlotId;
+    cell: Cell;
+  }> => {
     return blocks.map((b) => {
       const slotId = SLOT_LABEL_TO_ID[b.name];
-      if (!slotId) return { block: b, slotId: undefined, cell: { kind: "blank" } };
+      if (!slotId)
+        return { block: b, slotId: undefined, cell: { kind: "blank" } };
 
       // placement override (subjectId)
       const ov = placementBySlot.get(slotId);
       if (ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")) {
         const sid = ov.subjectId;
         if (sid === null) return { block: b, slotId, cell: { kind: "blank" } };
-        if (typeof sid === "string") return { block: b, slotId, cell: { kind: "placed", subjectId: sid } };
+        if (typeof sid === "string")
+          return { block: b, slotId, cell: { kind: "placed", subjectId: sid } };
       }
 
       const a = assignmentBySlot.get(slotId);
       if (!a) return { block: b, slotId, cell: { kind: "blank" } };
-      if (a.kind === "free") return { block: b, slotId, cell: { kind: "free" } };
+      if (a.kind === "free")
+        return { block: b, slotId, cell: { kind: "free" } };
       if (a.sourceTemplateEventId) {
         const e = templateById.get(a.sourceTemplateEventId);
         if (e) return { block: b, slotId, cell: { kind: "template", a, e } };
       }
 
-      if (a.manualTitle) return { block: b, slotId, cell: { kind: "manual", a } };
+      if (a.manualTitle)
+        return { block: b, slotId, cell: { kind: "manual", a } };
 
       return { block: b, slotId, cell: { kind: "blank" } };
     });
@@ -350,7 +403,10 @@ export default function TodayPage() {
       .filter((x) => x.cell.kind === "template")
       .map((x) => {
         const e = (x.cell as any).e as CycleTemplateEvent;
-        const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
+        const start = minutesToLocalDateTime(
+          dateLocal,
+          e.startMinutes,
+        ).getTime();
         const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
 
         const subject = subjectById.get(subjectIdForTemplateEvent(e));
@@ -362,7 +418,8 @@ export default function TodayPage() {
       .sort((a, b) => a.start - b.start);
 
     const nowMs = now.getTime();
-    const current = realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
+    const current =
+      realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
     const next = realEvents.find((e) => e.start > nowMs) ?? null;
     return { current, next };
   }, [cells, now, dateLocal, subjectById]);
@@ -379,16 +436,24 @@ export default function TodayPage() {
     setSelectedDate(adjustToWeekday(new Date(), 1));
     setShowDatePicker(false);
   }
-function DatePickerPopover() {
+  function DatePickerPopover() {
     const anchorRef = useRef<HTMLDivElement | null>(null);
     const popRef = useRef<HTMLDivElement | null>(null);
-    const [month, setMonth] = useState<Date>(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
-    const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
+    const [month, setMonth] = useState<Date>(
+      () => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+    );
+    const [pos, setPos] = useState<{
+      left: number;
+      top: number;
+      maxHeight: number;
+    } | null>(null);
 
     useEffect(() => {
       if (!showDatePicker) return;
       // keep month in sync when opening
-      setMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+      setMonth(
+        new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+      );
     }, [showDatePicker, selectedDate]);
 
     useEffect(() => {
@@ -458,7 +523,12 @@ function DatePickerPopover() {
 
     return (
       <div ref={anchorRef} style={{ position: "relative" }}>
-        <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose date">
+        <button
+          className="btn"
+          type="button"
+          onClick={() => setShowDatePicker((v) => !v)}
+          aria-label="Choose date"
+        >
           {labelText}
         </button>
 
@@ -477,21 +547,47 @@ function DatePickerPopover() {
               background: "var(--panel, #0b0b0b)",
             }}
           >
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", alignItems: "center" }}
+            >
               <div className="muted">{monthLabel}</div>
-              <button className="btn" type="button" onClick={() => setShowDatePicker(false)} title="Close">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setShowDatePicker(false)}
+                title="Close"
+              >
                 ✕
               </button>
             </div>
 
-            <div className="row" style={{ justifyContent: "space-between", marginTop: 8, gap: 8 }}>
-              <button className="btn" type="button" onClick={() => setMonth((m) => addMonths(m, -1))} title="Previous month">
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", marginTop: 8, gap: 8 }}
+            >
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setMonth((m) => addMonths(m, -1))}
+                title="Previous month"
+              >
                 ←
               </button>
-              <button className="btn" type="button" onClick={() => setMonth(new Date())} title="This month">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setMonth(new Date())}
+                title="This month"
+              >
                 This month
               </button>
-              <button className="btn" type="button" onClick={() => setMonth((m) => addMonths(m, 1))} title="Next month">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setMonth((m) => addMonths(m, 1))}
+                title="Next month"
+              >
                 →
               </button>
             </div>
@@ -536,7 +632,9 @@ function DatePickerPopover() {
                       style={{
                         padding: "8px 0",
                         opacity: inMonth ? 1 : 0.35,
-                        border: isSel ? "2px solid var(--accent, #4c8dff)" : undefined,
+                        border: isSel
+                          ? "2px solid var(--accent, #4c8dff)"
+                          : undefined,
                         filter: wknd ? "grayscale(0.4)" : undefined,
                       }}
                       title={format(d, "EEE d MMM")}
@@ -548,11 +646,18 @@ function DatePickerPopover() {
               </div>
             </div>
 
-            <div className="row" style={{ justifyContent: "space-between", marginTop: 10, gap: 8 }}>
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", marginTop: 10, gap: 8 }}
+            >
               <button className="btn" type="button" onClick={onGoToday}>
                 Today
               </button>
-              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setShowDatePicker(false)}
+              >
                 Close
               </button>
             </div>
@@ -583,7 +688,10 @@ function DatePickerPopover() {
       <h1>Today</h1>
 
       <div className="card">
-        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div
+          className="row"
+          style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}
+        >
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
             <button className="btn" type="button" onClick={onPrevDay}>
               ← Prev
@@ -594,7 +702,10 @@ function DatePickerPopover() {
             </button>
           </div>
 
-          <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            className="row"
+            style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}
+          >
             <div>
               <span className="muted">Cycle:</span>{" "}
               {label ? (
@@ -617,15 +728,24 @@ function DatePickerPopover() {
 
             <div>
               <span className="muted">Next:</span>{" "}
-              {isViewingToday && currentNext.next ? <strong>{currentNext.next.title}</strong> : <span className="muted">—</span>}
+              {isViewingToday && currentNext.next ? (
+                <strong>{currentNext.next.title}</strong>
+              ) : (
+                <span className="muted">—</span>
+              )}
             </div>
 
             <div>
               {(() => {
-                const termInfo = rollingSettings ? termInfoForDate(selectedDate, rollingSettings) : null;
+                const termInfo = rollingSettings
+                  ? termInfoForDate(selectedDate, rollingSettings)
+                  : null;
                 const suffix = label ? label.slice(-1) : "";
                 return termInfo ? (
-                  <span className="muted">Term {termInfo.term} · Week {termInfo.week}{suffix}</span>
+                  <span className="muted">
+                    Term {termInfo.term} · Week {termInfo.week}
+                    {suffix}
+                  </span>
                 ) : (
                   <span className="muted">Holiday / non-term</span>
                 );
@@ -635,24 +755,33 @@ function DatePickerPopover() {
         </div>
       </div>
 
-      
       {(() => {
         const dateKey = format(selectedDate, "yyyy-MM-dd");
         const hasAnyTerms =
-          (rollingSettings?.termYears && rollingSettings.termYears.length > 0) ||
+          (rollingSettings?.termYears &&
+            rollingSettings.termYears.length > 0) ||
           !!rollingSettings?.termStarts;
-        const inTerm = rollingSettings ? !!termInfoForDate(selectedDate, rollingSettings) : false;
+        const inTerm = rollingSettings
+          ? !!termInfoForDate(selectedDate, rollingSettings)
+          : false;
         if (!hasAnyTerms || inTerm) return null;
-        const next = rollingSettings ? nextTermStartAfter(dateKey, rollingSettings) : null;
+        const next = rollingSettings
+          ? nextTermStartAfter(dateKey, rollingSettings)
+          : null;
         return (
           <div className="card">
-            <div><strong>Holiday / non-term</strong></div>
-            <div className="muted">No lessons shown for dates outside configured terms.</div>
+            <div>
+              <strong>Holiday / non-term</strong>
+            </div>
+            <div className="muted">
+              No lessons shown for dates outside configured terms.
+            </div>
+            {next ? <div className="space" /> : null}
             {next ? (
-              <div className="space" />
-            ) : null}
-            {next ? (
-              <button className="btn" onClick={() => setSelectedDate(new Date(next + "T00:00:00"))}>
+              <button
+                className="btn"
+                onClick={() => setSelectedDate(new Date(next + "T00:00:00"))}
+              >
                 Skip to next term
               </button>
             ) : null}
@@ -661,7 +790,13 @@ function DatePickerPopover() {
       })()}
 
       <div className="card" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "separate",
+            borderSpacing: 8,
+          }}
+        >
           <thead>
             <tr>
               <th style={{ textAlign: "left" }} className="muted">
@@ -673,22 +808,30 @@ function DatePickerPopover() {
           <tbody>
             {cells.map(({ block, slotId, cell }) => {
               const plan = slotId ? planBySlot.get(slotId) : undefined;
-              const atts = slotId ? attachmentsBySlot.get(slotId) ?? [] : [];
-              const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+              const atts = slotId ? (attachmentsBySlot.get(slotId) ?? []) : [];
+              const hasPlan =
+                (!!plan && !isHtmlEffectivelyEmpty(plan.html)) ||
+                atts.length > 0;
 
-              const showPlanEditor = !!slotId && (hasPlan || openPlanSlot === slotId);
+              const showPlanEditor =
+                !!slotId && (hasPlan || openPlanSlot === slotId);
               const ov = slotId ? placementBySlot.get(slotId) : undefined;
               const roomOverride =
-                ov && Object.prototype.hasOwnProperty.call(ov, "roomOverride") ? ov.roomOverride : undefined;
+                ov && Object.prototype.hasOwnProperty.call(ov, "roomOverride")
+                  ? ov.roomOverride
+                  : undefined;
 
               const subject =
                 cell.kind === "template"
                   ? subjectById.get(subjectIdForTemplateEvent(cell.e))
                   : cell.kind === "placed"
-                  ? subjectById.get(cell.subjectId)
-                  : undefined;
+                    ? subjectById.get(cell.subjectId)
+                    : undefined;
 
-              const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
+              const detail =
+                cell.kind === "template"
+                  ? detailForTemplateEvent(cell.e)
+                  : null;
 
               const strip = subject?.color ?? "#2a2a2a";
 
@@ -698,32 +841,35 @@ function DatePickerPopover() {
                     ? cell.e.room
                     : roomOverride
                   : cell.kind === "manual"
-                  ? roomOverride === undefined
-                    ? cell.a.manualRoom
-                    : roomOverride
-                  : subject
-                  ? roomOverride
-                  : null;
+                    ? roomOverride === undefined
+                      ? cell.a.manualRoom
+                      : roomOverride
+                    : subject
+                      ? roomOverride
+                      : null;
 
               const codeText =
                 subject?.code ??
                 (cell.kind === "template" ? cell.e.code : null) ??
-                (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
+                (cell.kind === "manual" ? (cell.a.manualCode ?? null) : null);
 
               const titleText =
                 cell.kind === "blank"
                   ? "—"
                   : cell.kind === "free"
-                  ? "Free"
-                  : cell.kind === "manual"
-                  ? cell.a.manualTitle
-                  : cell.kind === "placed"
-                  ? subject?.title ?? "—"
-                  : subject
-                  ? displayTitle(subject, detail)
-                  : cell.e.title;
+                    ? "Free"
+                    : cell.kind === "manual"
+                      ? cell.a.manualTitle
+                      : cell.kind === "placed"
+                        ? (subject?.title ?? "—")
+                        : subject
+                          ? displayTitle(subject, detail)
+                          : cell.e.title;
 
-              const timeText = cell.kind === "template" ? timeRangeFromTemplate(dateLocal, cell.e) : null;
+              const timeText =
+                cell.kind === "template"
+                  ? timeRangeFromTemplate(dateLocal, cell.e)
+                  : null;
 
               return (
                 <tr key={block.id}>
@@ -735,78 +881,119 @@ function DatePickerPopover() {
                       tabIndex={slotId ? 0 : undefined}
                       onClick={() => {
                         if (!slotId) return;
-                        if (hasPlan) openPlanHasEverHadContentRef.current.set(slotId, true);
-                        setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+                        if (hasPlan)
+                          openPlanHasEverHadContentRef.current.set(
+                            slotId,
+                            true,
+                          );
+                        setOpenPlanSlot((cur) =>
+                          cur === slotId ? null : slotId,
+                        );
                       }}
                       onKeyDown={(e) => {
                         const t = e.target as HTMLElement | null;
-                        if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+                        if (
+                          t &&
+                          (t.isContentEditable ||
+                            t.tagName === "INPUT" ||
+                            t.tagName === "TEXTAREA")
+                        )
+                          return;
                         if (!slotId) return;
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          if (hasPlan) openPlanHasEverHadContentRef.current.set(slotId, true);
-                          setOpenPlanSlot((cur) => (cur === slotId ? null : slotId));
+                          if (hasPlan)
+                            openPlanHasEverHadContentRef.current.set(
+                              slotId,
+                              true,
+                            );
+                          setOpenPlanSlot((cur) =>
+                            cur === slotId ? null : slotId,
+                          );
                         }
                       }}
                     >
-                      <div className="row" style={{ justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-  <div className="row" style={{ gap: 10, alignItems: "center", minWidth: 0 }}>
-    {/* circular slot badge */}
-    <span
-      title={block.name}
-      style={{
-        width: 22,
-        height: 22,
-        borderRadius: 999,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 12,
-        fontWeight: 700,
-        background: strip,
-        color: "#0b0b0b",
-        flex: "0 0 auto",
-      }}
-    >
-      {compactBlockLabel(block.name)}
-    </span>
+                      <div
+                        className="row"
+                        style={{
+                          justifyContent: "space-between",
+                          gap: 10,
+                          alignItems: "baseline",
+                        }}
+                      >
+                        <div
+                          className="row"
+                          style={{ gap: 10, alignItems: "center", minWidth: 0 }}
+                        >
+                          {/* circular slot badge */}
+                          <span
+                            title={block.name}
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 999,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              background: strip,
+                              color: "#0b0b0b",
+                              flex: "0 0 auto",
+                            }}
+                          >
+                            {compactBlockLabel(block.name)}
+                          </span>
 
-    {/* coloured subject title */}
-    <div style={{ minWidth: 0 }}>
-      <strong style={{ color: strip }}>{titleText}</strong>{" "}
-      {codeText ? <span className="muted">({codeText})</span> : null}
-    </div>
-  </div>
+                          {/* coloured subject title */}
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ color: strip }}>
+                              {titleText}
+                            </strong>{" "}
+                            {codeText ? (
+                              <span className="muted">({codeText})</span>
+                            ) : null}
+                          </div>
+                        </div>
 
-  <div className="muted" style={{ whiteSpace: "nowrap" }}>
-    {timeText ?? ""}
-  </div>
-</div>
+                        <div className="muted" style={{ whiteSpace: "nowrap" }}>
+                          {timeText ?? ""}
+                        </div>
+                      </div>
 
                       <div className="muted" style={{ marginTop: 4 }}>
-                        {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}{" "}
-                        {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
-                        {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
+                        {resolvedRoom ? (
+                          <span className="badge">Room {resolvedRoom}</span>
+                        ) : null}{" "}
+                        {cell.kind === "template" ? (
+                          <span className="badge">{cell.a.kind}</span>
+                        ) : null}
+                        {cell.kind === "manual" ? (
+                          <span className="badge">{cell.a.kind}</span>
+                        ) : null}
                       </div>
 
                       {slotId && showPlanEditor ? (
-  <div
-    style={{ marginTop: 10 }}
-    onFocusCapture={() => setActivePlanSlot(slotId)}
-    onBlurCapture={() => setActivePlanSlot((cur) => (cur === slotId ? null : cur))}
-  >
-    <RichTextPlanEditor
-      userId={userId}
-                          year={activeYear}
-      dateKey={dateKey}
-      slotId={slotId}
-      initialHtml={plan?.html ?? ""}
-      attachments={atts}
-      year={activeYear}
-                          palette={subjectPalette}
-    />
-  </div>
-) : null}
+                        <div
+                          style={{ marginTop: 10 }}
+                          onFocusCapture={() => setActivePlanSlot(slotId)}
+                          onBlurCapture={() =>
+                            setActivePlanSlot((cur) =>
+                              cur === slotId ? null : cur,
+                            )
+                          }
+                        >
+                          <RichTextPlanEditor
+                            userId={userId}
+                            year={activeYear}
+                            dateKey={dateKey}
+                            slotId={slotId}
+                            initialHtml={plan?.html ?? ""}
+                            attachments={atts}
+                            palette={subjectPalette}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
