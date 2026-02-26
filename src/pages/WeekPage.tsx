@@ -1,18 +1,6 @@
 // src/pages/WeekPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  addDays,
-  addWeeks,
-  addMonths,
-  subMonths,
-  format,
-  startOfWeek,
-  startOfMonth,
-  endOfMonth,
-  eachDayOfInterval,
-  isSameMonth,
-  isSameDay,
-} from "date-fns";
+import { addDays, addWeeks, format, startOfWeek } from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
@@ -34,17 +22,10 @@ import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 
 import { getSubjectsByUser } from "../db/subjectQueries";
-import {
-  subjectIdForTemplateEvent,
-  detailForTemplateEvent,
-  displayTitle,
-} from "../db/subjectUtils";
+import { subjectIdForTemplateEvent, detailForTemplateEvent, displayTitle } from "../db/subjectUtils";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
-import {
-  getAttachmentsForPlan,
-  getLessonPlansForDate,
-} from "../db/lessonPlanQueries";
-import { termInfoForDate, nextTermStartAfter } from "../rolling/termWeek";
+import { getAttachmentsForPlan, getLessonPlansForDate } from "../db/lessonPlanQueries";
+import { termWeekForDate } from "../rolling/termWeek";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 
 type Cell =
@@ -54,8 +35,9 @@ type Cell =
   | { kind: "placed"; subjectId: string }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
+
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
-  SLOT_DEFS.map((s) => [s.label, s.id]),
+  SLOT_DEFS.map((s) => [s.label, s.id])
 ) as Record<string, SlotId>;
 
 function compactBlockLabel(label: string): string {
@@ -87,57 +69,37 @@ function timeRangeFromTemplate(day: Date, e: CycleTemplateEvent): string {
 export default function WeekPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
-  const [subjectById, setSubjectById] = useState<Map<string, Subject>>(
-    new Map(),
-  );
+  const [subjectById, setSubjectById] = useState<Map<string, Subject>>(new Map());
   const [blocks, setBlocks] = useState<Block[]>([]);
-  const [templateById, setTemplateById] = useState<
-    Map<string, CycleTemplateEvent>
-  >(new Map());
+  const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
 
-  const [plansByDate, setPlansByDate] = useState<
-    Map<string, Map<SlotId, LessonPlan>>
-  >(new Map());
-  const [attachmentsByDate, setAttachmentsByDate] = useState<
-    Map<string, Map<SlotId, LessonAttachment[]>>
-  >(new Map());
+  const [plansByDate, setPlansByDate] = useState<Map<string, Map<SlotId, LessonPlan>>>(new Map());
+  const [attachmentsByDate, setAttachmentsByDate] = useState<Map<string, Map<SlotId, LessonAttachment[]>>>(new Map());
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
   const [activePlanKey, setActivePlanKey] = useState<string | null>(null);
   const openPlanHasEverHadContentRef = useRef<Map<string, boolean>>(new Map());
 
   // Map keyed by dateKey ("yyyy-MM-dd") => assignments for that dayLabel
-  const [assignmentsByDate, setAssignmentsByDate] = useState<
-    Map<string, Map<SlotId, SlotAssignment>>
-  >(new Map());
+  const [assignmentsByDate, setAssignmentsByDate] = useState<Map<string, Map<SlotId, SlotAssignment>>>(new Map());
 
   // Map keyed by dateKey => resolved canonical dayLabel (after meta mapping)
-  const [dayLabelByDate, setDayLabelByDate] = useState<Map<string, DayLabel>>(
-    new Map(),
-  );
+  const [dayLabelByDate, setDayLabelByDate] = useState<Map<string, DayLabel>>(new Map());
 
   // Map keyed by dateKey => slotId -> placement override
   const [placementsByDate, setPlacementsByDate] = useState<
-    Map<
-      string,
-      Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
-    >
+    Map<string, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>
   >(new Map());
 
   // Cursor is Monday of the week being viewed
-  const [weekStart, setWeekStart] = useState<Date>(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 }),
-  );
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
+  const activeYear = useMemo(() => (rollingSettings?.activeYear ?? selectedDate.getFullYear()) as number, [rollingSettings, selectedDate]);
 
-  const activeYear = (rollingSettings?.activeYear ??
-    weekStart.getFullYear()) as number;
+  const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
-  const weekDays = useMemo(
-    () => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)),
-    [weekStart],
-  );
 
+  
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
     const s = (raw ?? "").trim();
     if (!s) return true;
@@ -150,23 +112,20 @@ export default function WeekPage() {
     return text.length === 0;
   }
 
-  // load rolling settings for cycle + optional term/week display
   useEffect(() => {
     if (!userId) return;
-
     let alive = true;
     const load = async () => {
       const s = await getRollingSettings(userId);
-      if (alive) setRollingSettingsState(s);
+      if (!alive) return;
+      setRollingSettingsState(s);
     };
-
     load();
-    const onChanged = () => load();
-    window.addEventListener("rolling-settings-changed", onChanged as any);
-
+    const onChange = () => load();
+    window.addEventListener("rolling-settings-changed", onChange as any);
     return () => {
       alive = false;
-      window.removeEventListener("rolling-settings-changed", onChanged as any);
+      window.removeEventListener("rolling-settings-changed", onChange as any);
     };
   }, [userId]);
 
@@ -183,23 +142,6 @@ export default function WeekPage() {
     const subs = await getSubjectsByUser(userId, activeYear);
     setSubjectById(new Map(subs.map((s) => [s.id, s])));
   }
-
-  const subjectPalette = useMemo(() => {
-    // works whether you store subjects in a Map or an array
-    const values =
-      subjectById instanceof Map
-        ? Array.from(subjectById.values())
-        : Array.isArray(subjectById)
-          ? subjectById
-          : [];
-
-    const colours = values
-      .map((s: any) => s?.color)
-      .filter((c: any) => typeof c === "string" && c.trim().length > 0)
-      .map((c: string) => c.trim().toLowerCase());
-
-    return Array.from(new Set(colours)).sort();
-  }, [subjectById]);
 
   // Load subjects and keep them in sync with edits.
   useEffect(() => {
@@ -234,10 +176,8 @@ export default function WeekPage() {
 
   // Load assignments for each Mon-Fri date in the viewed week
   useEffect(() => {
-    if (!userId) return;
-
     (async () => {
-      const settings = rollingSettings ?? (await getRollingSettings(userId));
+      const settings = await getRollingSettings(userId);
       const meta = await getTemplateMeta(userId, activeYear);
       const out = new Map<string, Map<SlotId, SlotAssignment>>();
       const dlOut = new Map<string, DayLabel>();
@@ -254,9 +194,7 @@ export default function WeekPage() {
         const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
         dlOut.set(dateKey, stored);
 
-        const rows = await getAssignmentsForDayLabels(userId, activeYear, [
-          stored,
-        ]);
+        const rows = await getAssignmentsForDayLabels(userId, activeYear, [stored]);
 
         const m = new Map<SlotId, SlotAssignment>();
         for (const a of rows) m.set(a.slotId, a);
@@ -267,12 +205,11 @@ export default function WeekPage() {
       setAssignmentsByDate(out);
       setDayLabelByDate(dlOut);
     })();
-  }, [userId, weekDays, rollingSettings]);
+  }, [weekDays]);
 
   // Load lesson plans + attachments for each day in the viewed week
   useEffect(() => {
     const load = async () => {
-      if (!userId || !activeYear || weekDays.length === 0) return;
       const pOut = new Map<string, Map<SlotId, LessonPlan>>();
       const aOut = new Map<string, Map<SlotId, LessonAttachment[]>>();
 
@@ -284,19 +221,9 @@ export default function WeekPage() {
         const aMap = new Map<SlotId, LessonAttachment[]>();
 
         for (const p of plans) pMap.set(p.slotId, p);
-        for (const [slotId] of pMap) {
-          const planKey = `${dateKey}::${slotId}`;
-          try {
-            const atts = await getAttachmentsForPlan(
-              userId,
-              activeYear,
-              planKey,
-            );
-            aMap.set(slotId, atts);
-          } catch (e) {
-            console.warn("getAttachmentsForPlan failed", { planKey, e });
-            aMap.set(slotId, []);
-          }
+        for (const [slotId, plan] of pMap) {
+          const atts = await getAttachmentsForPlan(userId, activeYear, plan.key);
+          aMap.set(slotId, atts);
         }
 
         pOut.set(dateKey, pMap);
@@ -310,9 +237,8 @@ export default function WeekPage() {
     load();
     const onChanged = () => load();
     window.addEventListener("lessonplans-changed", onChanged as any);
-    return () =>
-      window.removeEventListener("lessonplans-changed", onChanged as any);
-  }, [userId, activeYear, weekDays]);
+    return () => window.removeEventListener("lessonplans-changed", onChanged as any);
+  }, [weekDays]);
 
   // If an open plan is deleted/emptied, auto-collapse ONLY if it previously had content.
   useEffect(() => {
@@ -323,16 +249,14 @@ export default function WeekPage() {
     const slotId = slotIdRaw as SlotId;
     const plan = plansByDate.get(dateKey)?.get(slotId);
     const atts = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
-    const hasPlan =
-      (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+    const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
 
     if (hasPlan) {
       openPlanHasEverHadContentRef.current.set(openPlanKey, true);
       return;
     }
 
-    const hadContentBefore =
-      openPlanHasEverHadContentRef.current.get(openPlanKey) ?? false;
+    const hadContentBefore = openPlanHasEverHadContentRef.current.get(openPlanKey) ?? false;
     if (hadContentBefore) {
       openPlanHasEverHadContentRef.current.delete(openPlanKey);
       setOpenPlanKey(null);
@@ -349,31 +273,19 @@ export default function WeekPage() {
       }
       const ps = await getPlacementsForDayLabels(userId, activeYear, unique);
 
-      const byLabel = new Map<
-        DayLabel,
-        Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
-      >();
+      const byLabel = new Map<DayLabel, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const p of ps) {
         const m =
           byLabel.get(p.dayLabel) ??
-          new Map<
-            SlotId,
-            { subjectId?: string | null; roomOverride?: string | null }
-          >();
-        const o: { subjectId?: string | null; roomOverride?: string | null } =
-          {};
-        if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
-          o.subjectId = p.subjectId;
-        if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
-          o.roomOverride = p.roomOverride;
+          new Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>();
+        const o: { subjectId?: string | null; roomOverride?: string | null } = {};
+        if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
+        if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
         m.set(p.slotId, o);
         byLabel.set(p.dayLabel, m);
       }
 
-      const byDate = new Map<
-        string,
-        Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
-      >();
+      const byDate = new Map<string, Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>>();
       for (const [dateKey, dl] of dayLabelByDate) {
         byDate.set(dateKey, byLabel.get(dl) ?? new Map());
       }
@@ -385,8 +297,7 @@ export default function WeekPage() {
   useEffect(() => {
     const onChanged = () => setDayLabelByDate(new Map(dayLabelByDate));
     window.addEventListener("placements-changed", onChanged as any);
-    return () =>
-      window.removeEventListener("placements-changed", onChanged as any);
+    return () => window.removeEventListener("placements-changed", onChanged as any);
   }, [dayLabelByDate]);
 
   // Build grid: rows=blocks, cols=weekDays. ALWAYS returns a cell; blank if no slot / no assignment / overridden blank.
@@ -402,23 +313,19 @@ export default function WeekPage() {
         if (entry && Object.prototype.hasOwnProperty.call(entry, "subjectId")) {
           const ov = entry.subjectId;
           if (ov === null) return { kind: "blank" } as Cell;
-          if (typeof ov === "string")
-            return { kind: "placed", subjectId: ov } as Cell;
+          if (typeof ov === "string") return { kind: "placed", subjectId: ov } as Cell;
         }
 
         const a = assignmentsByDate.get(dateKey)?.get(slotId);
 
         if (!a) return { kind: "blank" } as Cell;
         if (a.kind === "free") return { kind: "free" } as Cell;
+        if (a.manualTitle) return { kind: "manual", a } as Cell;
 
-        // Prefer template linkage if present (even if manualTitle is also set)
         if (a.sourceTemplateEventId) {
           const e = templateById.get(a.sourceTemplateEventId);
           if (e) return { kind: "template", a, e } as Cell;
         }
-
-        // Otherwise treat as manual
-        if (a.manualTitle) return { kind: "manual", a } as Cell;
 
         return { kind: "blank" } as Cell;
       });
@@ -432,224 +339,49 @@ export default function WeekPage() {
   }
 
   function DatePickerPopover() {
-    const anchorRef = useRef<HTMLDivElement | null>(null);
-    const popRef = useRef<HTMLDivElement | null>(null);
-
-    // month shown in mini calendar
-    const [monthCursor, setMonthCursor] = useState<Date>(() =>
-      startOfMonth(weekStart),
-    );
-
-    // keep month in sync with current weekStart
-    useEffect(() => {
-      setMonthCursor(startOfMonth(weekStart));
-    }, [weekStart]);
-
-    // close on outside click
-    useEffect(() => {
-      if (!showDatePicker) return;
-      const onDown = (e: MouseEvent) => {
-        const t = e.target as Node;
-        if (popRef.current?.contains(t)) return;
-        if (anchorRef.current?.contains(t)) return;
-        setShowDatePicker(false);
-      };
-      document.addEventListener("mousedown", onDown, true);
-      return () => document.removeEventListener("mousedown", onDown, true);
-    }, [showDatePicker]);
-
-    // viewport-clamp popover position
-    useEffect(() => {
-      if (!showDatePicker) return;
-      const pop = popRef.current;
-      const anchor = anchorRef.current;
-      if (!pop || !anchor) return;
-
-      // Start aligned under the anchor
-      const ar = anchor.getBoundingClientRect();
-      pop.style.position = "fixed";
-      pop.style.top = `${Math.round(ar.bottom + 8)}px`;
-      pop.style.left = `${Math.round(ar.left)}px`;
-      pop.style.right = "auto";
-      pop.style.maxHeight = "calc(100vh - 24px)";
-      pop.style.overflow = "auto";
-
-      // Clamp into viewport
-      const pr = pop.getBoundingClientRect();
-      let left = pr.left;
-      let top = pr.top;
-
-      const pad = 12;
-      if (pr.right > window.innerWidth - pad)
-        left -= pr.right - (window.innerWidth - pad);
-      if (left < pad) left = pad;
-
-      if (pr.bottom > window.innerHeight - pad)
-        top -= pr.bottom - (window.innerHeight - pad);
-      if (top < pad) top = pad;
-
-      pop.style.left = `${Math.round(left)}px`;
-      pop.style.top = `${Math.round(top)}px`;
-    }, [showDatePicker, monthCursor]);
-
     const rangeLabel = `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 4), "d MMM")}`;
     const value = format(weekStart, "yyyy-MM-dd");
 
-    const monthStart = startOfMonth(monthCursor);
-    const monthEnd = endOfMonth(monthCursor);
-
-    // Build Monday-start grid (6 weeks x 7 days)
-    const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-    const gridEnd = addDays(gridStart, 41);
-
-    const days = useMemo(
-      () => eachDayOfInterval({ start: gridStart, end: gridEnd }),
-      [gridStart.getTime(), monthCursor.getTime()],
-    );
-
-    const dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
     return (
-      <div ref={anchorRef} style={{ position: "relative" }}>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => setShowDatePicker((v) => !v)}
-          aria-label="Choose week"
-        >
+      <div style={{ position: "relative" }}>
+        <button className="btn" type="button" onClick={() => setShowDatePicker((v) => !v)} aria-label="Choose week">
           {rangeLabel}
         </button>
 
         {showDatePicker ? (
           <div
-            ref={popRef}
             className="card"
             style={{
+              position: "absolute",
+              right: 0,
+              top: "calc(100% + 8px)",
               zIndex: 50,
-              width: 320,
+              width: 280,
               background: "#0b0b0b",
             }}
           >
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", alignItems: "center" }}
-            >
-              <div>
-                <strong>{format(monthCursor, "MMMM yyyy")}</strong>
-              </div>
-              <div className="row" style={{ gap: 8 }}>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => setMonthCursor((d) => subMonths(d, 1))}
-                  title="Previous month"
-                >
-                  ←
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => setMonthCursor((d) => addMonths(d, 1))}
-                  title="Next month"
-                >
-                  →
-                </button>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={() => setShowDatePicker(false)}
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div className="muted">Jump to week</div>
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
+                ✕
+              </button>
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 6,
-                  fontSize: 12,
-                }}
-                className="muted"
-              >
-                {dow.map((d) => (
-                  <div key={d} style={{ textAlign: "center" }}>
-                    {d}
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ height: 6 }} />
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, 1fr)",
-                  gap: 6,
-                }}
-              >
-                {days.map((d) => {
-                  const inMonth = isSameMonth(d, monthCursor);
-                  const isSelectedWeek =
-                    d >= weekStart && d <= addDays(weekStart, 6);
-                  const isToday = isSameDay(d, new Date());
-
-                  return (
-                    <button
-                      key={d.toISOString()}
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        setWeekStart(startOfWeek(d, { weekStartsOn: 1 }));
-                        setShowDatePicker(false);
-                      }}
-                      style={{
-                        padding: "6px 0",
-                        opacity: inMonth ? 1 : 0.35,
-                        outline: isSelectedWeek
-                          ? "2px solid rgba(255,255,255,0.35)"
-                          : "none",
-                        boxShadow: isToday
-                          ? "0 0 0 2px rgba(255,255,255,0.25) inset"
-                          : "none",
-                      }}
-                      title={format(d, "EEE d MMM")}
-                    >
-                      {format(d, "d")}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                Jump to date
-              </div>
               <input
                 type="date"
                 value={value}
                 onChange={(e) => {
                   const next = e.target.value;
                   if (!next) return;
-                  setWeekStart(
-                    startOfWeek(new Date(`${next}T00:00:00`), {
-                      weekStartsOn: 1,
-                    }),
-                  );
+                  setWeekStart(startOfWeek(new Date(`${next}T00:00:00`), { weekStartsOn: 1 }));
                   setShowDatePicker(false);
                 }}
                 style={{ width: "100%" }}
               />
             </div>
 
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", marginTop: 10 }}
-            >
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
               <button
                 className="btn"
                 type="button"
@@ -660,11 +392,7 @@ export default function WeekPage() {
               >
                 This week
               </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setShowDatePicker(false)}
-              >
+              <button className="btn" type="button" onClick={() => setShowDatePicker(false)}>
                 Close
               </button>
             </div>
@@ -679,105 +407,34 @@ export default function WeekPage() {
       <h1>Week</h1>
 
       <div className="card">
-        <div
-          className="row"
-          style={{ justifyContent: "space-between", flexWrap: "wrap" }}
-        >
+        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setWeekStart((d) => addWeeks(d, -1))}
-            >
+            <button className="btn" type="button" onClick={() => setWeekStart((d) => addWeeks(d, -1))}>
               ← Prev
             </button>
             <DatePickerPopover />
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setWeekStart((d) => addWeeks(d, 1))}
-            >
+            <button className="btn" type="button" onClick={() => setWeekStart((d) => addWeeks(d, 1))}>
               Next →
             </button>
           </div>
           <div>
             {(() => {
-              const mondayKey = format(weekStart, "yyyy-MM-dd");
-              const termInfo = rollingSettings
-                ? termInfoForDate(weekStart, rollingSettings)
+              const tw = rollingSettings
+                ? termWeekForDate(weekStart, rollingSettings.termStarts, rollingSettings.termEnds)
                 : null;
-              const suffix = (dayLabelByDate.get(mondayKey) ?? "").slice(-1);
-              return termInfo ? (
-                <span className="muted">
-                  Term {termInfo.term} · Week {termInfo.week}
-                  {suffix}
-                </span>
-              ) : (
-                <span className="muted">Holiday / non-term</span>
-              );
+              return tw ? <span className="muted">Term {tw.term} · Week {tw.week}</span> : <span className="muted">&nbsp;</span>;
             })()}
           </div>
         </div>
       </div>
 
-      {(() => {
-        const mondayKey = format(weekStart, "yyyy-MM-dd");
-        const hasAnyTerms =
-          (rollingSettings?.termYears &&
-            rollingSettings.termYears.length > 0) ||
-          !!rollingSettings?.termStarts;
-        const inTerm = rollingSettings
-          ? !!termInfoForDate(weekStart, rollingSettings)
-          : false;
-        if (!hasAnyTerms || inTerm) return null;
-        const next = rollingSettings
-          ? nextTermStartAfter(mondayKey, rollingSettings)
-          : null;
-        return (
-          <div className="card">
-            <div>
-              <strong>Holiday / non-term</strong>
-            </div>
-            <div className="muted">
-              No lessons shown for weeks outside configured terms.
-            </div>
-            {next ? <div className="space" /> : null}
-            {next ? (
-              <button
-                className="btn"
-                onClick={() => {
-                  const d = new Date(next + "T00:00:00");
-                  // jump to Monday of that week
-                  const monIndex = (d.getDay() + 6) % 7;
-                  d.setDate(d.getDate() - monIndex);
-                  setWeekStart(d);
-                }}
-              >
-                Skip to next term
-              </button>
-            ) : null}
-          </div>
-        );
-      })()}
-
       <div className="card" style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "separate",
-            borderSpacing: 8,
-          }}
-        >
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
           <thead>
             <tr>
               {weekDays.map((d) => (
-                <th
-                  key={format(d, "yyyy-MM-dd")}
-                  style={{ textAlign: "left" }}
-                  className="muted"
-                >
-                  {format(d, "EEE")}{" "}
-                  <span className="muted">{format(d, "d/M")}</span>
+                <th key={format(d, "yyyy-MM-dd")} style={{ textAlign: "left" }} className="muted">
+                  {format(d, "EEE")} <span className="muted">{format(d, "d/M")}</span>
                 </th>
               ))}
             </tr>
@@ -789,43 +446,29 @@ export default function WeekPage() {
                 {cells.map((cell, i) => {
                   const dateKey = format(weekDays[i], "yyyy-MM-dd");
                   const slotId = SLOT_LABEL_TO_ID[block.name];
-                  const override = slotId
-                    ? placementsByDate.get(dateKey)?.get(slotId)
-                    : undefined;
+                  const override = slotId ? placementsByDate.get(dateKey)?.get(slotId) : undefined;
 
                   const overrideSubjectId =
-                    override &&
-                    Object.prototype.hasOwnProperty.call(override, "subjectId")
+                    override && Object.prototype.hasOwnProperty.call(override, "subjectId")
                       ? override.subjectId
                       : undefined;
 
                   const overrideSubject =
-                    typeof overrideSubjectId === "string"
-                      ? subjectById.get(overrideSubjectId)
-                      : undefined;
+                    typeof overrideSubjectId === "string" ? subjectById.get(overrideSubjectId) : undefined;
 
                   const roomOverride =
-                    override &&
-                    Object.prototype.hasOwnProperty.call(
-                      override,
-                      "roomOverride",
-                    )
+                    override && Object.prototype.hasOwnProperty.call(override, "roomOverride")
                       ? override.roomOverride
                       : undefined;
 
                   const subject =
-                    cell.kind === "template"
-                      ? subjectById.get(subjectIdForTemplateEvent(cell.e))
-                      : undefined;
-                  const detail =
-                    cell.kind === "template"
-                      ? detailForTemplateEvent(cell.e)
-                      : null;
+                    cell.kind === "template" ? subjectById.get(subjectIdForTemplateEvent(cell.e)) : undefined;
+                  const detail = cell.kind === "template" ? detailForTemplateEvent(cell.e) : null;
 
                   const strip =
                     overrideSubjectId === null
                       ? "#2a2a2a"
-                      : (overrideSubject?.color ?? subject?.color ?? "#2a2a2a");
+                      : overrideSubject?.color ?? subject?.color ?? "#2a2a2a";
 
                   const resolvedRoom =
                     cell.kind === "template"
@@ -833,206 +476,126 @@ export default function WeekPage() {
                         ? cell.e.room
                         : roomOverride
                       : cell.kind === "manual"
-                        ? roomOverride === undefined
-                          ? cell.a.manualRoom
-                          : roomOverride
-                        : overrideSubject
-                          ? roomOverride
-                          : null;
+                      ? roomOverride === undefined
+                        ? cell.a.manualRoom
+                        : roomOverride
+                      : overrideSubject
+                      ? roomOverride
+                      : null;
 
                   const codeText =
                     overrideSubject?.code ??
                     (cell.kind === "template" ? cell.e.code : null) ??
-                    (cell.kind === "manual"
-                      ? (cell.a.manualCode ?? null)
-                      : null);
+                    (cell.kind === "manual" ? cell.a.manualCode ?? null : null);
 
-                  const timeText =
-                    cell.kind === "template"
-                      ? timeRangeFromTemplate(weekDays[i], cell.e)
-                      : null;
+                  const timeText = cell.kind === "template" ? timeRangeFromTemplate(weekDays[i], cell.e) : null;
 
                   const titleText =
                     cell.kind === "blank"
                       ? "—"
                       : cell.kind === "free"
-                        ? "Free"
-                        : cell.kind === "manual"
-                          ? cell.a.manualTitle
-                          : cell.kind === "placed"
-                            ? (overrideSubject?.title ?? "—")
-                            : subject
-                              ? displayTitle(subject, detail)
-                              : cell.e.title;
+                      ? "Free"
+                      : cell.kind === "manual"
+                      ? cell.a.manualTitle
+                      : cell.kind === "placed"
+                      ? overrideSubject?.title ?? "—"
+                      : subject
+                      ? displayTitle(subject, detail)
+                      : cell.e.title;
 
-                  const plan = slotId
-                    ? plansByDate.get(dateKey)?.get(slotId)
-                    : undefined;
-                  const atts = slotId
-                    ? (attachmentsByDate.get(dateKey)?.get(slotId) ?? [])
-                    : [];
+                  const plan = slotId ? plansByDate.get(dateKey)?.get(slotId) : undefined;
+                  const atts = slotId ? attachmentsByDate.get(dateKey)?.get(slotId) ?? [] : [];
                   const planKey = slotId ? `${dateKey}::${slotId}` : null;
-                  const hasPlan =
-                    (!!plan && !isHtmlEffectivelyEmpty(plan.html)) ||
-                    atts.length > 0;
-                  const showPlanEditor =
-                    !!slotId &&
-                    (hasPlan || (planKey && openPlanKey === planKey));
+                  const hasPlan = (!!plan && !isHtmlEffectivelyEmpty(plan.html)) || atts.length > 0;
+                  const showPlanEditor = !!slotId && (hasPlan || (planKey && openPlanKey === planKey));
 
                   return (
-                    <td
-                      key={`${block.id}:${dateKey}`}
-                      style={{ verticalAlign: "top" }}
-                    >
+                    <td key={`${block.id}:${dateKey}`} style={{ verticalAlign: "top" }}>
                       <div
                         className="slotCard slotClickable"
-                        style={{
-                          ...({ ["--slotStrip" as any]: strip } as any),
-                        }}
+                        style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
                         role={slotId ? "button" : undefined}
                         tabIndex={slotId ? 0 : undefined}
                         onClick={() => {
                           if (!slotId || !planKey) return;
                           const planNow = plansByDate.get(dateKey)?.get(slotId);
-                          const attsNow =
-                            attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
-                          const hasNow =
-                            (!!planNow &&
-                              !isHtmlEffectivelyEmpty(planNow.html)) ||
-                            attsNow.length > 0;
-                          if (hasNow)
-                            openPlanHasEverHadContentRef.current.set(
-                              planKey,
-                              true,
-                            );
-                          setOpenPlanKey((cur) =>
-                            cur === planKey ? null : planKey,
-                          );
+                          const attsNow = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
+                          const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
+                          if (hasNow) openPlanHasEverHadContentRef.current.set(planKey, true);
+                          setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
                         }}
                         onKeyDown={(e) => {
                           const t = e.target as HTMLElement | null;
-                          if (
-                            t &&
-                            (t.isContentEditable ||
-                              t.tagName === "INPUT" ||
-                              t.tagName === "TEXTAREA")
-                          )
-                            return;
+                          if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
 
                           if (!slotId || !planKey) return;
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            const planNow = plansByDate
-                              .get(dateKey)
-                              ?.get(slotId);
-                            const attsNow =
-                              attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
-                            const hasNow =
-                              (!!planNow &&
-                                !isHtmlEffectivelyEmpty(planNow.html)) ||
-                              attsNow.length > 0;
-                            if (hasNow)
-                              openPlanHasEverHadContentRef.current.set(
-                                planKey,
-                                true,
-                              );
-                            setOpenPlanKey((cur) =>
-                              cur === planKey ? null : planKey,
-                            );
+                            const planNow = plansByDate.get(dateKey)?.get(slotId);
+                            const attsNow = attachmentsByDate.get(dateKey)?.get(slotId) ?? [];
+                            const hasNow = (!!planNow && !isHtmlEffectivelyEmpty(planNow.html)) || attsNow.length > 0;
+                            if (hasNow) openPlanHasEverHadContentRef.current.set(planKey, true);
+                            setOpenPlanKey((cur) => (cur === planKey ? null : planKey));
                           }
                         }}
                       >
-                        <div
-                          className="row"
-                          style={{
-                            justifyContent: "space-between",
-                            gap: 10,
-                            alignItems: "baseline",
-                          }}
-                        >
-                          <div
-                            className="row"
-                            style={{
-                              gap: 10,
-                              alignItems: "center",
-                              minWidth: 0,
-                            }}
-                          >
-                            {/* circular slot badge */}
-                            <span
-                              title={block.name}
-                              style={{
-                                width: 22,
-                                height: 22,
-                                borderRadius: 999,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                background: strip,
-                                color: "#0b0b0b",
-                                flex: "0 0 auto",
-                              }}
-                            >
-                              {compactBlockLabel(block.name)}
-                            </span>
+                        <div className="row" style={{ justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+  <div className="row" style={{ gap: 10, alignItems: "center", minWidth: 0 }}>
+    {/* circular slot badge */}
+    <span
+      title={block.name}
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 999,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 12,
+        fontWeight: 700,
+        background: strip,
+        color: "#0b0b0b",
+        flex: "0 0 auto",
+      }}
+    >
+      {compactBlockLabel(block.name)}
+    </span>
 
-                            {/* coloured subject title */}
-                            <div style={{ minWidth: 0 }}>
-                              <strong style={{ color: strip }}>
-                                {titleText}
-                              </strong>{" "}
-                              {codeText ? (
-                                <span className="muted">({codeText})</span>
-                              ) : null}
-                            </div>
-                          </div>
+    {/* coloured subject title */}
+    <div style={{ minWidth: 0 }}>
+      <strong style={{ color: strip }}>{titleText}</strong>{" "}
+      {codeText ? <span className="muted">({codeText})</span> : null}
+    </div>
+  </div>
 
-                          <div
-                            className="muted"
-                            style={{ whiteSpace: "nowrap" }}
-                          >
-                            {timeText ?? ""}
-                          </div>
-                        </div>
+  <div className="muted" style={{ whiteSpace: "nowrap" }}>
+    {timeText ?? ""}
+  </div>
+</div>
 
                         <div className="muted" style={{ marginTop: 4 }}>
-                          {resolvedRoom ? (
-                            <span className="badge">Room {resolvedRoom}</span>
-                          ) : null}{" "}
-                          {cell.kind === "template" && cell.e.periodCode ? (
-                            <span className="badge">{cell.e.periodCode}</span>
-                          ) : null}{" "}
-                          {cell.kind === "template" ? (
-                            <span className="badge">{cell.a.kind}</span>
-                          ) : null}
-                          {cell.kind === "manual" ? (
-                            <span className="badge">{cell.a.kind}</span>
-                          ) : null}
+                          {resolvedRoom ? <span className="badge">Room {resolvedRoom}</span> : null}{" "}
+                          {cell.kind === "template" && cell.e.periodCode ? <span className="badge">{cell.e.periodCode}</span> : null}{" "}
+                          {cell.kind === "template" ? <span className="badge">{cell.a.kind}</span> : null}
+                          {cell.kind === "manual" ? <span className="badge">{cell.a.kind}</span> : null}
                         </div>
 
                         {slotId && showPlanEditor ? (
-                          <div
-                            style={{ marginTop: 10 }}
-                            onFocusCapture={() => setActivePlanKey(planKey!)}
-                            onBlurCapture={() =>
-                              setActivePlanKey((cur) =>
-                                cur === planKey ? null : cur,
-                              )
-                            }
-                          >
-                            <RichTextPlanEditor
-                              userId={userId}
-                              year={activeYear}
-                              dateKey={dateKey}
-                              slotId={slotId}
-                              initialHtml={plan?.html ?? ""}
-                              attachments={atts}
-                              palette={subjectPalette}
-                            />
-                          </div>
-                        ) : null}
+  <div
+    style={{ marginTop: 10 }}
+    onFocusCapture={() => setActivePlanKey(planKey!)}
+    onBlurCapture={() => setActivePlanKey((cur) => (cur === planKey ? null : cur))}
+  >
+    <RichTextPlanEditor
+      userId={userId}
+      dateKey={dateKey}
+      slotId={slotId}
+      initialHtml={plan?.html ?? ""}
+      attachments={atts}
+      year={activeYear}
+    />
+  </div>
+) : null}
                       </div>
                     </td>
                   );
