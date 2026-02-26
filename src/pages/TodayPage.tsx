@@ -188,7 +188,7 @@ export default function TodayPage() {
       alive = false;
       window.removeEventListener("rolling-settings-changed", onChanged as any);
     };
-  }, [userId, activeYear]);
+  }, [userId]);
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
@@ -269,12 +269,14 @@ export default function TodayPage() {
       const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
       setLabel(stored);
 
-      const rows = await getAssignmentsForDayLabels(userId, activeYear, [stored].filter(Boolean) as any);
+      const rows = await getAssignmentsForDayLabels(userId, activeYear, [
+        stored,
+      ]);
       const m = new Map<SlotId, SlotAssignment>();
       for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
       setAssignmentBySlot(m);
     })();
-  }, [userId, dateKey, rollingSettings, activeYear]);
+  }, [userId, dateKey, rollingSettings]);
 
   // Load placements for the day’s stored label
   useEffect(() => {
@@ -311,6 +313,7 @@ export default function TodayPage() {
   // Load lesson plans + attachments for the selected date
   useEffect(() => {
     const load = async () => {
+      if (!userId || !activeYear || !dateKey) return;
       const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
       const pMap = new Map<SlotId, LessonPlan>();
       const aMap = new Map<SlotId, LessonAttachment[]>();
@@ -336,7 +339,7 @@ export default function TodayPage() {
     window.addEventListener("lessonplans-changed", onChanged as any);
     return () =>
       window.removeEventListener("lessonplans-changed", onChanged as any);
-  }, [dateKey]);
+  }, [userId, activeYear, dateKey]);
 
   // If a plan is emptied/deleted, collapse the editor back to hidden state.
   useEffect(() => {
