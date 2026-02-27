@@ -54,8 +54,16 @@ export type Subject = {
 };
 
 export type DayLabel =
-  | "MonA" | "TueA" | "WedA" | "ThuA" | "FriA"
-  | "MonB" | "TueB" | "WedB" | "ThuB" | "FriB";
+  | "MonA"
+  | "TueA"
+  | "WedA"
+  | "ThuA"
+  | "FriA"
+  | "MonB"
+  | "TueB"
+  | "WedB"
+  | "ThuB"
+  | "FriB";
 
 export interface CycleTemplateEvent {
   id: string;
@@ -78,14 +86,25 @@ export interface ImportRow {
 }
 
 export type SlotId =
-  | "before" | "rc" | "p1" | "p2" | "r1" | "r2"
-  | "p3" | "p4" | "l1" | "l2" | "p5" | "p6" | "after";
+  | "before"
+  | "rc"
+  | "p1"
+  | "p2"
+  | "r1"
+  | "r2"
+  | "p3"
+  | "p4"
+  | "l1"
+  | "l2"
+  | "p5"
+  | "p6"
+  | "after";
 
 export type AssignmentKind = "class" | "duty" | "break" | "free";
 
-export interface SlotAssignment {
-  key: string; // `${year}::${dayLabel}::${slotId}` (or legacy without year)
-  year?: number;
+export type SlotAssignment = {
+  key: string;
+  year: number;
   dayLabel: DayLabel;
   slotId: SlotId;
   kind: AssignmentKind;
@@ -93,7 +112,7 @@ export interface SlotAssignment {
   manualTitle?: string;
   manualCode?: string | null;
   manualRoom?: string | null;
-}
+};
 
 export type Placement = {
   key: string; // `${year}::${dayLabel}::${slotId}` (or legacy without year)

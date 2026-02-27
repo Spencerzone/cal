@@ -1,13 +1,26 @@
 import { getDocs, writeBatch, query, where } from "firebase/firestore";
 import { db } from "../firebase";
-import { cycleTemplateEventsCol, slotAssignmentsCol, slotAssignmentDoc } from "../db/db";
-import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, AssignmentKind } from "../db/db";
+import {
+  cycleTemplateEventsCol,
+  slotAssignmentsCol,
+  slotAssignmentDoc,
+} from "../db/db";
+import type {
+  CycleTemplateEvent,
+  DayLabel,
+  SlotAssignment,
+  SlotId,
+  AssignmentKind,
+} from "../db/db";
 
 function normalisePeriodCode(raw: string | null | undefined): string {
   return (raw ?? "").trim().toUpperCase();
 }
 
-function slotForEvent(periodCode: string | null | undefined, title: string): SlotId | null {
+function slotForEvent(
+  periodCode: string | null | undefined,
+  title: string,
+): SlotId | null {
   const p = normalisePeriodCode(periodCode);
 
   if (p === "BEFORE SCHOOL" || p === "BEFORE") return "before";
@@ -48,12 +61,7 @@ function rankKind(k: AssignmentKind): number {
  * This prevents duplicates and avoids inventing slots that don't exist on that day (e.g. p6).
  */
 export async function buildDraftSlotAssignments(userId: string, year: number) {
-
   // Choose one best event per (dayLabel, slotId)
-  // Priority:
-  //  1) class over duty over break
-  //  2) earlier start
-  //  3) longer duration
   const best = new Map<
     string,
     {
@@ -67,13 +75,18 @@ export async function buildDraftSlotAssignments(userId: string, year: number) {
     }
   >();
 
-  const tplSnap = await getDocs(query(cycleTemplateEventsCol(userId), where("year", "==", year)));
+  const tplSnap = await getDocs(
+    query(cycleTemplateEventsCol(userId), where("year", "==", year)),
+  );
+
   for (const d of tplSnap.docs) {
     const e = d.data() as CycleTemplateEvent;
     const slotId = slotForEvent(e.periodCode, e.title);
     if (!slotId) continue;
 
-    const key = `${e.dayLabel}::${slotId}`;
+    // YEAR-SCOPED KEY
+    const key = `${year}::${e.dayLabel}::${slotId}`;
+
     const candidate = {
       kind: kindFromType(e.type),
       sourceTemplateEventId: e.id,
@@ -109,19 +122,34 @@ export async function buildDraftSlotAssignments(userId: string, year: number) {
     if (nextDur > prevDur) best.set(key, candidate);
   }
 
-  // Persist: replace existing slotAssignments (Firestore)
+  // DELETE ONLY THIS YEAR (do NOT wipe other years)
   const existingSnap = await getDocs(slotAssignmentsCol(userId));
   if (!existingSnap.empty) {
     const batchDel = writeBatch(db);
-    for (const d of existingSnap.docs) batchDel.delete(d.ref);
+    for (const d of existingSnap.docs) {
+      const data = d.data() as any;
+      const docYear =
+        typeof data.year === "number"
+          ? data.year
+          : (() => {
+              const m = /^(\d{4})::/.exec(d.id);
+              return m ? parseInt(m[1], 10) : undefined;
+            })();
+
+      if (docYear === year) batchDel.delete(d.ref);
+    }
     await batchDel.commit();
   }
 
   const rows: SlotAssignment[] = [];
   for (const [key, e] of best.entries()) {
-    const [dayLabel, slotId] = key.split("::") as [DayLabel, SlotId];
+    const parts = key.split("::");
+    const dayLabel = parts[1] as DayLabel;
+    const slotId = parts[2] as SlotId;
+
     rows.push({
       key,
+      year,
       dayLabel,
       slotId,
       kind: e.kind,
@@ -136,7 +164,10 @@ export async function buildDraftSlotAssignments(userId: string, year: number) {
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK);
     const batch = writeBatch(db);
-    for (const r of chunk) batch.set(slotAssignmentDoc(userId, r.key), r, { merge: false });
+    for (const r of chunk) {
+      // doc id must be the year-scoped key
+      batch.set(slotAssignmentDoc(userId, r.key), r, { merge: false });
+    }
     await batch.commit();
   }
 }
