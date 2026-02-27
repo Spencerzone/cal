@@ -54,8 +54,25 @@ function mergePlacement(
   if (existing?.roomOverride !== undefined)
     next.roomOverride = existing.roomOverride;
 
-  if (patch.subjectId !== undefined) next.subjectId = patch.subjectId;
-  if (patch.roomOverride !== undefined) next.roomOverride = patch.roomOverride;
+const hasSubjectPatch = Object.prototype.hasOwnProperty.call(patch, "subjectId");
+const hasRoomPatch = Object.prototype.hasOwnProperty.call(patch, "roomOverride");
+
+if (hasSubjectPatch) {
+  if (patch.subjectId === undefined) {
+    delete (next as any).subjectId;
+  } else {
+    next.subjectId = patch.subjectId;
+  }
+}
+
+if (hasRoomPatch) {
+  if (patch.roomOverride === undefined) {
+    delete (next as any).roomOverride;
+  } else {
+    next.roomOverride = patch.roomOverride;
+  }
+}
+
 
   const hasSubjectOverride = next.subjectId !== undefined;
   const hasRoomOverride = next.roomOverride !== undefined;

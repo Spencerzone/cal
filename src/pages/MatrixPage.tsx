@@ -233,12 +233,10 @@ export default function MatrixPage() {
         : undefined;
 
     if (value === "") {
-      await setPlacement(
-        userId,
-        dl,
-        slotId,
-        roomOverride !== undefined ? { roomOverride } : {},
-      );
+      // "Use template" removes ONLY the subject override, but preserves any explicit room override.
+      const patch: any =
+        roomOverride !== undefined ? { subjectId: undefined, roomOverride } : { subjectId: undefined };
+      await setPlacement(userId, dl, slotId, patch);
       return;
     }
     if (value === "__blank__") {
@@ -305,12 +303,12 @@ export default function MatrixPage() {
         ? existing.subjectId
         : undefined;
 
-    await setPlacement(
-      userId,
-      dl,
-      slotId,
-      subjectId !== undefined ? { subjectId } : {},
-    );
+    // Clear ONLY the room override (use template room), keep subject override state as-is.
+    const patch: any = {
+      ...(subjectId !== undefined ? { subjectId } : {}),
+      roomOverride: undefined,
+    };
+    await setPlacement(userId, dl, slotId, patch);
   }
 
   useEffect(() => {
