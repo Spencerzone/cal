@@ -4,10 +4,19 @@ import { dayLabelsForSet } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
-import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, Subject } from "../db/db";
+import type {
+  CycleTemplateEvent,
+  DayLabel,
+  SlotAssignment,
+  SlotId,
+  Subject,
+} from "../db/db";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
-import { getPlacementsForDayLabels, setPlacement } from "../db/placementQueries";
+import {
+  getPlacementsForDayLabels,
+  setPlacement,
+} from "../db/placementQueries";
 
 type SlotDef = { id: SlotId; label: string };
 
@@ -27,67 +36,51 @@ const SLOT_DEFS: SlotDef[] = [
   { id: "after", label: "After school" },
 ];
 
-function weekdayFromLabel(label: DayLabel): "Mon" | "Tue" | "Wed" | "Thu" | "Fri" {
+function weekdayFromLabel(
+  label: DayLabel,
+): "Mon" | "Tue" | "Wed" | "Thu" | "Fri" {
   return label.slice(0, 3) as any;
 }
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  if (!hex) return null;
-  const h = hex.trim().replace("#", "");
-  if (h.length !== 6) return null;
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
-  return { r, g, b };
-}
-
-// Returns a readable text colour (dark on light backgrounds, white on dark)
-function contrastTextColour(bgHex: string): "#111111" | "#ffffff" {
-  const rgb = hexToRgb(bgHex);
-  if (!rgb) return "#ffffff";
-  // perceived luminance
-  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  return luminance > 0.6 ? "#111111" : "#ffffff";
-}
-
-function rgbaFromHex(hex: string, alpha: number): string {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return `rgba(255,255,255,${alpha})`;
-  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
-}
-
 
 export default function MatrixPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
-  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
+  const [activeYear, setActiveYear] = useState<number>(
+    new Date().getFullYear(),
+  );
   const [set, setSet] = useState<"A" | "B">("A");
   const labels = useMemo(() => dayLabelsForSet(set), [set]);
   const rows = useMemo(() => SLOT_DEFS, []);
 
-  const [templateById, setTemplateById] = useState<Map<string, CycleTemplateEvent>>(new Map());
-  const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
-
-  const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(new Map());
-  const [placementsByKey, setPlacementsByKey] = useState<
-    Map<string, { subjectId?: string | null; roomOverride?: string | null }>
-  >(new Map());
-
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
     const load = async () => {
       const s = await getRollingSettings(userId);
-      const ay = (s as any)?.activeYear;
-      if (typeof ay === "number" && Number.isFinite(ay)) setActiveYear(ay);
-      else if (typeof (s as any)?.termYears?.[0]?.year === "number") setActiveYear((s as any).termYears[0].year);
-      else setActiveYear(new Date().getFullYear());
+      const y = (s as any)?.activeYear;
+      if (!cancelled && typeof y === "number" && Number.isFinite(y))
+        setActiveYear(y);
     };
     load();
     const on = () => load();
     window.addEventListener("rolling-settings-changed", on as any);
-    return () => window.removeEventListener("rolling-settings-changed", on as any);
-  }, [userId]);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("rolling-settings-changed", on as any);
+    };
+  }, [userId, activeYear]);
+
+  const [templateById, setTemplateById] = useState<
+    Map<string, CycleTemplateEvent>
+  >(new Map());
+  const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
+
+  const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(
+    new Map(),
+  );
+  const [placementsByKey, setPlacementsByKey] = useState<
+    Map<string, { subjectId?: string | null; roomOverride?: string | null }>
+  >(new Map());
 
   useEffect(() => {
     if (!userId) return;
@@ -95,7 +88,7 @@ export default function MatrixPage() {
       const template = await getAllCycleTemplateEvents(userId, activeYear);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
-  }, [userId]);
+  }, [userId, activeYear]);
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
@@ -103,13 +96,18 @@ export default function MatrixPage() {
   }
 
   async function loadPlacements() {
-    const ps = await getPlacementsForDayLabels(userId, activeYear, labels);
-    const m = new Map<string, { subjectId?: string | null; roomOverride?: string | null }>();
+    const ps = await getPlacementsForDayLabels(userId, labels);
+    const m = new Map<
+      string,
+      { subjectId?: string | null; roomOverride?: string | null }
+    >();
     for (const p of ps) {
       const key = `${p.dayLabel}::${p.slotId}`;
       const o: { subjectId?: string | null; roomOverride?: string | null } = {};
-      if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = p.subjectId;
-      if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = p.roomOverride;
+      if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
+        o.subjectId = p.subjectId;
+      if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
+        o.roomOverride = p.roomOverride;
       m.set(key, o);
     }
     setPlacementsByKey(m);
@@ -120,8 +118,9 @@ export default function MatrixPage() {
     loadSubjects();
     const onSubjects = () => loadSubjects();
     window.addEventListener("subjects-changed", onSubjects as any);
-    return () => window.removeEventListener("subjects-changed", onSubjects as any);
-  }, [userId]);
+    return () =>
+      window.removeEventListener("subjects-changed", onSubjects as any);
+  }, [userId, activeYear]);
 
   useEffect(() => {
     if (!userId) return;
@@ -129,17 +128,16 @@ export default function MatrixPage() {
       const a = await getAssignmentsForDayLabels(userId, activeYear, labels);
       setAssignments(a);
     })();
-  }, [userId, labels.join(",")]);
+  }, [userId, activeYear, labels.join(",")]);
 
   useEffect(() => {
     if (!userId) return;
     loadPlacements();
     const onPlacements = () => loadPlacements();
     window.addEventListener("placements-changed", onPlacements as any);
-    return () => window.removeEventListener("placements-changed", onPlacements as any);
-  }, [userId, labels.join(",")]);
-
-  
+    return () =>
+      window.removeEventListener("placements-changed", onPlacements as any);
+  }, [userId, activeYear, labels.join(",")]);
 
   // Default cell content from slotAssignments/template (one per slot). Now includes manual assignments too.
   const baseCell = useMemo(() => {
@@ -160,19 +158,19 @@ export default function MatrixPage() {
       }
 
       // Prefer template linkage if present (even if manualTitle is also set)
-if (a.sourceTemplateEventId) {
-  const te = templateById.get(a.sourceTemplateEventId);
-  if (te) {
-    m.set(k, { kind: a.kind, e: te });
-    continue;
-  }
-}
+      if (a.sourceTemplateEventId) {
+        const te = templateById.get(a.sourceTemplateEventId);
+        if (te) {
+          m.set(k, { kind: a.kind, e: te });
+          continue;
+        }
+      }
 
-// Otherwise, treat as manual
-if (a.manualTitle) {
-  m.set(k, { kind: "manual", a });
-  continue;
-}
+      // Otherwise, treat as manual
+      if (a.manualTitle) {
+        m.set(k, { kind: "manual", a });
+        continue;
+      }
 
       m.set(k, { kind: "blank" });
     }
@@ -183,32 +181,35 @@ if (a.manualTitle) {
   const hasTemplate = templateById.size > 0;
 
   useEffect(() => {
-  if (!userId) return;
+    if (!userId) return;
 
-  const subjectKeys = Array.from(subjectsById.keys());
-  console.log("[DBG] subjectsById keys sample:", subjectKeys.slice(0, 30));
+    const subjectKeys = Array.from(subjectsById.keys());
+    console.log("[DBG] subjectsById keys sample:", subjectKeys.slice(0, 30));
 
-  // sample template events actually being used by cells (via baseCell)
-  const sampleBase = Array.from(baseCell.entries())
-    .filter(([, v]) => v && typeof v === "object" && "e" in (v as any) && (v as any).e)
-    .slice(0, 25);
+    // sample template events actually being used by cells (via baseCell)
+    const sampleBase = Array.from(baseCell.entries())
+      .filter(
+        ([, v]) =>
+          v && typeof v === "object" && "e" in (v as any) && (v as any).e,
+      )
+      .slice(0, 25);
 
-  const rows = sampleBase.map(([key, v]) => {
-    const e = (v as any).e as CycleTemplateEvent;
-    const sid = subjectIdForTemplateEvent(e);
-    return {
-      cell: key,
-      title: e.title,
-      code: (e as any).code,
-      room: (e as any).room ?? (e as any).location ?? "",
-      subjectIdForTemplateEvent: sid,
-      subjectExists: subjectsById.has(sid),
-      subjectDocColor: subjectsById.get(sid)?.color ?? null,
-    };
-  });
+    const rows = sampleBase.map(([key, v]) => {
+      const e = (v as any).e as CycleTemplateEvent;
+      const sid = subjectIdForTemplateEvent(e);
+      return {
+        cell: key,
+        title: e.title,
+        code: (e as any).code,
+        room: (e as any).room ?? (e as any).location ?? "",
+        subjectIdForTemplateEvent: sid,
+        subjectExists: subjectsById.has(sid),
+        subjectDocColor: subjectsById.get(sid)?.color ?? null,
+      };
+    });
 
-  console.table(rows);
-}, [userId, subjectsById, baseCell]);
+    console.table(rows);
+  }, [userId, subjectsById, baseCell]);
 
   const subjectsByKind = useMemo(() => {
     const subs = Array.from(subjectsById.values());
@@ -227,10 +228,17 @@ if (a.manualTitle) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
     const roomOverride =
-      existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride") ? existing.roomOverride : undefined;
+      existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride")
+        ? existing.roomOverride
+        : undefined;
 
     if (value === "") {
-      await setPlacement(userId, activeYear, dl, slotId, roomOverride !== undefined ? { roomOverride } : {});
+      await setPlacement(
+        userId,
+        dl,
+        slotId,
+        roomOverride !== undefined ? { roomOverride } : {},
+      );
       return;
     }
     if (value === "__blank__") {
@@ -238,23 +246,38 @@ if (a.manualTitle) {
         userId,
         dl,
         slotId,
-        roomOverride !== undefined ? { subjectId: null, roomOverride } : { subjectId: null }
+        roomOverride !== undefined
+          ? { subjectId: null, roomOverride }
+          : { subjectId: null },
       );
       return;
     }
-    await setPlacement(userId, activeYear, dl, slotId, roomOverride !== undefined ? { subjectId: value, roomOverride } : { subjectId: value });
+    await setPlacement(
+      userId,
+      dl,
+      slotId,
+      roomOverride !== undefined
+        ? { subjectId: value, roomOverride }
+        : { subjectId: value },
+    );
   }
 
-  async function onRoomBlur(dl: DayLabel, slotId: SlotId, nextRoomText: string) {
+  async function onRoomBlur(
+    dl: DayLabel,
+    slotId: SlotId,
+    nextRoomText: string,
+  ) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
     const subjectId =
-      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId")
+        ? existing.subjectId
+        : undefined;
 
     const trimmed = nextRoomText.trim();
     const roomOverride = trimmed ? trimmed : undefined;
 
-    await setPlacement(userId, activeYear, dl, slotId, {
+    await setPlacement(userId, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       ...(roomOverride !== undefined ? { roomOverride } : {}),
     });
@@ -264,9 +287,11 @@ if (a.manualTitle) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
     const subjectId =
-      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId")
+        ? existing.subjectId
+        : undefined;
 
-    await setPlacement(userId, activeYear, dl, slotId, {
+    await setPlacement(userId, dl, slotId, {
       ...(subjectId !== undefined ? { subjectId } : {}),
       roomOverride: null,
     });
@@ -276,33 +301,40 @@ if (a.manualTitle) {
     const k = `${dl}::${slotId}`;
     const existing = placementsByKey.get(k);
     const subjectId =
-      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId") ? existing.subjectId : undefined;
+      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId")
+        ? existing.subjectId
+        : undefined;
 
-    await setPlacement(userId, activeYear, dl, slotId, subjectId !== undefined ? { subjectId } : {});
+    await setPlacement(
+      userId,
+      dl,
+      slotId,
+      subjectId !== undefined ? { subjectId } : {},
+    );
   }
 
   useEffect(() => {
-  if (!userId) return;
+    if (!userId) return;
 
-  console.log("[DBG] templateById size:", templateById.size);
-  console.log("[DBG] subjectsById size:", subjectsById.size);
+    console.log("[DBG] templateById size:", templateById.size);
+    console.log("[DBG] subjectsById size:", subjectsById.size);
 
-  const sample = Array.from(templateById.values()).slice(0, 25);
+    const sample = Array.from(templateById.values()).slice(0, 25);
 
-  const rows = sample.map((e: any) => {
-    const sid = subjectIdForTemplateEvent(e);
-    return {
-      title: e.title,
-      code: e.code,
-      room: e.room ?? e.location ?? "",
-      subjectIdForTemplateEvent: sid,
-      subjectExists: subjectsById.has(sid),
-      subjectColor: subjectsById.get(sid)?.color ?? null,
-    };
-  });
+    const rows = sample.map((e: any) => {
+      const sid = subjectIdForTemplateEvent(e);
+      return {
+        title: e.title,
+        code: e.code,
+        room: e.room ?? e.location ?? "",
+        subjectIdForTemplateEvent: sid,
+        subjectExists: subjectsById.has(sid),
+        subjectColor: subjectsById.get(sid)?.color ?? null,
+      };
+    });
 
-  console.table(rows);
-}, [userId, templateById, subjectsById]);
+    console.table(rows);
+  }, [userId, templateById, subjectsById]);
 
   return (
     <div className="grid">
@@ -310,16 +342,27 @@ if (a.manualTitle) {
 
       <div className="card">
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => setSet("A")} aria-pressed={set === "A"}>
+          <button
+            className="btn"
+            onClick={() => setSet("A")}
+            aria-pressed={set === "A"}
+          >
             Week A
           </button>
-          <button className="btn" onClick={() => setSet("B")} aria-pressed={set === "B"}>
+          <button
+            className="btn"
+            onClick={() => setSet("B")}
+            aria-pressed={set === "B"}
+          >
             Week B
           </button>
         </div>
 
         <div className="space" />
-        <div className="muted">Choose a subject/duty/break for each slot. “Use template” removes the override.</div>
+        <div className="muted">
+          Choose a subject/duty/break for each slot. “Use template” removes the
+          override.
+        </div>
       </div>
 
       {!hasTemplate ? (
@@ -328,13 +371,20 @@ if (a.manualTitle) {
             <strong>No template loaded.</strong>
           </div>
           <div className="muted">
-            You can still build your fortnight using overrides below. Importing an ICS just pre-fills defaults.
+            You can still build your fortnight using overrides below. Importing
+            an ICS just pre-fills defaults.
           </div>
         </div>
       ) : null}
 
       <div className="card" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "separate",
+            borderSpacing: 8,
+          }}
+        >
           <thead>
             <tr>
               <th style={{ textAlign: "left", width: 160 }} className="muted">
@@ -360,61 +410,85 @@ if (a.manualTitle) {
                   const override = placementsByKey.get(k);
                   const base = baseCell.get(k);
 
-                  const baseSubjectId = base && "e" in base && base.e ? subjectIdForTemplateEvent(base.e) : null;
-                  const baseSubject = baseSubjectId ? subjectsById.get(baseSubjectId) : undefined;
+                  const baseSubjectId =
+                    base && "e" in base && base.e
+                      ? subjectIdForTemplateEvent(base.e)
+                      : null;
+                  const baseSubject = baseSubjectId
+                    ? subjectsById.get(baseSubjectId)
+                    : undefined;
 
                   const overrideSubjectId =
-                    override && Object.prototype.hasOwnProperty.call(override, "subjectId") ? override.subjectId : undefined;
+                    override &&
+                    Object.prototype.hasOwnProperty.call(override, "subjectId")
+                      ? override.subjectId
+                      : undefined;
                   const overrideSubject =
-                    typeof overrideSubjectId === "string" ? subjectsById.get(overrideSubjectId) : undefined;
+                    typeof overrideSubjectId === "string"
+                      ? subjectsById.get(overrideSubjectId)
+                      : undefined;
 
                   const bg =
                     overrideSubjectId === null
                       ? "#0f0f0f"
-                      : overrideSubject?.color ?? baseSubject?.color ?? "#0f0f0f";
-
-                  const textColour = contrastTextColour(bg);
-                  const mutedColour = rgbaFromHex(textColour, 0.75);
+                      : (overrideSubject?.color ??
+                        baseSubject?.color ??
+                        "#0f0f0f");
 
                   const selectValue =
                     overrideSubjectId === undefined
                       ? ""
                       : overrideSubjectId === null
-                      ? "__blank__"
-                      : overrideSubjectId;
+                        ? "__blank__"
+                        : overrideSubjectId;
 
                   const labelText =
                     overrideSubjectId === null
                       ? "Blank"
                       : overrideSubject
-                      ? overrideSubject.title
-                      : base?.kind === "free"
-                      ? "Free"
-                      : base?.kind === "manual"
-                      ? base.a.manualTitle
-                      : base && "e" in base && base.e
-                      ? base.e.title
-                      : "—";
+                        ? overrideSubject.title
+                        : base?.kind === "free"
+                          ? "Free"
+                          : base?.kind === "manual"
+                            ? base.a.manualTitle
+                            : base && "e" in base && base.e
+                              ? base.e.title
+                              : "—";
 
                   const subText =
                     overrideSubjectId === undefined
                       ? "Using template"
                       : overrideSubjectId === null
-                      ? "Override: blank"
-                      : "Override";
+                        ? "Override: blank"
+                        : "Override";
 
                   const roomOverride =
-                    override && Object.prototype.hasOwnProperty.call(override, "roomOverride") ? override.roomOverride : undefined;
-                  const baseRoom = base && "e" in base && base.e ? base.e.room ?? "" : "";
-                  const resolvedRoom = roomOverride === undefined ? baseRoom : roomOverride === null ? "" : roomOverride;
+                    override &&
+                    Object.prototype.hasOwnProperty.call(
+                      override,
+                      "roomOverride",
+                    )
+                      ? override.roomOverride
+                      : undefined;
+                  const baseRoom =
+                    base && "e" in base && base.e ? (base.e.room ?? "") : "";
+                  const resolvedRoom =
+                    roomOverride === undefined
+                      ? baseRoom
+                      : roomOverride === null
+                        ? ""
+                        : roomOverride;
 
                   return (
                     <td key={k} style={{ verticalAlign: "top" }}>
-                      <div className="card" style={{ background: bg, color: textColour, minHeight: 88 }}>
+                      <div
+                        className="card"
+                        style={{ background: bg, minHeight: 88 }}
+                      >
                         <div>
                           <strong>{labelText}</strong>
                         </div>
-                        <div className="muted" style={{ marginTop: 4, color: mutedColour }}>
+                        <div className="muted" style={{ marginTop: 4 }}>
                           {subText}
                         </div>
 
@@ -454,23 +528,40 @@ if (a.manualTitle) {
                         </select>
 
                         <div className="space" />
-                        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                        <div
+                          className="row"
+                          style={{ gap: 8, alignItems: "center" }}
+                        >
                           <input
-                            defaultValue={roomOverride === undefined ? "" : roomOverride ?? ""}
-                            placeholder={baseRoom ? `Room (template: ${baseRoom})` : "Room"}
-                            onBlur={(e) => onRoomBlur(dl, row.id, e.target.value)}
+                            defaultValue={
+                              roomOverride === undefined
+                                ? ""
+                                : (roomOverride ?? "")
+                            }
+                            placeholder={
+                              baseRoom ? `Room (template: ${baseRoom})` : "Room"
+                            }
+                            onBlur={(e) =>
+                              onRoomBlur(dl, row.id, e.target.value)
+                            }
                             style={{ width: "100%" }}
                           />
-                          <button onClick={() => clearRoomOverride(dl, row.id)} title="Use template room">
+                          <button
+                            onClick={() => clearRoomOverride(dl, row.id)}
+                            title="Use template room"
+                          >
                             ↺
                           </button>
-                          <button onClick={() => setBlankRoom(dl, row.id)} title="Blank room">
+                          <button
+                            onClick={() => setBlankRoom(dl, row.id)}
+                            title="Blank room"
+                          >
                             ☐
                           </button>
                         </div>
 
                         {resolvedRoom ? (
-                          <div className="muted" style={{ marginTop: 4, color: mutedColour }}>
+                          <div className="muted" style={{ marginTop: 4 }}>
                             Room: {resolvedRoom}
                           </div>
                         ) : null}
