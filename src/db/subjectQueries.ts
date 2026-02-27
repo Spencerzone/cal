@@ -1,13 +1,17 @@
 // src/db/subjectQueries.ts (Firestore source-of-truth)
 
-import { getDocs, query, setDoc } from "firebase/firestore";
+import { doc, getDocs, query, setDoc } from "firebase/firestore";
 import type { Subject } from "./db";
-import { subjectDoc, subjectsCol } from "./db";
+import { subjectsCol } from "./db";
 
 // Firestore document IDs cannot contain '/' (it is treated as a path separator).
 // Keep IDs stable by normalising unsafe characters.
 export function safeDocId(id: string): string {
   return (id ?? "").trim().replaceAll("/", "_");
+}
+
+function subjectRef(userId: string, id: string) {
+  return doc(subjectsCol(userId), safeDocId(id));
 }
 
 export async function getSubjectsByUser(
@@ -26,7 +30,7 @@ export async function getSubjectsByUser(
     if (y === undefined) {
       // Backfill legacy docs into the active year
       hydrated.year = year;
-      await setDoc(subjectDoc(userId, hydrated.id), { year }, { merge: true });
+      await setDoc(subjectRef(userId, hydrated.id), { year }, { merge: true });
     }
     if ((hydrated.year ?? year) !== year) continue;
     if (hydrated.archived) continue;
@@ -52,7 +56,7 @@ export async function getAllSubjectsByUser(
       if (y === undefined) {
         hydrated.year = year;
         await setDoc(
-          subjectDoc(userId, hydrated.id),
+          subjectRef(userId, hydrated.id),
           { year },
           { merge: true },
         );
@@ -75,7 +79,7 @@ export async function upsertSubject(subject: Subject): Promise<void> {
     title: subject.title.trim(),
   };
 
-  await setDoc(subjectDoc(normalised.userId, normalised.id), normalised, {
+  await setDoc(subjectRef(normalised.userId, normalised.id), normalised, {
     merge: true,
   });
   window.dispatchEvent(new Event("subjects-changed"));
@@ -87,7 +91,7 @@ export async function deleteSubject(
 ): Promise<void> {
   // Soft delete (archive) so imports/templates don't immediately recreate subjects.
   await setDoc(
-    subjectDoc(userId, subjectId),
+    subjectRef(userId, subjectId),
     { archived: true },
     { merge: true },
   );
@@ -99,7 +103,7 @@ export async function restoreSubject(
   subjectId: string,
 ): Promise<void> {
   await setDoc(
-    subjectDoc(userId, subjectId),
+    subjectRef(userId, subjectId),
     { archived: false },
     { merge: true },
   );
