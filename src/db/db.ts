@@ -150,11 +150,18 @@ export function userDoc(uid: string) {
   return doc(db, "users", uid);
 }
 
+// Firestore document IDs cannot contain '/' (it is treated as a path separator).
+// Keep IDs stable by normalising unsafe characters for doc IDs.
+export function safeDocId(id: string): string {
+  return (id ?? "").trim().replaceAll("/", "_");
+}
+
+
 export function subjectsCol(uid: string) {
   return collection(db, "users", uid, "subjects");
 }
 export function subjectDoc(uid: string, subjectId: string) {
-  return doc(db, "users", uid, "subjects", subjectId);
+  return doc(subjectsCol(uid), safeDocId(subjectId));
 }
 
 export function placementsCol(uid: string) {
