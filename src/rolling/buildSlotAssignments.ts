@@ -3,6 +3,15 @@ import { db } from "../firebase";
 import { cycleTemplateEventsCol, slotAssignmentsCol, slotAssignmentDoc } from "../db/db";
 import type { CycleTemplateEvent, DayLabel, SlotAssignment, SlotId, AssignmentKind } from "../db/db";
 
+
+function yearFromKey(k?: string): number | undefined {
+  const s = (k ?? "").trim();
+  const m = /^(\d{4})::/.exec(s);
+  if (!m) return undefined;
+  const y = parseInt(m[1], 10);
+  return Number.isFinite(y) ? y : undefined;
+}
+
 function normalisePeriodCode(raw: string | null | undefined): string {
   return (raw ?? "").trim().toUpperCase();
 }
@@ -109,19 +118,30 @@ export async function buildDraftSlotAssignments(userId: string, year: number) {
     if (nextDur > prevDur) best.set(key, candidate);
   }
 
-  // Persist: replace existing slotAssignments (Firestore)
-  const existingSnap = await getDocs(slotAssignmentsCol(userId));
-  if (!existingSnap.empty) {
-    const batchDel = writeBatch(db);
-    for (const d of existingSnap.docs) batchDel.delete(d.ref);
-    await batchDel.commit();
-  }
+  // Persist: replace existing slotAssignments for this year (Firestore)
+const existingSnap = await getDocs(slotAssignmentsCol(userId));
+const toDelete = existingSnap.docs.filter((d) => {
+  const data: any = d.data();
+  const inferred =
+    (typeof data.year === "number" ? data.year : undefined) ??
+    yearFromKey(data.key) ??
+    yearFromKey(d.id);
+  return inferred === year;
+});
+if (toDelete.length) {
+  const batchDel = writeBatch(db);
+  for (const d of toDelete) batchDel.delete(d.ref);
+  await batchDel.commit();
+}
+
 
   const rows: SlotAssignment[] = [];
   for (const [key, e] of best.entries()) {
     const [dayLabel, slotId] = key.split("::") as [DayLabel, SlotId];
+    const docKey = `${year}::${dayLabel}::${slotId}`;
     rows.push({
-      key,
+      key: docKey,
+      year,
       dayLabel,
       slotId,
       kind: e.kind,
