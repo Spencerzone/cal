@@ -261,7 +261,7 @@ export default function TodayPage() {
     }
 
     const load = async () => {
-      const ps = await getPlacementsForDayLabels(userId, [label]);
+      const ps = await getPlacementsForDayLabels(userId, activeYear, [label]);
       const m = new Map<
         SlotId,
         { subjectId?: string | null; roomOverride?: string | null }

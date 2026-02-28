@@ -102,6 +102,7 @@ function mergePlacement(
 
 export async function getPlacementsForDayLabels(
   userId: string,
+  year: number,
   dayLabels: DayLabel[],
 ): Promise<Placement[]> {
   if (dayLabels.length === 0) return [];

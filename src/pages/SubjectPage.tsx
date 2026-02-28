@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { format, parseISO, isValid } from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
-import type { DayLabel, SlotAssignment, SlotId, Subject, CycleTemplateEvent } from "../db/db";
+import type {
+  DayLabel,
+  SlotAssignment,
+  SlotId,
+  Subject,
+  CycleTemplateEvent,
+} from "../db/db";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
-import { getTemplateMeta } from "../db/templateQueries";
-import { applyMetaToLabel } from "../db/templateUtils";
+import { getTemplateMeta } from "../rolling/templateMapping";
+import { applyMetaToLabel } from "../rolling/templateMapping";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
@@ -33,7 +39,10 @@ const SLOT_DEFS: SlotDef[] = [
 ];
 
 function isHtmlEffectivelyEmpty(html: string | undefined | null): boolean {
-  const s = (html ?? "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+  const s = (html ?? "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
   return s.length === 0;
 }
 
@@ -64,7 +73,9 @@ export default function SubjectPage() {
   );
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(new Map());
+  const [subjectsById, setSubjectsById] = useState<Map<string, Subject>>(
+    new Map(),
+  );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
 
   const [termSel, setTermSel] = useState<"all" | 1 | 2 | 3 | 4>("all");
@@ -132,22 +143,34 @@ export default function SubjectPage() {
     };
   }, [userId, activeYear]);
 
-  const selectedSubject = selectedSubjectId ? subjectsById.get(selectedSubjectId) : undefined;
+  const selectedSubject = selectedSubjectId
+    ? subjectsById.get(selectedSubjectId)
+    : undefined;
 
   const termRange = useMemo(() => {
     const s = rollingSettings as any;
-    const yearConfig = (s?.termYears ?? []).find((y: any) => y.year === activeYear);
+    const yearConfig = (s?.termYears ?? []).find(
+      (y: any) => y.year === activeYear,
+    );
     const starts = (yearConfig?.starts ?? s?.termStarts ?? {}) as any;
     const ends = (yearConfig?.ends ?? s?.termEnds ?? {}) as any;
 
-    const pick = (k: "t1" | "t2" | "t3" | "t4") => ({ start: (starts?.[k] ?? "").trim(), end: (ends?.[k] ?? "").trim() });
+    const pick = (k: "t1" | "t2" | "t3" | "t4") => ({
+      start: (starts?.[k] ?? "").trim(),
+      end: (ends?.[k] ?? "").trim(),
+    });
 
     if (termSel === "all") {
-      const items = [pick("t1"), pick("t2"), pick("t3"), pick("t4")].filter((x) => x.start);
+      const items = [pick("t1"), pick("t2"), pick("t3"), pick("t4")].filter(
+        (x) => x.start,
+      );
       if (!items.length) return null;
       const start = items.map((x) => x.start).sort()[0];
       // end might be blank; if so just run for 10 weeks from start (fallback)
-      const endsList = items.map((x) => x.end).filter(Boolean).sort();
+      const endsList = items
+        .map((x) => x.end)
+        .filter(Boolean)
+        .sort();
       const end = endsList.length ? endsList[endsList.length - 1] : start;
       return { start, end };
     }
@@ -188,7 +211,9 @@ export default function SubjectPage() {
       const settings = (await getRollingSettings(userId)) as any;
       const meta = await getTemplateMeta(userId, activeYear);
       const template = await getAllCycleTemplateEvents(userId, activeYear);
-      const templateById = new Map<string, CycleTemplateEvent>(template.map((e) => [e.id, e]));
+      const templateById = new Map<string, CycleTemplateEvent>(
+        template.map((e) => [e.id, e]),
+      );
 
       const dateKeys = eachDateKeyInclusive(termRange.start, termRange.end);
       const dateLabelPairs: Array<{ dateKey: string; label: DayLabel }> = [];
@@ -199,7 +224,9 @@ export default function SubjectPage() {
         dateLabelPairs.push({ dateKey: dk, label: stored });
       }
 
-      const uniqueLabels = Array.from(new Set(dateLabelPairs.map((x) => x.label)));
+      const uniqueLabels = Array.from(
+        new Set(dateLabelPairs.map((x) => x.label)),
+      );
       const assignments = uniqueLabels.length
         ? await getAssignmentsForDayLabels(userId, activeYear, uniqueLabels)
         : [];
@@ -209,14 +236,21 @@ export default function SubjectPage() {
         : [];
 
       const assignmentByKey = new Map<string, SlotAssignment>();
-      for (const a of assignments) assignmentByKey.set(`${a.dayLabel}::${a.slotId}`, a);
+      for (const a of assignments)
+        assignmentByKey.set(`${a.dayLabel}::${a.slotId}`, a);
 
-      const placementByKey = new Map<string, { subjectId?: string | null; roomOverride?: string | null }>();
+      const placementByKey = new Map<
+        string,
+        { subjectId?: string | null; roomOverride?: string | null }
+      >();
       for (const p of placements) {
         const k = `${p.dayLabel}::${p.slotId}`;
-        const o: { subjectId?: string | null; roomOverride?: string | null } = {};
-        if (Object.prototype.hasOwnProperty.call(p, "subjectId")) o.subjectId = (p as any).subjectId;
-        if (Object.prototype.hasOwnProperty.call(p, "roomOverride")) o.roomOverride = (p as any).roomOverride;
+        const o: { subjectId?: string | null; roomOverride?: string | null } =
+          {};
+        if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
+          o.subjectId = (p as any).subjectId;
+        if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
+          o.roomOverride = (p as any).roomOverride;
         placementByKey.set(k, o);
       }
 
@@ -225,7 +259,8 @@ export default function SubjectPage() {
       for (const { dateKey, label } of dateLabelPairs) {
         const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
         const plansBySlot = new Map<SlotId, string>();
-        for (const p of plans) plansBySlot.set(p.slotId as SlotId, p.html ?? "");
+        for (const p of plans)
+          plansBySlot.set(p.slotId as SlotId, p.html ?? "");
 
         for (const slot of SLOT_DEFS) {
           const key = `${label}::${slot.id}`;
@@ -246,8 +281,12 @@ export default function SubjectPage() {
           }
 
           const ov = placementByKey.get(key);
-          const ovSubjectId = ov && Object.prototype.hasOwnProperty.call(ov, "subjectId") ? ov.subjectId : undefined;
-          const resolvedSubjectId = ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
+          const ovSubjectId =
+            ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")
+              ? ov.subjectId
+              : undefined;
+          const resolvedSubjectId =
+            ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
 
           if (resolvedSubjectId !== selectedSubjectId) continue;
 
@@ -267,7 +306,11 @@ export default function SubjectPage() {
         }
       }
 
-      out.sort((a, b) => (a.dateKey === b.dateKey ? a.slotLabel.localeCompare(b.slotLabel) : a.dateKey.localeCompare(b.dateKey)));
+      out.sort((a, b) =>
+        a.dateKey === b.dateKey
+          ? a.slotLabel.localeCompare(b.slotLabel)
+          : a.dateKey.localeCompare(b.dateKey),
+      );
 
       if (!alive) return;
       setRows(out);
@@ -281,20 +324,35 @@ export default function SubjectPage() {
     return () => {
       alive = false;
     };
-  }, [userId, activeYear, selectedSubjectId, termRange?.start, termRange?.end, showEmpty]);
+  }, [
+    userId,
+    activeYear,
+    selectedSubjectId,
+    termRange?.start,
+    termRange?.end,
+    showEmpty,
+  ]);
 
   return (
     <div className="grid">
       <h1>Lessons</h1>
 
       <div className="card">
-        <div className="row" style={{ gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}>
-          <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          className="row"
+          style={{ gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}
+        >
+          <div
+            className="row"
+            style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}
+          >
             <div>
               <div className="muted">Subject</div>
               <select
                 value={selectedSubjectId}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedSubjectId(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  setSelectedSubjectId(e.target.value)
+                }
                 style={{ minWidth: 280 }}
               >
                 {subjects.map((s) => (
@@ -312,7 +370,9 @@ export default function SubjectPage() {
                 value={termSel}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                   const v = e.target.value;
-                  setTermSel(v === "all" ? "all" : (parseInt(v, 10) as 1 | 2 | 3 | 4));
+                  setTermSel(
+                    v === "all" ? "all" : (parseInt(v, 10) as 1 | 2 | 3 | 4),
+                  );
                 }}
               >
                 <option value="all">All terms</option>
@@ -323,8 +383,15 @@ export default function SubjectPage() {
               </select>
             </div>
 
-            <label className="row" style={{ gap: 8, alignItems: "center", marginTop: 18 }}>
-              <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} />
+            <label
+              className="row"
+              style={{ gap: 8, alignItems: "center", marginTop: 18 }}
+            >
+              <input
+                type="checkbox"
+                checked={showEmpty}
+                onChange={(e) => setShowEmpty(e.target.checked)}
+              />
               Show empty lessons
             </label>
           </div>
@@ -347,7 +414,11 @@ export default function SubjectPage() {
       ) : (
         <div className="grid" style={{ gap: 12 }}>
           {rows.map((r) => (
-            <div key={`${r.dateKey}::${r.slotId}`} className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div
+              key={`${r.dateKey}::${r.slotId}`}
+              className="card"
+              style={{ padding: 0, overflow: "hidden" }}
+            >
               <div
                 style={{
                   display: "grid",
@@ -356,10 +427,18 @@ export default function SubjectPage() {
               >
                 <div style={{ background: r.color }} />
                 <div style={{ padding: 14 }}>
-                  <div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div
+                    className="row"
+                    style={{
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <div>
                       <div style={{ fontWeight: 700 }}>
-                        {format(parseISO(r.dateKey), "EEE d MMM yyyy")} · {r.slotLabel}
+                        {format(parseISO(r.dateKey), "EEE d MMM yyyy")} ·{" "}
+                        {r.slotLabel}
                       </div>
                       <div className="muted" style={{ marginTop: 4 }}>
                         {selectedSubject?.title ?? "(unknown subject)"}

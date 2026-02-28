@@ -352,7 +352,7 @@ export default function WeekPage() {
         setPlacementsByDate(new Map());
         return;
       }
-      const ps = await getPlacementsForDayLabels(userId, unique);
+      const ps = await getPlacementsForDayLabels(userId, activeYear, unique);
 
       const byLabel = new Map<
         DayLabel,
