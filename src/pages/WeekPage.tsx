@@ -33,7 +33,7 @@ import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
 
-import { getSubjectsByUser } from "../db/subjectQueries";
+import { getSubjectsByUser, safeDocId } from "../db/subjectQueries";
 import {
   subjectIdForTemplateEvent,
   detailForTemplateEvent,
@@ -347,7 +347,7 @@ export default function WeekPage() {
         setPlacementsByDate(new Map());
         return;
       }
-      const ps = await getPlacementsForDayLabels(userId, activeYear, unique);
+      const ps = await getPlacementsForDayLabels(userId, unique);
 
       const byLabel = new Map<
         DayLabel,
@@ -815,7 +815,10 @@ export default function WeekPage() {
 
                   const subject =
                     cell.kind === "template"
-                      ? subjectById.get(subjectIdForTemplateEvent(cell.e))
+                      ? (subjectById.get(subjectIdForTemplateEvent(cell.e)) ??
+                        subjectById.get(
+                          safeDocId(subjectIdForTemplateEvent(cell.e)),
+                        ))
                       : undefined;
                   const detail =
                     cell.kind === "template"
