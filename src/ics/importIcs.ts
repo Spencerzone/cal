@@ -10,15 +10,19 @@ import {
   baseEventsCol,
   importDoc,
   type ImportRow,
+  cycleTemplateEventsCol,
 } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
-import { safeDocId } from "../db/subjectQueries";
+
+export type ImportMode = "merge" | "replace";
+export type ImportOptions = { mode?: ImportMode };
 
 export async function importIcs(
   userId: string,
   year: number,
   icsText: string,
   icsName: string,
+  options: ImportOptions = {},
 ) {
   const importId = `${Date.now()}`;
   const icsHash = hashString(icsText);
@@ -58,6 +62,28 @@ export async function importIcs(
     for (const id of chunk)
       batch.set(baseEventDoc(userId, id), { active: false }, { merge: true });
     await batch.commit();
+  }
+
+  // If replacing the template for this year, clear existing template events first.
+  // This prevents duplicate template rows when ICS exports regenerate UIDs.
+  if ((options.mode ?? "replace") === "replace") {
+    const tplSnap = await getDocs(
+      query(cycleTemplateEventsCol(userId), where("year", "==", year)),
+    );
+    if (!tplSnap.empty) {
+      const batch = writeBatch(db);
+      let n = 0;
+      for (const d of tplSnap.docs) {
+        batch.delete(d.ref);
+        n++;
+        // Firestore write batch limit is 500 operations
+        if (n >= 450) {
+          await batch.commit();
+          n = 0;
+        }
+      }
+      if (n > 0) await batch.commit();
+    }
   }
 
   await buildCycleTemplateFromIcs(userId, year, icsText);
