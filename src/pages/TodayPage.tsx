@@ -20,7 +20,7 @@ import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
 
-import { getSubjectsByUser } from "../db/subjectQueries";
+import { getSubjectsByUser, safeDocId } from "../db/subjectQueries";
 import {
   subjectIdForTemplateEvent,
   detailForTemplateEvent,
@@ -256,7 +256,7 @@ export default function TodayPage() {
     }
 
     const load = async () => {
-      const ps = await getPlacementsForDayLabels(userId, activeYear, [label]);
+      const ps = await getPlacementsForDayLabels(userId, [label]);
       const m = new Map<
         SlotId,
         { subjectId?: string | null; roomOverride?: string | null }
@@ -572,9 +572,6 @@ export default function TodayPage() {
         >
           <thead>
             <tr>
-              <th style={{ textAlign: "left", width: 80 }} className="muted">
-                Slot
-              </th>
               <th style={{ textAlign: "left" }} className="muted">
                 Details
               </th>
@@ -599,9 +596,13 @@ export default function TodayPage() {
 
               const subject =
                 cell.kind === "template"
-                  ? subjectById.get(subjectIdForTemplateEvent(cell.e))
+                  ? (subjectById.get(subjectIdForTemplateEvent(cell.e)) ??
+                    subjectById.get(
+                      safeDocId(subjectIdForTemplateEvent(cell.e)),
+                    ))
                   : cell.kind === "placed"
-                    ? subjectById.get(cell.subjectId)
+                    ? (subjectById.get(cell.subjectId) ??
+                      subjectById.get(safeDocId(cell.subjectId)))
                     : undefined;
 
               const detail =
@@ -649,10 +650,6 @@ export default function TodayPage() {
 
               return (
                 <tr key={block.id}>
-                  <td style={{ verticalAlign: "top" }}>
-                    <div className="badge">{compactBlockLabel(block.name)}</div>
-                  </td>
-
                   <td style={{ verticalAlign: "top" }}>
                     <div
                       className="slotCard slotClickable"
