@@ -177,7 +177,7 @@ export default function TodayPage() {
       alive = false;
       window.removeEventListener("rolling-settings-changed", onChange as any);
     };
-  }, [userId]);
+  }, [userId, activeYear]);
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
@@ -209,7 +209,7 @@ export default function TodayPage() {
       window.removeEventListener("focus", onFocus as any);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [userId]);
+  }, [userId, activeYear]);
 
   // load templateById
   useEffect(() => {
@@ -218,7 +218,7 @@ export default function TodayPage() {
       const template = await getAllCycleTemplateEvents(userId, activeYear);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
-  }, [userId]);
+  }, [userId, activeYear]);
 
   // load blocks once
   useEffect(() => {
@@ -251,7 +251,7 @@ export default function TodayPage() {
       for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
       setAssignmentBySlot(m);
     })();
-  }, [dateKey]);
+  }, [dateKey, userId, activeYear]);
 
   // Load placements for the day’s stored label
   useEffect(() => {

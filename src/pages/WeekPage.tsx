@@ -168,7 +168,7 @@ export default function WeekPage() {
       alive = false;
       window.removeEventListener("rolling-settings-changed", onChanged as any);
     };
-  }, [userId]);
+  }, [userId, activeYear]);
 
   // Load blocks
   useEffect(() => {
@@ -177,7 +177,7 @@ export default function WeekPage() {
       await ensureDefaultBlocks(userId);
       setBlocks(await getVisibleBlocks(userId));
     })();
-  }, [userId]);
+  }, [userId, activeYear]);
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
@@ -272,7 +272,7 @@ export default function WeekPage() {
       setAssignmentsByDate(out);
       setDayLabelByDate(dlOut);
     })();
-  }, [userId, weekDays, rollingSettings]);
+  }, [userId, activeYear, weekDays, rollingSettings]);
 
   // Load lesson plans + attachments for each day in the viewed week
   useEffect(() => {
