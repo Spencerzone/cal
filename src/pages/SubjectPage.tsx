@@ -132,7 +132,8 @@ export default function SubjectPage() {
   useEffect(() => {
     if (!userId || !code) return;
     (async () => {
-      const rows = await getLessonsForSubject(userId, activeYear, code);
+      const subjectId = code.startsWith("code::") ? code : `code::${code}`;
+      const rows = await getLessonsForSubject(userId, activeYear, subjectId);
       setEvents(rows.filter((e) => (e as any).active !== false));
     })();
   }, [userId, code, activeYear]);

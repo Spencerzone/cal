@@ -181,7 +181,12 @@ export default function WeekPage() {
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
-    setSubjectById(new Map(subs.map((s) => [s.id, s])));
+    const m = new Map<string, Subject>();
+    for (const s of subs) {
+      m.set(s.id, s);
+      m.set(safeDocId(s.id), s); // allow lookup by sanitised id too
+    }
+    setSubjectById(m);
   }
 
   const subjectPalette = useMemo(() => {

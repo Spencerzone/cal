@@ -181,7 +181,12 @@ export default function TodayPage() {
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
-    setSubjectById(new Map(subs.map((s) => [s.id, s])));
+    const m = new Map<string, Subject>();
+    for (const s of subs) {
+      m.set(s.id, s);
+      m.set(safeDocId(s.id), s); // allow lookup by sanitised id too
+    }
+    setSubjectById(m);
   }
 
   // load subjects and keep in sync with edits
@@ -375,7 +380,8 @@ export default function TodayPage() {
         ).getTime();
         const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
 
-        const subject = subjectById.get(subjectIdForTemplateEvent(e));
+        const sid = subjectIdForTemplateEvent(e);
+        const subject = subjectById.get(sid) ?? subjectById.get(safeDocId(sid));
         const detail = detailForTemplateEvent(e);
         const title = subject ? displayTitle(subject, detail) : e.title;
 
