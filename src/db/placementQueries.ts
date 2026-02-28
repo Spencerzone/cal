@@ -21,7 +21,11 @@ function keyFor(dayLabel: DayLabel, slotId: SlotId) {
   return `${dayLabel}::${slotId}`;
 }
 
-export type PlacementPatch = {
+export type PlacementMode = "template" | "override" | "blank";
+
+type PlacementPatch = {
+  mode?: PlacementMode;
+
   subjectId?: string | null;
   roomOverride?: string | null;
 };
@@ -29,10 +33,20 @@ export type PlacementPatch = {
 function normaliseNext(next?: PlacementPatch): PlacementPatch {
   const n: PlacementPatch = (next ?? {}) as PlacementPatch;
   const out: PlacementPatch = {};
-  if (Object.prototype.hasOwnProperty.call(n, "subjectId"))
-    out.subjectId = n.subjectId;
-  if (Object.prototype.hasOwnProperty.call(n, "roomOverride"))
-    out.roomOverride = n.roomOverride;
+  if (Object.prototype.hasOwnProperty.call(n, "mode") && n.mode)
+    out.mode = n.mode;
+
+  if (Object.prototype.hasOwnProperty.call(n, "subjectId")) {
+    const v = (n as any).subjectId;
+    // Firestore does not allow `undefined`. Only persist string or null.
+    if (typeof v === "string" || v === null) out.subjectId = v;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(n, "roomOverride")) {
+    const v = (n as any).roomOverride;
+    if (typeof v === "string" || v === null) out.roomOverride = v;
+  }
+
   return out;
 }
 
@@ -54,25 +68,30 @@ function mergePlacement(
   if (existing?.roomOverride !== undefined)
     next.roomOverride = existing.roomOverride;
 
-const hasSubjectPatch = Object.prototype.hasOwnProperty.call(patch, "subjectId");
-const hasRoomPatch = Object.prototype.hasOwnProperty.call(patch, "roomOverride");
+  const hasSubjectPatch = Object.prototype.hasOwnProperty.call(
+    patch,
+    "subjectId",
+  );
+  const hasRoomPatch = Object.prototype.hasOwnProperty.call(
+    patch,
+    "roomOverride",
+  );
 
-if (hasSubjectPatch) {
-  if (patch.subjectId === undefined) {
-    delete (next as any).subjectId;
-  } else {
-    next.subjectId = patch.subjectId;
+  if (hasSubjectPatch) {
+    if (patch.subjectId === undefined) {
+      delete (next as any).subjectId;
+    } else {
+      next.subjectId = patch.subjectId;
+    }
   }
-}
 
-if (hasRoomPatch) {
-  if (patch.roomOverride === undefined) {
-    delete (next as any).roomOverride;
-  } else {
-    next.roomOverride = patch.roomOverride;
+  if (hasRoomPatch) {
+    if (patch.roomOverride === undefined) {
+      delete (next as any).roomOverride;
+    } else {
+      next.roomOverride = patch.roomOverride;
+    }
   }
-}
-
 
   const hasSubjectOverride = next.subjectId !== undefined;
   const hasRoomOverride = next.roomOverride !== undefined;
@@ -136,12 +155,12 @@ export async function setPlacement(
   userId: string,
   dayLabel: DayLabel,
   slotId: SlotId,
-  next: PlacementPatch,
+  next?: PlacementPatch,
 ): Promise<void> {
   const ref = placementDoc(userId, keyFor(dayLabel, slotId));
   const n = normaliseNext(next);
 
-  const p: Placement = {
+  const p: any = {
     key: keyFor(dayLabel, slotId),
     userId,
     dayLabel,
@@ -151,6 +170,7 @@ export async function setPlacement(
     p.subjectId = n.subjectId;
   if (Object.prototype.hasOwnProperty.call(n, "roomOverride"))
     p.roomOverride = n.roomOverride;
+  if (Object.prototype.hasOwnProperty.call(n, "mode")) p.mode = n.mode;
 
   const hasSubjectOverride = Object.prototype.hasOwnProperty.call(
     p,
@@ -161,7 +181,9 @@ export async function setPlacement(
     "roomOverride",
   );
 
-  if (!hasSubjectOverride && !hasRoomOverride) {
+  const hasMode = Object.prototype.hasOwnProperty.call(p, "mode");
+
+  if (!hasSubjectOverride && !hasRoomOverride && !hasMode) {
     await deleteDoc(ref);
   } else {
     await runTransaction(db, async (tx) => {

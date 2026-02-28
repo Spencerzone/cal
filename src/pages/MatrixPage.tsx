@@ -235,7 +235,9 @@ export default function MatrixPage() {
     if (value === "") {
       // "Use template" removes ONLY the subject override, but preserves any explicit room override.
       const patch: any =
-        roomOverride !== undefined ? { subjectId: undefined, roomOverride } : { subjectId: undefined };
+        roomOverride !== undefined
+          ? { subjectId: undefined, roomOverride }
+          : { subjectId: undefined };
       await setPlacement(userId, dl, slotId, patch);
       return;
     }
