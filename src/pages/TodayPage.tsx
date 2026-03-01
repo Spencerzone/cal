@@ -558,6 +558,7 @@ export default function TodayPage() {
                 return tw ? (
                   <span className="muted">
                     Term {tw.term} · Week {tw.week}
+                    {label?.slice(3)}
                   </span>
                 ) : (
                   <span className="muted">&nbsp;</span>
