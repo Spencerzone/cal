@@ -596,6 +596,15 @@ export default function TodayPage() {
               const showPlanEditor =
                 !!slotId && (hasPlan || openPlanSlot === slotId);
               const ov = slotId ? placementBySlot.get(slotId) : undefined;
+              const overrideSubjectId =
+                ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")
+                  ? ov.subjectId
+                  : undefined;
+              const overrideSubject =
+                typeof overrideSubjectId === "string"
+                  ? (subjectById.get(overrideSubjectId) ??
+                    subjectById.get(safeDocId(overrideSubjectId)))
+                  : undefined;
               const roomOverride =
                 ov && Object.prototype.hasOwnProperty.call(ov, "roomOverride")
                   ? ov.roomOverride
@@ -610,17 +619,17 @@ export default function TodayPage() {
                   : cell.kind === "placed"
                     ? (subjectById.get(cell.subjectId) ??
                       subjectById.get(safeDocId(cell.subjectId)))
-                    : cell.kind === "manual" && cell.a.manualCode
-                      ? (subjectById.get(cell.a.manualCode) ??
-                        subjectById.get(safeDocId(cell.a.manualCode)))
-                      : undefined;
+                    : undefined;
 
               const detail =
                 cell.kind === "template"
                   ? detailForTemplateEvent(cell.e)
                   : null;
 
-              const strip = subject?.color ?? "#9ca3af";
+              const strip =
+                overrideSubjectId === null
+                  ? "#9ca3af"
+                  : (overrideSubject?.color ?? subject?.color ?? "#9ca3af");
 
               const resolvedRoom =
                 cell.kind === "template"

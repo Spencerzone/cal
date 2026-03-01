@@ -827,10 +827,7 @@ export default function WeekPage() {
                       : cell.kind === "placed"
                         ? (subjectById.get(cell.subjectId) ??
                           subjectById.get(safeDocId(cell.subjectId)))
-                        : cell.kind === "manual" && cell.a.manualCode
-                          ? (subjectById.get(cell.a.manualCode) ??
-                            subjectById.get(safeDocId(cell.a.manualCode)))
-                          : undefined;
+                        : undefined;
                   const detail =
                     cell.kind === "template"
                       ? detailForTemplateEvent(cell.e)
