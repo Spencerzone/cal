@@ -368,6 +368,27 @@ export default function TodayPage() {
     });
   }, [blocks, assignmentBySlot, placementBySlot, templateById]);
 
+  // Add temporarily after the cells useMemo (around line 369)
+  useEffect(() => {
+    const templateCells = cells.filter((c) => c.cell.kind === "template");
+    const blankCells = cells.filter((c) => c.cell.kind === "blank" && c.slotId);
+    console.log(
+      "[DBG] template cells:",
+      templateCells.length,
+      "blank cells with slotId:",
+      blankCells.length,
+    );
+    blankCells.forEach(({ block, slotId }) => {
+      const a = assignmentBySlot.get(slotId!);
+      const inTemplate = a?.sourceTemplateEventId
+        ? templateById.has(a.sourceTemplateEventId)
+        : false;
+      console.log(
+        `  blank slot ${slotId} (${block.name}): assignment=${!!a}, srcId=${a?.sourceTemplateEventId}, inTemplateById=${inTemplate}`,
+      );
+    });
+  }, [cells, assignmentBySlot, templateById]);
+
   // current/next computed only from template events (ignore blank/free/manual/placed)
   const currentNext = useMemo(() => {
     const realEvents = cells
