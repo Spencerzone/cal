@@ -228,11 +228,14 @@ export default function TodayPage() {
     })();
   }, []);
 
-  // compute day’s DayLabel (canonical), then apply mapping to reach stored label
+  // compute day's DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
+    if (!rollingSettings) return; // wait for settings to load before computing label
     (async () => {
-      const settings = await getRollingSettings(userId);
-      const canonical = dayLabelForDate(dateKey, settings) as DayLabel | null;
+      const canonical = dayLabelForDate(
+        dateKey,
+        rollingSettings,
+      ) as DayLabel | null;
 
       if (!canonical) {
         setLabel(null);
@@ -248,10 +251,10 @@ export default function TodayPage() {
         stored,
       ]);
       const m = new Map<SlotId, SlotAssignment>();
-      for (const a of rows) if (a.dayLabel === stored) m.set(a.slotId, a);
+      for (const a of rows) m.set(a.slotId, a); // no dayLabel filter — matches WeekPage pattern
       setAssignmentBySlot(m);
     })();
-  }, [dateKey, userId, activeYear]);
+  }, [dateKey, userId, activeYear, rollingSettings]);
 
   // Load placements for the day’s stored label
   useEffect(() => {
@@ -367,27 +370,6 @@ export default function TodayPage() {
       return { block: b, slotId, cell: { kind: "blank" } };
     });
   }, [blocks, assignmentBySlot, placementBySlot, templateById]);
-
-  // Add temporarily after the cells useMemo (around line 369)
-  useEffect(() => {
-    const templateCells = cells.filter((c) => c.cell.kind === "template");
-    const blankCells = cells.filter((c) => c.cell.kind === "blank" && c.slotId);
-    console.log(
-      "[DBG] template cells:",
-      templateCells.length,
-      "blank cells with slotId:",
-      blankCells.length,
-    );
-    blankCells.forEach(({ block, slotId }) => {
-      const a = assignmentBySlot.get(slotId!);
-      const inTemplate = a?.sourceTemplateEventId
-        ? templateById.has(a.sourceTemplateEventId)
-        : false;
-      console.log(
-        `  blank slot ${slotId} (${block.name}): assignment=${!!a}, srcId=${a?.sourceTemplateEventId}, inTemplateById=${inTemplate}`,
-      );
-    });
-  }, [cells, assignmentBySlot, templateById]);
 
   // current/next computed only from template events (ignore blank/free/manual/placed)
   const currentNext = useMemo(() => {
