@@ -11,11 +11,11 @@ import type {
   SlotId,
   Subject,
 } from "../db/db";
-import { getSubjectsByUser, safeDocId } from "../db/subjectQueries";
+import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
 import {
   getPlacementsForDayLabels,
-  setPlacement,
+  upsertPlacementPatch,
 } from "../db/placementQueries";
 
 type SlotDef = { id: SlotId; label: string };
@@ -92,12 +92,7 @@ export default function MatrixPage() {
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
-    const m = new Map<string, Subject>();
-    for (const s of subs) {
-      m.set(s.id, s);
-      m.set(safeDocId(s.id), s); // allow lookup by sanitised id too
-    }
-    setSubjectsById(m);
+    setSubjectsById(new Map(subs.map((s) => [s.id, s])));
   }
 
   async function loadPlacements() {
@@ -230,41 +225,16 @@ export default function MatrixPage() {
   }, [subjectsById]);
 
   async function onSelect(dl: DayLabel, slotId: SlotId, value: string) {
-    const k = `${dl}::${slotId}`;
-    const existing = placementsByKey.get(k);
-    const roomOverride =
-      existing && Object.prototype.hasOwnProperty.call(existing, "roomOverride")
-        ? existing.roomOverride
-        : undefined;
-
     if (value === "") {
-      // "Use template" removes ONLY the subject override, but preserves any explicit room override.
-      const patch: any =
-        roomOverride !== undefined
-          ? { subjectId: undefined, roomOverride }
-          : { subjectId: undefined };
-      await setPlacement(userId, dl, slotId, patch);
+      // "Use template" — remove subject override only, room override is untouched by upsertPlacementPatch
+      await upsertPlacementPatch(userId, dl, slotId, { subjectId: undefined });
       return;
     }
     if (value === "__blank__") {
-      await setPlacement(
-        userId,
-        dl,
-        slotId,
-        roomOverride !== undefined
-          ? { subjectId: null, roomOverride }
-          : { subjectId: null },
-      );
+      await upsertPlacementPatch(userId, dl, slotId, { subjectId: null });
       return;
     }
-    await setPlacement(
-      userId,
-      dl,
-      slotId,
-      roomOverride !== undefined
-        ? { subjectId: value, roomOverride }
-        : { subjectId: value },
-    );
+    await upsertPlacementPatch(userId, dl, slotId, { subjectId: value });
   }
 
   async function onRoomBlur(
@@ -272,50 +242,20 @@ export default function MatrixPage() {
     slotId: SlotId,
     nextRoomText: string,
   ) {
-    const k = `${dl}::${slotId}`;
-    const existing = placementsByKey.get(k);
-    const subjectId =
-      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId")
-        ? existing.subjectId
-        : undefined;
-
     const trimmed = nextRoomText.trim();
-    const roomOverride = trimmed ? trimmed : undefined;
-
-    await setPlacement(userId, dl, slotId, {
-      ...(subjectId !== undefined ? { subjectId } : {}),
-      ...(roomOverride !== undefined ? { roomOverride } : {}),
-    });
+    // Pass explicit null to clear, or the string to set. Undefined would be "no change".
+    const roomOverride: string | null = trimmed ? trimmed : null;
+    await upsertPlacementPatch(userId, dl, slotId, { roomOverride });
   }
 
   async function setBlankRoom(dl: DayLabel, slotId: SlotId) {
-    const k = `${dl}::${slotId}`;
-    const existing = placementsByKey.get(k);
-    const subjectId =
-      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId")
-        ? existing.subjectId
-        : undefined;
-
-    await setPlacement(userId, dl, slotId, {
-      ...(subjectId !== undefined ? { subjectId } : {}),
-      roomOverride: null,
-    });
+    await upsertPlacementPatch(userId, dl, slotId, { roomOverride: null });
   }
 
   async function clearRoomOverride(dl: DayLabel, slotId: SlotId) {
-    const k = `${dl}::${slotId}`;
-    const existing = placementsByKey.get(k);
-    const subjectId =
-      existing && Object.prototype.hasOwnProperty.call(existing, "subjectId")
-        ? existing.subjectId
-        : undefined;
-
-    // Clear ONLY the room override (use template room), keep subject override state as-is.
-    const patch: any = {
-      ...(subjectId !== undefined ? { subjectId } : {}),
-      roomOverride: undefined,
-    };
-    await setPlacement(userId, dl, slotId, patch);
+    // Remove roomOverride field entirely so the template room shows through.
+    // upsertPlacementPatch treats `roomOverride: undefined` as "delete this field".
+    await upsertPlacementPatch(userId, dl, slotId, { roomOverride: undefined });
   }
 
   useEffect(() => {
