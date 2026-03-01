@@ -17,8 +17,8 @@ import {
   type SlotId,
 } from "./db";
 
-function keyFor(dayLabel: DayLabel, slotId: SlotId) {
-  return `${dayLabel}::${slotId}`;
+function keyFor(year: number, dayLabel: DayLabel, slotId: SlotId) {
+  return `${year}::${dayLabel}::${slotId}`;
 }
 
 export type PlacementMode = "template" | "override" | "blank";
@@ -53,12 +53,14 @@ function normaliseNext(next?: PlacementPatch): PlacementPatch {
 function mergePlacement(
   existing: Placement | undefined,
   userId: string,
+  year: number,
   dayLabel: DayLabel,
   slotId: SlotId,
   patch: PlacementPatch,
 ): Placement | null {
   const next: Placement = {
-    key: keyFor(dayLabel, slotId),
+    key: keyFor(year, dayLabel, slotId),
+    year,
     userId,
     dayLabel,
     slotId,
@@ -125,26 +127,35 @@ export async function getPlacementsForDayLabels(
 
 export async function getPlacement(
   userId: string,
+  year: number,
   dayLabel: DayLabel,
   slotId: SlotId,
 ): Promise<Placement | undefined> {
-  const ref = placementDoc(userId, keyFor(dayLabel, slotId));
+  const ref = placementDoc(userId, keyFor(year, dayLabel, slotId));
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data() as Placement) : undefined;
 }
 
 export async function upsertPlacementPatch(
   userId: string,
+  year: number,
   dayLabel: DayLabel,
   slotId: SlotId,
   patch: PlacementPatch,
 ): Promise<void> {
-  const ref = placementDoc(userId, keyFor(dayLabel, slotId));
+  const ref = placementDoc(userId, keyFor(year, dayLabel, slotId));
 
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     const existing = snap.exists() ? (snap.data() as Placement) : undefined;
-    const merged = mergePlacement(existing, userId, dayLabel, slotId, patch);
+    const merged = mergePlacement(
+      existing,
+      userId,
+      year,
+      dayLabel,
+      slotId,
+      patch,
+    );
 
     if (!merged) {
       if (snap.exists()) tx.delete(ref);
@@ -158,15 +169,17 @@ export async function upsertPlacementPatch(
 
 export async function setPlacement(
   userId: string,
+  year: number,
   dayLabel: DayLabel,
   slotId: SlotId,
   next?: PlacementPatch,
 ): Promise<void> {
-  const ref = placementDoc(userId, keyFor(dayLabel, slotId));
+  const ref = placementDoc(userId, keyFor(year, dayLabel, slotId));
   const n = normaliseNext(next);
 
   const p: any = {
-    key: keyFor(dayLabel, slotId),
+    key: keyFor(year, dayLabel, slotId),
+    year,
     userId,
     dayLabel,
     slotId,
@@ -201,10 +214,11 @@ export async function setPlacement(
 
 export async function deletePlacement(
   userId: string,
+  year: number,
   dayLabel: DayLabel,
   slotId: SlotId,
 ): Promise<void> {
-  await deleteDoc(placementDoc(userId, keyFor(dayLabel, slotId)));
+  await deleteDoc(placementDoc(userId, keyFor(year, dayLabel, slotId)));
   window.dispatchEvent(new Event("placements-changed"));
 }
 

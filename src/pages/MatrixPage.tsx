@@ -226,15 +226,21 @@ export default function MatrixPage() {
 
   async function onSelect(dl: DayLabel, slotId: SlotId, value: string) {
     if (value === "") {
-      // "Use template" — remove subject override only, room override is untouched by upsertPlacementPatch
-      await upsertPlacementPatch(userId, dl, slotId, { subjectId: undefined });
+      // "Use template" — remove subject override only; room override is preserved by upsertPlacementPatch
+      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+        subjectId: undefined,
+      });
       return;
     }
     if (value === "__blank__") {
-      await upsertPlacementPatch(userId, dl, slotId, { subjectId: null });
+      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+        subjectId: null,
+      });
       return;
     }
-    await upsertPlacementPatch(userId, dl, slotId, { subjectId: value });
+    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      subjectId: value,
+    });
   }
 
   async function onRoomBlur(
@@ -243,19 +249,23 @@ export default function MatrixPage() {
     nextRoomText: string,
   ) {
     const trimmed = nextRoomText.trim();
-    // Pass explicit null to clear, or the string to set. Undefined would be "no change".
     const roomOverride: string | null = trimmed ? trimmed : null;
-    await upsertPlacementPatch(userId, dl, slotId, { roomOverride });
+    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      roomOverride,
+    });
   }
 
   async function setBlankRoom(dl: DayLabel, slotId: SlotId) {
-    await upsertPlacementPatch(userId, dl, slotId, { roomOverride: null });
+    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      roomOverride: null,
+    });
   }
 
   async function clearRoomOverride(dl: DayLabel, slotId: SlotId) {
     // Remove roomOverride field entirely so the template room shows through.
-    // upsertPlacementPatch treats `roomOverride: undefined` as "delete this field".
-    await upsertPlacementPatch(userId, dl, slotId, { roomOverride: undefined });
+    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      roomOverride: undefined,
+    });
   }
 
   useEffect(() => {
