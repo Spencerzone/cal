@@ -112,7 +112,11 @@ export async function getPlacementsForDayLabels(
   const CHUNK = 10;
   for (let i = 0; i < dayLabels.length; i += CHUNK) {
     const chunk = dayLabels.slice(i, i + CHUNK);
-    const q = query(col, where("dayLabel", "in", chunk));
+    const q = query(
+      col,
+      where("year", "==", year),
+      where("dayLabel", "in", chunk),
+    );
     const snap = await getDocs(q);
     out.push(...snap.docs.map((d) => d.data() as Placement));
   }

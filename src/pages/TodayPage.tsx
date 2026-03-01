@@ -610,14 +610,17 @@ export default function TodayPage() {
                   : cell.kind === "placed"
                     ? (subjectById.get(cell.subjectId) ??
                       subjectById.get(safeDocId(cell.subjectId)))
-                    : undefined;
+                    : cell.kind === "manual" && cell.a.manualCode
+                      ? (subjectById.get(cell.a.manualCode) ??
+                        subjectById.get(safeDocId(cell.a.manualCode)))
+                      : undefined;
 
               const detail =
                 cell.kind === "template"
                   ? detailForTemplateEvent(cell.e)
                   : null;
 
-              const strip = subject?.color ?? "#2a2a2a";
+              const strip = subject?.color ?? "#9ca3af";
 
               const resolvedRoom =
                 cell.kind === "template"

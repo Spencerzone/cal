@@ -824,7 +824,13 @@ export default function WeekPage() {
                         subjectById.get(
                           safeDocId(subjectIdForTemplateEvent(cell.e)),
                         ))
-                      : undefined;
+                      : cell.kind === "placed"
+                        ? (subjectById.get(cell.subjectId) ??
+                          subjectById.get(safeDocId(cell.subjectId)))
+                        : cell.kind === "manual" && cell.a.manualCode
+                          ? (subjectById.get(cell.a.manualCode) ??
+                            subjectById.get(safeDocId(cell.a.manualCode)))
+                          : undefined;
                   const detail =
                     cell.kind === "template"
                       ? detailForTemplateEvent(cell.e)
@@ -832,8 +838,8 @@ export default function WeekPage() {
 
                   const strip =
                     overrideSubjectId === null
-                      ? "#2a2a2a"
-                      : (overrideSubject?.color ?? subject?.color ?? "#2a2a2a");
+                      ? "#9ca3af"
+                      : (overrideSubject?.color ?? subject?.color ?? "#9ca3af");
 
                   const resolvedRoom =
                     cell.kind === "template"
