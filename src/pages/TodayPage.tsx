@@ -251,7 +251,7 @@ export default function TodayPage() {
         stored,
       ]);
       const m = new Map<SlotId, SlotAssignment>();
-      for (const a of rows) m.set(a.slotId, a); // no dayLabel filter — matches WeekPage pattern
+      for (const a of rows) m.set(a.slotId, a);
       setAssignmentBySlot(m);
     })();
   }, [dateKey, userId, activeYear, rollingSettings]);
@@ -359,13 +359,18 @@ export default function TodayPage() {
       if (!a) return { block: b, slotId, cell: { kind: "blank" } };
       if (a.kind === "free")
         return { block: b, slotId, cell: { kind: "free" } };
-      if (a.manualTitle)
-        return { block: b, slotId, cell: { kind: "manual", a } };
 
+      // Template linkage takes priority over manualTitle — buildSlotAssignments
+      // always copies e.title into manualTitle, so checking manualTitle first
+      // would prevent template cells from ever being resolved.
       if (a.sourceTemplateEventId) {
         const e = templateById.get(a.sourceTemplateEventId);
         if (e) return { block: b, slotId, cell: { kind: "template", a, e } };
       }
+
+      // Only treat as manual if there is no template linkage
+      if (a.manualTitle)
+        return { block: b, slotId, cell: { kind: "manual", a } };
 
       return { block: b, slotId, cell: { kind: "blank" } };
     });
