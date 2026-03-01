@@ -11,7 +11,7 @@ import type {
   SlotId,
   Subject,
 } from "../db/db";
-import { getSubjectsByUser } from "../db/subjectQueries";
+import { getSubjectsByUser, safeDocId } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
 import {
   getPlacementsForDayLabels,
@@ -92,7 +92,12 @@ export default function MatrixPage() {
 
   async function loadSubjects() {
     const subs = await getSubjectsByUser(userId, activeYear);
-    setSubjectsById(new Map(subs.map((s) => [s.id, s])));
+    const m = new Map<string, Subject>();
+    for (const s of subs) {
+      m.set(s.id, s);
+      m.set(safeDocId(s.id), s); // allow lookup by sanitised id too
+    }
+    setSubjectsById(m);
   }
 
   async function loadPlacements() {
