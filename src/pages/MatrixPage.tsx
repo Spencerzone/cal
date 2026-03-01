@@ -96,7 +96,7 @@ export default function MatrixPage() {
   }
 
   async function loadPlacements() {
-    const ps = await getPlacementsForDayLabels(userId, labels);
+    const ps = await getPlacementsForDayLabels(userId, activeYear, labels);
     const m = new Map<
       string,
       { subjectId?: string | null; roomOverride?: string | null }
