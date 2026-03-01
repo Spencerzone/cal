@@ -33,7 +33,6 @@ export async function getSubjectsByUser(
       await setDoc(subjectRef(userId, hydrated.id), { year }, { merge: true });
     }
     if ((hydrated.year ?? year) !== year) continue;
-    if (hydrated.archived) continue;
     out.push(hydrated);
   }
   return out;
