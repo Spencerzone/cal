@@ -14,6 +14,9 @@ function termDatesForYear(s: RollingSettings, year: number) {
     yc?.starts ?? (year === (s.activeYear ?? year) ? (s.termStarts ?? {}) : {});
   const ends =
     yc?.ends ?? (year === (s.activeYear ?? year) ? (s.termEnds ?? {}) : {});
+  const w1 =
+    yc?.week1Sets ??
+    (year === (s.activeYear ?? year) ? (s.termWeek1Sets ?? {}) : {});
   return {
     t1s: (starts.t1 ?? "").trim(),
     t2s: (starts.t2 ?? "").trim(),
@@ -23,6 +26,10 @@ function termDatesForYear(s: RollingSettings, year: number) {
     t2e: (ends.t2 ?? "").trim(),
     t3e: (ends.t3 ?? "").trim(),
     t4e: (ends.t4 ?? "").trim(),
+    t1w: (w1.t1 ?? "A") as "A" | "B",
+    t2w: (w1.t2 ?? "A") as "A" | "B",
+    t3w: (w1.t3 ?? "A") as "A" | "B",
+    t4w: (w1.t4 ?? "A") as "A" | "B",
   };
 }
 
@@ -41,6 +48,10 @@ export default function SetupPage() {
   const [t3e, setT3e] = useState("");
   const [t4s, setT4s] = useState("");
   const [t4e, setT4e] = useState("");
+  const [t1w, setT1w] = useState<"A" | "B">("A");
+  const [t2w, setT2w] = useState<"A" | "B">("A");
+  const [t3w, setT3w] = useState<"A" | "B">("A");
+  const [t4w, setT4w] = useState<"A" | "B">("A");
 
   function applyTermDates(s: RollingSettings, year: number) {
     const d = termDatesForYear(s, year);
@@ -52,6 +63,10 @@ export default function SetupPage() {
     setT2e(d.t2e);
     setT3e(d.t3e);
     setT4e(d.t4e);
+    setT1w(d.t1w);
+    setT2w(d.t2w);
+    setT3w(d.t3w);
+    setT4w(d.t4w);
   }
 
   // Load settings once; also re-load when changed externally
@@ -98,6 +113,7 @@ export default function SetupPage() {
         t4: t4s.trim(),
       },
       ends: { t1: t1e.trim(), t2: t2e.trim(), t3: t3e.trim(), t4: t4e.trim() },
+      week1Sets: { t1: t1w, t2: t2w, t3: t3w, t4: t4w },
     };
     const nextTermYears =
       idx >= 0
@@ -111,6 +127,7 @@ export default function SetupPage() {
       // Also keep flat fields in sync for the active year (backwards compat)
       termStarts: yearEntry.starts,
       termEnds: yearEntry.ends,
+      termWeek1Sets: yearEntry.week1Sets,
     };
     await setRollingSettings(userId, next);
     setSettings(next);
@@ -193,14 +210,15 @@ export default function SetupPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
+            gridTemplateColumns:
+              "auto minmax(140px,1fr) minmax(140px,1fr) 80px",
             gap: 10,
           }}
         >
           <div className="muted">Term</div>
           <div className="muted">Start</div>
           <div className="muted">Finish</div>
-          <div />
+          <div className="muted">Week 1</div>
 
           <div>Term 1</div>
           <input
@@ -213,7 +231,13 @@ export default function SetupPage() {
             value={t1e}
             onChange={(e) => setT1e(e.target.value)}
           />
-          <div />
+          <select
+            value={t1w}
+            onChange={(e) => setT1w(e.target.value as "A" | "B")}
+          >
+            <option value="A">Week A</option>
+            <option value="B">Week B</option>
+          </select>
 
           <div>Term 2</div>
           <input
@@ -226,7 +250,13 @@ export default function SetupPage() {
             value={t2e}
             onChange={(e) => setT2e(e.target.value)}
           />
-          <div />
+          <select
+            value={t2w}
+            onChange={(e) => setT2w(e.target.value as "A" | "B")}
+          >
+            <option value="A">Week A</option>
+            <option value="B">Week B</option>
+          </select>
 
           <div>Term 3</div>
           <input
@@ -239,7 +269,13 @@ export default function SetupPage() {
             value={t3e}
             onChange={(e) => setT3e(e.target.value)}
           />
-          <div />
+          <select
+            value={t3w}
+            onChange={(e) => setT3w(e.target.value as "A" | "B")}
+          >
+            <option value="A">Week A</option>
+            <option value="B">Week B</option>
+          </select>
 
           <div>Term 4</div>
           <input
@@ -252,7 +288,13 @@ export default function SetupPage() {
             value={t4e}
             onChange={(e) => setT4e(e.target.value)}
           />
-          <div />
+          <select
+            value={t4w}
+            onChange={(e) => setT4w(e.target.value as "A" | "B")}
+          >
+            <option value="A">Week A</option>
+            <option value="B">Week B</option>
+          </select>
         </div>
 
         <div
