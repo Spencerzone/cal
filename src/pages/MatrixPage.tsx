@@ -318,6 +318,7 @@ export default function MatrixPage() {
             className="btn"
             onClick={() => setSet("A")}
             aria-pressed={set === "A"}
+            style={set === "A" ? { backgroundColor: "var(--accent)", color: "var(--bg)" } : undefined}
           >
             Week A
           </button>
@@ -325,6 +326,7 @@ export default function MatrixPage() {
             className="btn"
             onClick={() => setSet("B")}
             aria-pressed={set === "B"}
+            style={set === "B" ? { backgroundColor: "var(--accent)", color: "var(--bg)" } : undefined}
           >
             Week B
           </button>
