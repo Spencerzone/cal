@@ -13,6 +13,23 @@ import type {
 } from "../db/db";
 import { getSubjectsByUser } from "../db/subjectQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
+
+/** Returns "#000" or "#fff" depending on which contrasts better against `hex`. */
+function contrastColor(hex: string): string {
+  const c = hex.replace("#", "");
+  if (c.length !== 6) return "#fff";
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  // Relative luminance (WCAG formula)
+  const toLinear = (x: number) => {
+    const s = x / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+  return L > 0.179 ? "#000" : "#fff";
+}
+
 import {
   getPlacementsForDayLabels,
   upsertPlacementPatch,
@@ -389,6 +406,11 @@ export default function MatrixPage() {
                       : (overrideSubject?.color ??
                         baseSubject?.color ??
                         "#0f0f0f");
+                  const textColor = contrastColor(bg);
+                  const mutedColor =
+                    textColor === "#000"
+                      ? "rgba(0,0,0,0.55)"
+                      : "rgba(255,255,255,0.6)";
 
                   const selectValue =
                     overrideSubjectId === undefined
@@ -438,12 +460,16 @@ export default function MatrixPage() {
                     <td key={k} style={{ verticalAlign: "top" }}>
                       <div
                         className="card"
-                        style={{ background: bg, minHeight: 88 }}
+                        style={{
+                          background: bg,
+                          minHeight: 88,
+                          color: textColor,
+                        }}
                       >
                         <div>
                           <strong>{labelText}</strong>
                         </div>
-                        <div className="muted" style={{ marginTop: 4 }}>
+                        <div style={{ marginTop: 4, color: mutedColor }}>
                           {subText}
                         </div>
 
@@ -516,7 +542,7 @@ export default function MatrixPage() {
                         </div>
 
                         {resolvedRoom ? (
-                          <div className="muted" style={{ marginTop: 4 }}>
+                          <div style={{ marginTop: 4, color: mutedColor }}>
                             Room: {resolvedRoom}
                           </div>
                         ) : null}
