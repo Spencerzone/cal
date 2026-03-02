@@ -442,28 +442,64 @@ export default function SubjectPage() {
     <div className="grid" id="lessons-print-root">
       <style>{`
         @media print {
-          /* Hide everything via visibility so our container can override it */
-          body { visibility: hidden; }
-          #lessons-print-root { visibility: visible; position: absolute; top: 0; left: 0; width: 100%; }
-          /* Force light mode — white background, black text */
+          body { visibility: hidden; margin: 0; }
+          #lessons-print-root {
+            visibility: visible;
+            position: absolute;
+            inset: 0;
+            padding: 16px;
+            font-size: 11pt;
+            line-height: 1.4;
+            font-family: sans-serif;
+          }
           #lessons-print-root * { visibility: visible; }
           #lessons-print-root, #lessons-print-root * {
             background: white !important;
             color: black !important;
-            border-color: #ccc !important;
             box-shadow: none !important;
           }
-          /* Hide toolbar */
-          .lessons-no-print { display: none !important; }
-          /* Replace solid colour stripe with a left border */
-          .lesson-stripe { display: none !important; }
-          .lesson-card-inner { border-left: 4px solid var(--lesson-color, #9ca3af) !important; }
-          /* Cards */
-          .card { border: 1px solid #ddd !important; break-inside: avoid; margin-bottom: 14px; border-radius: 4px !important; }
-          /* Hide editor UI, keep content */
-          [role="toolbar"], button, select, input, label { display: none !important; }
-          [contenteditable] { border: none !important; outline: none !important; min-height: unset !important; }
-          h1 { font-size: 16pt; }
+          #lessons-print-root h1 {
+            font-size: 14pt;
+            margin: 0 0 10pt 0;
+          }
+          .lessons-no-print { display: none !important; visibility: hidden !important; }
+          .lesson-card {
+            border: 1px solid #ddd !important;
+            border-radius: 4px !important;
+            margin-bottom: 10pt;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            overflow: visible !important;
+            display: block !important;
+          }
+          .lesson-card-layout {
+            display: flex !important;
+            gap: 0 !important;
+          }
+          .lesson-stripe { width: 5px !important; min-height: 100% !important; flex-shrink: 0; }
+          .lesson-card-inner {
+            padding: 10pt 12pt !important;
+            flex: 1;
+          }
+          .lesson-title {
+            font-weight: bold;
+            font-size: 11pt;
+            white-space: normal !important;
+            margin-bottom: 4pt;
+          }
+          .lesson-subject-label {
+            font-size: 9pt;
+            color: #444 !important;
+            margin-bottom: 6pt;
+          }
+          [role="toolbar"], button, select, input[type="text"],
+          input[type="checkbox"], label.row { display: none !important; visibility: hidden !important; }
+          [contenteditable] {
+            border: none !important;
+            outline: none !important;
+            min-height: unset !important;
+            font-size: 10pt;
+          }
         }
       `}</style>
 
@@ -565,15 +601,12 @@ export default function SubjectPage() {
           {rows.map((r) => (
             <div
               key={`${r.dateKey}::${r.slotId}`}
-              className="card"
+              className="card lesson-card"
               style={{ padding: 0, overflow: "hidden" }}
             >
               <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "6px 1fr",
-                  ["--lesson-color" as any]: r.color,
-                }}
+                className="lesson-card-layout"
+                style={{ display: "grid", gridTemplateColumns: "6px 1fr" }}
               >
                 <div
                   className="lesson-stripe"
@@ -589,7 +622,7 @@ export default function SubjectPage() {
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 700 }}>
+                      <div className="lesson-title" style={{ fontWeight: 700 }}>
                         {(() => {
                           const tw = rollingSettings
                             ? termInfoForDate(
@@ -603,7 +636,10 @@ export default function SubjectPage() {
                           return `${termPart}${r.slotLabel} · ${format(parseISO(r.dateKey), "EEE d MMM yyyy")}`;
                         })()}
                       </div>
-                      <div className="muted" style={{ marginTop: 4 }}>
+                      <div
+                        className="lesson-subject-label muted"
+                        style={{ marginTop: 4 }}
+                      >
                         {selectedSubject?.title ?? "(unknown subject)"}
                       </div>
                     </div>
