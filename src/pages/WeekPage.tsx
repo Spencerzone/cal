@@ -12,7 +12,6 @@ import {
   eachDayOfInterval,
   isSameMonth,
   isSameDay,
-  getDay,
 } from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
@@ -456,43 +455,89 @@ export default function WeekPage() {
   }
 
   function DatePickerPopover() {
+    const anchorRef = useRef<HTMLDivElement | null>(null);
+    const popRef = useRef<HTMLDivElement | null>(null);
+
+    // month shown in mini calendar
     const [monthCursor, setMonthCursor] = useState<Date>(() =>
       startOfMonth(weekStart),
     );
 
+    // keep month in sync with current weekStart
     useEffect(() => {
       setMonthCursor(startOfMonth(weekStart));
     }, [weekStart]);
 
+    // close on outside click
+    useEffect(() => {
+      if (!showDatePicker) return;
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as Node;
+        if (popRef.current?.contains(t)) return;
+        if (anchorRef.current?.contains(t)) return;
+        setShowDatePicker(false);
+      };
+      document.addEventListener("mousedown", onDown, true);
+      return () => document.removeEventListener("mousedown", onDown, true);
+    }, [showDatePicker]);
+
+    // viewport-clamp popover position
+    useEffect(() => {
+      if (!showDatePicker) return;
+      const pop = popRef.current;
+      const anchor = anchorRef.current;
+      if (!pop || !anchor) return;
+
+      // Start aligned under the anchor
+      const ar = anchor.getBoundingClientRect();
+      pop.style.position = "fixed";
+      pop.style.top = `${Math.round(ar.bottom + 8)}px`;
+      pop.style.left = `${Math.round(ar.left)}px`;
+      pop.style.right = "auto";
+      pop.style.maxHeight = "calc(100vh - 24px)";
+      pop.style.overflow = "auto";
+
+      // Clamp into viewport
+      const pr = pop.getBoundingClientRect();
+      let left = pr.left;
+      let top = pr.top;
+
+      const pad = 12;
+      if (pr.right > window.innerWidth - pad)
+        left -= pr.right - (window.innerWidth - pad);
+      if (left < pad) left = pad;
+
+      if (pr.bottom > window.innerHeight - pad)
+        top -= pr.bottom - (window.innerHeight - pad);
+      if (top < pad) top = pad;
+
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    }, [showDatePicker, monthCursor]);
+
     const rangeLabel = `${format(weekStart, "d MMM")} – ${format(addDays(weekStart, 4), "d MMM")}`;
-    const today = new Date();
-    const accentColor = "#6366f1";
+    const value = format(weekStart, "yyyy-MM-dd");
 
     const monthStart = startOfMonth(monthCursor);
+    const monthEnd = endOfMonth(monthCursor);
+
+    // Build Monday-start grid (6 weeks x 7 days)
     const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
     const gridEnd = addDays(gridStart, 41);
+
     const days = useMemo(
       () => eachDayOfInterval({ start: gridStart, end: gridEnd }),
       [gridStart.getTime(), monthCursor.getTime()],
     );
 
-    return (
-      <div style={{ position: "relative" }}>
-        {/* Click-outside backdrop */}
-        {showDatePicker && (
-          <div
-            onClick={() => setShowDatePicker(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 49 }}
-          />
-        )}
+    const dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+    return (
+      <div ref={anchorRef} style={{ position: "relative" }}>
         <button
           className="btn"
           type="button"
-          onClick={() => {
-            setMonthCursor(startOfMonth(weekStart));
-            setShowDatePicker((v) => !v);
-          }}
+          onClick={() => setShowDatePicker((v) => !v)}
           aria-label="Choose week"
         >
           {rangeLabel}
@@ -500,185 +545,150 @@ export default function WeekPage() {
 
         {showDatePicker ? (
           <div
+            ref={popRef}
             className="card"
             style={{
-              position: "absolute",
-              right: 0,
-              top: "calc(100% + 8px)",
               zIndex: 50,
-              width: 284,
-              background: "#111",
-              padding: 12,
+              width: 320,
+              background: "var(--popover-bg)",
             }}
           >
-            {/* Month nav */}
             <div
               className="row"
-              style={{
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 8,
-              }}
+              style={{ justifyContent: "space-between", alignItems: "center" }}
             >
-              <button
-                className="btn"
-                type="button"
-                style={{ padding: "2px 8px" }}
-                onClick={() => setMonthCursor((d) => subMonths(d, 1))}
-              >
-                ‹
-              </button>
-              <strong style={{ fontSize: 13 }}>
-                {format(monthCursor, "MMMM yyyy")}
-              </strong>
-              <button
-                className="btn"
-                type="button"
-                style={{ padding: "2px 8px" }}
-                onClick={() => setMonthCursor((d) => addMonths(d, 1))}
-              >
-                ›
-              </button>
-            </div>
-
-            {/* Day-of-week headers */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
-                gap: 2,
-                marginBottom: 4,
-              }}
-            >
-              {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
-                <div
-                  key={d}
-                  style={{
-                    textAlign: "center",
-                    fontSize: 10,
-                    opacity: 0.45,
-                    fontWeight: 600,
-                  }}
+              <div>
+                <strong>{format(monthCursor, "MMMM yyyy")}</strong>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setMonthCursor((d) => subMonths(d, 1))}
+                  title="Previous month"
                 >
-                  {d}
-                </div>
-              ))}
+                  ←
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setMonthCursor((d) => addMonths(d, 1))}
+                  title="Next month"
+                >
+                  →
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setShowDatePicker(false)}
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Day cells */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
-                gap: 2,
-              }}
-            >
-              {days.map((d, i) => {
-                const inMonth = isSameMonth(d, monthCursor);
-                const isSelectedWeek =
-                  d >= weekStart && d < addDays(weekStart, 7);
-                const isTodayDate = isSameDay(d, today);
-                const isWeekend = [0, 6].includes(getDay(d));
-                const isWeekMon =
-                  isSameDay(d, startOfWeek(d, { weekStartsOn: 1 })) &&
-                  isSelectedWeek;
+            <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gap: 6,
+                  fontSize: 12,
+                }}
+                className="muted"
+              >
+                {dow.map((d) => (
+                  <div key={d} style={{ textAlign: "center" }}>
+                    {d}
+                  </div>
+                ))}
+              </div>
 
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => {
-                      setWeekStart(startOfWeek(d, { weekStartsOn: 1 }));
-                      setShowDatePicker(false);
-                    }}
-                    title={format(d, "EEE d MMM")}
-                    style={{
-                      border: "none",
-                      borderRadius: isTodayDate
-                        ? "50%"
-                        : isSelectedWeek
-                          ? 0
-                          : "50%",
-                      borderTopLeftRadius:
-                        isSelectedWeek && getDay(d) === 1
-                          ? 16
-                          : isTodayDate
-                            ? "50%"
-                            : isSelectedWeek
-                              ? 0
-                              : "50%",
-                      borderBottomLeftRadius:
-                        isSelectedWeek && getDay(d) === 1
-                          ? 16
-                          : isTodayDate
-                            ? "50%"
-                            : isSelectedWeek
-                              ? 0
-                              : "50%",
-                      borderTopRightRadius:
-                        isSelectedWeek && (getDay(d) === 5 || getDay(d) === 0)
-                          ? 16
-                          : isTodayDate
-                            ? "50%"
-                            : isSelectedWeek
-                              ? 0
-                              : "50%",
-                      borderBottomRightRadius:
-                        isSelectedWeek && (getDay(d) === 5 || getDay(d) === 0)
-                          ? 16
-                          : isTodayDate
-                            ? "50%"
-                            : isSelectedWeek
-                              ? 0
-                              : "50%",
-                      width: "100%",
-                      height: 32,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      cursor: "pointer",
-                      fontWeight: isTodayDate ? 700 : 400,
-                      background: isTodayDate
-                        ? accentColor
-                        : isSelectedWeek
-                          ? `${accentColor}30`
-                          : "transparent",
-                      color: isTodayDate
-                        ? "#fff"
-                        : !inMonth
-                          ? "rgba(255,255,255,0.2)"
-                          : isWeekend
-                            ? "rgba(255,255,255,0.45)"
-                            : "rgba(255,255,255,0.9)",
-                      outline: "none",
-                    }}
-                  >
-                    {format(d, "d")}
-                  </button>
-                );
-              })}
+              <div style={{ height: 6 }} />
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  gap: 6,
+                }}
+              >
+                {days.map((d) => {
+                  const inMonth = isSameMonth(d, monthCursor);
+                  const isSelectedWeek =
+                    d >= weekStart && d <= addDays(weekStart, 6);
+                  const isToday = isSameDay(d, new Date());
+
+                  return (
+                    <button
+                      key={d.toISOString()}
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setWeekStart(startOfWeek(d, { weekStartsOn: 1 }));
+                        setShowDatePicker(false);
+                      }}
+                      style={{
+                        padding: "6px 0",
+                        opacity: inMonth ? 1 : 0.35,
+                        outline: isSelectedWeek
+                          ? "2px solid var(--line2)"
+                          : "none",
+                        boxShadow: isToday
+                          ? "0 0 0 2px var(--accent) inset"
+                          : "none",
+                      }}
+                      title={format(d, "EEE d MMM")}
+                    >
+                      {format(d, "d")}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* This week shortcut */}
+            <div style={{ marginTop: 12 }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Jump to date
+              </div>
+              <input
+                type="date"
+                value={value}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next) return;
+                  setWeekStart(
+                    startOfWeek(new Date(`${next}T00:00:00`), {
+                      weekStartsOn: 1,
+                    }),
+                  );
+                  setShowDatePicker(false);
+                }}
+                style={{ width: "100%" }}
+              />
+            </div>
+
             <div
-              style={{
-                marginTop: 10,
-                display: "flex",
-                justifyContent: "center",
-              }}
+              className="row"
+              style={{ justifyContent: "space-between", marginTop: 10 }}
             >
               <button
                 className="btn"
                 type="button"
                 onClick={() => {
                   onGoThisWeek();
-                  setMonthCursor(startOfMonth(today));
                   setShowDatePicker(false);
                 }}
-                style={{ fontSize: 12 }}
               >
                 This week
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setShowDatePicker(false)}
+              >
+                Close
               </button>
             </div>
           </div>

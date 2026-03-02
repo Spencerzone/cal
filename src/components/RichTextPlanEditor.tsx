@@ -133,11 +133,11 @@ export default function RichTextPlanEditor(props: {
   }, [openPicker]);
 
   const swatches = useMemo(() => {
-    const base = ["#000000", "#ffffff"];
-    const extra = palette
-      .map((c) => (c || "").trim().toLowerCase())
-      .filter(Boolean);
-    const uniq = Array.from(new Set([...base, ...extra]));
+    const uniq = Array.from(
+      new Set(
+        palette.map((c) => (c || "").trim().toLowerCase()).filter(Boolean),
+      ),
+    );
     return uniq.slice(0, 24);
   }, [palette]);
 
@@ -277,10 +277,21 @@ export default function RichTextPlanEditor(props: {
     <div
       ref={wrapRef}
       className="card"
-      style={{ marginTop: 8, background: "#0b0b0b" }}
+      style={{ marginTop: 8, background: "var(--panel3)" }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      {active ? (
+        <div
+          className="row"
+          style={{ justifyContent: "flex-end", alignItems: "center" }}
+        >
+          <span className="muted" style={{ fontSize: 12 }}>
+            Auto-saves
+          </span>
+        </div>
+      ) : null}
+
       {!active ? (
         <div
           role="button"
@@ -317,14 +328,14 @@ export default function RichTextPlanEditor(props: {
             overflowY: "auto",
             padding: 10,
             borderRadius: 12,
-            background: "#0f0f0f",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: "var(--editor-bg)",
+            border: "1px solid var(--editor-border)",
             cursor: "text",
           }}
         >
           {hasContent ? (
             <div
-              style={{ color: "rgba(255,255,255,0.85)" }}
+              style={{ color: "var(--editor-text)" }}
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (
@@ -373,112 +384,16 @@ export default function RichTextPlanEditor(props: {
               type="button"
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("insertUnorderedList")}
-              title="Bullet list"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                style={{ display: "block" }}
-              >
-                <circle cx="2" cy="4.5" r="1.5" fill="currentColor" />
-                <rect
-                  x="5.5"
-                  y="3.75"
-                  width="9"
-                  height="1.5"
-                  rx="0.75"
-                  fill="currentColor"
-                />
-                <circle cx="2" cy="8" r="1.5" fill="currentColor" />
-                <rect
-                  x="5.5"
-                  y="7.25"
-                  width="9"
-                  height="1.5"
-                  rx="0.75"
-                  fill="currentColor"
-                />
-                <circle cx="2" cy="11.5" r="1.5" fill="currentColor" />
-                <rect
-                  x="5.5"
-                  y="10.75"
-                  width="9"
-                  height="1.5"
-                  rx="0.75"
-                  fill="currentColor"
-                />
-              </svg>
+              • List
             </button>
             <button
               className="btn"
               type="button"
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("insertOrderedList")}
-              title="Numbered list"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                style={{ display: "block" }}
-              >
-                <text
-                  x="0"
-                  y="5.5"
-                  fontSize="5"
-                  fontWeight="700"
-                  fill="currentColor"
-                >
-                  1.
-                </text>
-                <rect
-                  x="5.5"
-                  y="3.75"
-                  width="9"
-                  height="1.5"
-                  rx="0.75"
-                  fill="currentColor"
-                />
-                <text
-                  x="0"
-                  y="9.5"
-                  fontSize="5"
-                  fontWeight="700"
-                  fill="currentColor"
-                >
-                  2.
-                </text>
-                <rect
-                  x="5.5"
-                  y="7.25"
-                  width="9"
-                  height="1.5"
-                  rx="0.75"
-                  fill="currentColor"
-                />
-                <text
-                  x="0"
-                  y="13.5"
-                  fontSize="5"
-                  fontWeight="700"
-                  fill="currentColor"
-                >
-                  3.
-                </text>
-                <rect
-                  x="5.5"
-                  y="10.75"
-                  width="9"
-                  height="1.5"
-                  rx="0.75"
-                  fill="currentColor"
-                />
-              </svg>
+              1. List
             </button>
 
             <div style={{ position: "relative" }}>
@@ -491,33 +406,7 @@ export default function RichTextPlanEditor(props: {
                 }
                 title="Text colour"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  style={{ display: "block" }}
-                >
-                  <text
-                    x="2"
-                    y="12"
-                    fontSize="12"
-                    fontWeight="700"
-                    fill="currentColor"
-                    fontFamily="sans-serif"
-                  >
-                    A
-                  </text>
-                  <rect
-                    x="1"
-                    y="14"
-                    width="14"
-                    height="1.5"
-                    rx="0.75"
-                    fill="#e05c5c"
-                  />
-                </svg>
+                Text
               </button>
               <button
                 className="btn"
@@ -528,36 +417,7 @@ export default function RichTextPlanEditor(props: {
                 }
                 title="Highlight"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  style={{ display: "block" }}
-                >
-                  {/* marker body */}
-                  <rect
-                    x="3"
-                    y="3"
-                    width="10"
-                    height="7"
-                    rx="2"
-                    fill="#fde047"
-                    opacity="0.9"
-                  />
-                  {/* tip */}
-                  <path d="M5 10 L8 13 L11 10 Z" fill="#fde047" opacity="0.9" />
-                  {/* shine */}
-                  <rect
-                    x="5"
-                    y="4.5"
-                    width="6"
-                    height="1.5"
-                    rx="0.75"
-                    fill="rgba(255,255,255,0.45)"
-                  />
-                </svg>
+                Highlight
               </button>
 
               {openPicker ? (
@@ -572,8 +432,8 @@ export default function RichTextPlanEditor(props: {
                     padding: 10,
                     zIndex: 50,
                     minWidth: 240,
-                    background: "#0b0b0b",
-                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "var(--popover-bg)",
+                    border: "1px solid var(--popover-border)",
                   }}
                 >
                   <div
@@ -668,7 +528,7 @@ export default function RichTextPlanEditor(props: {
                           width: 22,
                           height: 22,
                           borderRadius: 6,
-                          border: "1px solid rgba(255,255,255,0.18)",
+                          border: "1px solid var(--swatch-border)",
                           background: c,
                           padding: 0,
                         }}
@@ -715,7 +575,7 @@ export default function RichTextPlanEditor(props: {
           {urlForm ? (
             <div
               className="card"
-              style={{ marginTop: 8, background: "#0f0f0f" }}
+              style={{ marginTop: 8, background: "var(--panel2)" }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -763,7 +623,7 @@ export default function RichTextPlanEditor(props: {
           {attachments && attachments.length ? (
             <div
               className="card"
-              style={{ marginTop: 8, background: "#0f0f0f" }}
+              style={{ marginTop: 8, background: "var(--panel2)" }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
@@ -860,8 +720,8 @@ export default function RichTextPlanEditor(props: {
               overflowY: "auto",
               padding: 10,
               borderRadius: 12,
-              background: "#0f0f0f",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "var(--editor-bg)",
+              border: "1px solid var(--editor-border)",
               outline: "none",
             }}
           />
