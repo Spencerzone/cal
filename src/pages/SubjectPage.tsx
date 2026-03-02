@@ -125,7 +125,7 @@ export default function SubjectPage() {
       // Default selection
       setSelectedSubjectId((prev) => {
         if (prev && subs.some((s) => s.id === prev)) return prev;
-        return subs[0]?.id ?? "";
+        return ""; // blank by default — user must select a subject
       });
     })();
     const onChanged = () => {
@@ -256,102 +256,118 @@ export default function SubjectPage() {
         placementByKey.set(k, o);
       }
 
-      const out: LessonRow[] = [];
+      // --- Pass 1: determine which dates actually have this subject (no plan fetches yet) ---
+      type PendingRow = {
+        dateKey: string;
+        label: DayLabel;
+        slotId: SlotId;
+        slotLabel: string;
+        title: string;
+        color: string;
+        fromPlacement: boolean;
+      };
+      const pending: PendingRow[] = [];
 
       for (const { dateKey, label } of dateLabelPairs) {
-        const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
-        const plansBySlot = new Map<SlotId, string>();
-        for (const p of plans)
-          plansBySlot.set(p.slotId as SlotId, p.html ?? "");
-
         for (const slot of SLOT_DEFS) {
           const key = `${label}::${slot.id}`;
-          const a = assignmentByKey.get(key);
-          if (!a) continue;
-          if (a.kind !== "class") continue; // skip duties, breaks, free
 
-          // Template linkage takes priority — buildSlotAssignments always copies
-          // e.title into manualTitle, so checking manualTitle first would prevent
-          // baseSubjectId from ever being set for template-linked assignments.
-          let baseSubjectId: string | null = null;
-          let title = "—";
-          if (a.sourceTemplateEventId) {
-            const te = templateById.get(a.sourceTemplateEventId);
-            if (te) {
-              title = te.title;
-              baseSubjectId = subjectIdForTemplateEvent(te);
+          // Check assignment path
+          const a = assignmentByKey.get(key);
+          if (a && a.kind === "class") {
+            let baseSubjectId: string | null = null;
+            let title = "—";
+            if (a.sourceTemplateEventId) {
+              const te = templateById.get(a.sourceTemplateEventId);
+              if (te) {
+                title = te.title;
+                baseSubjectId = subjectIdForTemplateEvent(te);
+              } else if (a.manualTitle) {
+                title = a.manualTitle;
+              }
             } else if (a.manualTitle) {
               title = a.manualTitle;
             }
-          } else if (a.manualTitle) {
-            title = a.manualTitle;
+            const ov = placementByKey.get(key);
+            const ovSubjectId =
+              ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")
+                ? ov.subjectId
+                : undefined;
+            const resolvedSubjectId =
+              ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
+            if (resolvedSubjectId === selectedSubjectId) {
+              pending.push({
+                dateKey,
+                label,
+                slotId: slot.id,
+                slotLabel: slot.label,
+                title,
+                color: selectedSubject?.color ?? "#0f0f0f",
+                fromPlacement: false,
+              });
+              continue;
+            }
           }
 
+          // Check placement-only path (no assignment)
           const ov = placementByKey.get(key);
-          const ovSubjectId =
-            ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")
+          if (ov) {
+            const ovSubjectId = Object.prototype.hasOwnProperty.call(
+              ov,
+              "subjectId",
+            )
               ? ov.subjectId
               : undefined;
-          const resolvedSubjectId =
-            ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
-
-          if (resolvedSubjectId !== selectedSubjectId) continue;
-
-          const html = plansBySlot.get(slot.id) ?? "";
-          if (!showEmpty && isHtmlEffectivelyEmpty(html)) continue;
-
-          const colour = selectedSubject?.color ?? "#0f0f0f";
-          out.push({
-            dateKey,
-            dayLabel: label,
-            slotId: slot.id,
-            slotLabel: slot.label,
-            title,
-            color: colour,
-            html,
-          });
+            if (
+              ovSubjectId === selectedSubjectId &&
+              !pending.some(
+                (r) => r.dateKey === dateKey && r.slotId === slot.id,
+              )
+            ) {
+              pending.push({
+                dateKey,
+                label,
+                slotId: slot.id,
+                slotLabel: slot.label,
+                title: selectedSubject?.title ?? slot.label,
+                color: selectedSubject?.color ?? "#9ca3af",
+                fromPlacement: true,
+              });
+            }
+          }
         }
       }
 
-      // Also add rows sourced purely from placement overrides (subjects that have
-      // no template assignment — e.g. "before school" slots added via MatrixPage).
-      for (const { dateKey, label } of dateLabelPairs) {
-        const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
-        const plansBySlot = new Map<SlotId, string>();
-        for (const p of plans)
-          plansBySlot.set(p.slotId as SlotId, p.html ?? "");
+      // --- Pass 2: fetch lesson plans only for dates that have this subject, all in parallel ---
+      const uniqueDatesWithSubject = Array.from(
+        new Set(pending.map((r) => r.dateKey)),
+      );
+      const planResults = await Promise.all(
+        uniqueDatesWithSubject.map((dk) =>
+          getLessonPlansForDate(userId, activeYear, dk),
+        ),
+      );
+      const plansByDate = new Map<string, Map<SlotId, string>>();
+      for (let i = 0; i < uniqueDatesWithSubject.length; i++) {
+        const m = new Map<SlotId, string>();
+        for (const p of planResults[i]) m.set(p.slotId as SlotId, p.html ?? "");
+        plansByDate.set(uniqueDatesWithSubject[i], m);
+      }
 
-        for (const slot of SLOT_DEFS) {
-          const key = `${label}::${slot.id}`;
-          const ov = placementByKey.get(key);
-          if (!ov) continue;
-          const ovSubjectId = Object.prototype.hasOwnProperty.call(
-            ov,
-            "subjectId",
-          )
-            ? ov.subjectId
-            : undefined;
-          if (ovSubjectId !== selectedSubjectId) continue;
-
-          // Skip if already added via assignment loop
-          const alreadyAdded = out.some(
-            (r) => r.dateKey === dateKey && r.slotId === slot.id,
-          );
-          if (alreadyAdded) continue;
-
-          const html = plansBySlot.get(slot.id) ?? "";
-          if (!showEmpty && isHtmlEffectivelyEmpty(html)) continue;
-
-          out.push({
-            dateKey,
-            dayLabel: label,
-            slotId: slot.id,
-            slotLabel: slot.label,
-            title: selectedSubject?.title ?? slot.label,
-            color: selectedSubject?.color ?? "#9ca3af",
-            html,
-          });
-        }
+      // --- Pass 3: assemble final rows, applying showEmpty filter ---
+      const out: LessonRow[] = [];
+      for (const r of pending) {
+        const html = plansByDate.get(r.dateKey)?.get(r.slotId) ?? "";
+        if (!showEmpty && isHtmlEffectivelyEmpty(html)) continue;
+        out.push({
+          dateKey: r.dateKey,
+          dayLabel: r.label,
+          slotId: r.slotId,
+          slotLabel: r.slotLabel,
+          title: r.title,
+          color: r.color,
+          html,
+        });
       }
 
       out.sort((a, b) =>
@@ -404,6 +420,7 @@ export default function SubjectPage() {
                 }
                 style={{ minWidth: 280 }}
               >
+                <option value="">— Select a subject —</option>
                 {subjects.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.title}
@@ -456,9 +473,15 @@ export default function SubjectPage() {
         <div className="card">
           <div className="muted">Loading lessons…</div>
         </div>
+      ) : !selectedSubjectId ? (
+        <div className="card">
+          <div className="muted">Select a subject above to view lessons.</div>
+        </div>
       ) : rows.length === 0 ? (
         <div className="card">
-          <div className="muted">No lessons found.</div>
+          <div className="muted">
+            No lessons found for this subject in the selected period.
+          </div>
         </div>
       ) : (
         <div className="grid" style={{ gap: 12 }}>
