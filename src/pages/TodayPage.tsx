@@ -32,7 +32,11 @@ import {
   getLessonPlansForDate,
 } from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
-import { termWeekForDate } from "../rolling/termWeek";
+import {
+  termWeekForDate,
+  termInfoForDate,
+  nextTermStartAfter,
+} from "../rolling/termWeek";
 
 type Cell =
   | { kind: "blank" }
@@ -576,11 +580,7 @@ export default function TodayPage() {
             <div>
               {(() => {
                 const tw = rollingSettings
-                  ? termWeekForDate(
-                      selectedDate,
-                      rollingSettings.termStarts,
-                      rollingSettings.termEnds,
-                    )
+                  ? termInfoForDate(selectedDate, rollingSettings)
                   : null;
                 return tw ? (
                   <span className="muted">
@@ -595,6 +595,44 @@ export default function TodayPage() {
           </div>
         </div>
       </div>
+
+      {(() => {
+        const hasAnyTerms =
+          (rollingSettings?.termYears &&
+            rollingSettings.termYears.length > 0) ||
+          !!rollingSettings?.termStarts;
+        const inTerm = rollingSettings
+          ? !!termInfoForDate(selectedDate, rollingSettings)
+          : false;
+        if (!hasAnyTerms || inTerm) return null;
+        const dateKey = format(selectedDate, "yyyy-MM-dd");
+        const next = rollingSettings
+          ? nextTermStartAfter(dateKey, rollingSettings)
+          : null;
+        return (
+          <div className="card">
+            <div>
+              <strong>Holiday / non-term</strong>
+            </div>
+            <div className="muted">
+              No lessons shown for weeks outside configured terms.
+            </div>
+            {next ? <div className="space" /> : null}
+            {next ? (
+              <button
+                className="btn"
+                onClick={() =>
+                  setSelectedDate(
+                    adjustToWeekday(new Date(next + "T00:00:00"), 1),
+                  )
+                }
+              >
+                Skip to next term
+              </button>
+            ) : null}
+          </div>
+        );
+      })()}
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table
