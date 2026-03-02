@@ -445,14 +445,13 @@ export default function TodayPage() {
     const accentColor = "#6366f1";
 
     const monthStart = startOfMonth(calendarMonth);
-    const cells: (Date | null)[] = [];
     const startPad = (getDay(monthStart) + 6) % 7;
-    for (let i = 0; i < startPad; i++) cells.push(null);
-    const days = eachDayOfInterval({
+    const cells: (Date | null)[] = Array(startPad).fill(null);
+    for (const d of eachDayOfInterval({
       start: monthStart,
       end: endOfMonth(calendarMonth),
-    });
-    for (const d of days) cells.push(d);
+    }))
+      cells.push(d);
     while (cells.length % 7 !== 0) cells.push(null);
 
     return (
@@ -466,11 +465,11 @@ export default function TodayPage() {
         <button
           className="btn"
           type="button"
+          aria-label="Choose date"
           onClick={() => {
             setCalendarMonth(startOfMonth(selectedDate));
             setShowDatePicker((v) => !v);
           }}
-          aria-label="Choose date"
         >
           {labelText}
         </button>
@@ -488,7 +487,6 @@ export default function TodayPage() {
               padding: 12,
             }}
           >
-            {/* Month nav */}
             <div
               className="row"
               style={{
@@ -518,7 +516,6 @@ export default function TodayPage() {
               </button>
             </div>
 
-            {/* Day-of-week headers */}
             <div
               style={{
                 display: "grid",
@@ -542,7 +539,6 @@ export default function TodayPage() {
               ))}
             </div>
 
-            {/* Day cells */}
             <div
               style={{
                 display: "grid",
@@ -600,7 +596,6 @@ export default function TodayPage() {
               })}
             </div>
 
-            {/* Today shortcut */}
             <div
               style={{
                 marginTop: 10,
@@ -611,12 +606,12 @@ export default function TodayPage() {
               <button
                 className="btn"
                 type="button"
+                style={{ fontSize: 12 }}
                 onClick={() => {
                   onGoToday();
                   setCalendarMonth(startOfMonth(today));
                   setShowDatePicker(false);
                 }}
-                style={{ fontSize: 12 }}
               >
                 Today
               </button>
@@ -874,7 +869,7 @@ export default function TodayPage() {
                             {compactBlockLabel(block.name)}
                           </span>
 
-                          {/* coloured subject title */}
+                          {/* coloured subject title + code + room */}
                           <div style={{ minWidth: 0 }}>
                             <strong style={{ color: strip }}>
                               {titleText}
@@ -882,24 +877,15 @@ export default function TodayPage() {
                             {codeText ? (
                               <span className="muted">({codeText})</span>
                             ) : null}
+                            {resolvedRoom ? (
+                              <span className="muted"> · {resolvedRoom}</span>
+                            ) : null}
                           </div>
                         </div>
 
                         <div className="muted" style={{ whiteSpace: "nowrap" }}>
                           {timeText ?? ""}
                         </div>
-                      </div>
-
-                      <div className="muted" style={{ marginTop: 4 }}>
-                        {resolvedRoom ? (
-                          <span className="badge">Room {resolvedRoom}</span>
-                        ) : null}{" "}
-                        {cell.kind === "template" ? (
-                          <span className="badge">{cell.a.kind}</span>
-                        ) : null}
-                        {cell.kind === "manual" ? (
-                          <span className="badge">{cell.a.kind}</span>
-                        ) : null}
                       </div>
 
                       {slotId && showPlanEditor ? (
