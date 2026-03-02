@@ -208,7 +208,7 @@ export default function SubjectPage() {
     setLoading(true);
 
     (async () => {
-      const settings = (await getRollingSettings(userId)) as any;
+      const settings = rollingSettings as any; // use loaded state, don't re-fetch
       const meta = await getTemplateMeta(userId, activeYear);
       const template = await getAllCycleTemplateEvents(userId, activeYear);
       const templateById = new Map<string, CycleTemplateEvent>(
@@ -223,6 +223,17 @@ export default function SubjectPage() {
         const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
         dateLabelPairs.push({ dateKey: dk, label: stored });
       }
+
+      console.log(
+        "[DBG] SubjectPage termRange:",
+        termRange,
+        "dateKeys:",
+        dateKeys.length,
+        "dateLabelPairs:",
+        dateLabelPairs.length,
+        "selectedSubjectId:",
+        selectedSubjectId,
+      );
 
       const uniqueLabels = Array.from(
         new Set(dateLabelPairs.map((x) => x.label)),
@@ -267,10 +278,9 @@ export default function SubjectPage() {
           const a = assignmentByKey.get(key);
           if (!a) continue;
 
-          // base subject from template event — template linkage must take priority
-          // over manualTitle because buildSlotAssignments always copies e.title
-          // into manualTitle, so checking manualTitle first means baseSubjectId
-          // would never be set for template-linked assignments.
+          // Template linkage takes priority — buildSlotAssignments always copies
+          // e.title into manualTitle, so checking manualTitle first would prevent
+          // baseSubjectId from ever being set for template-linked assignments.
           let baseSubjectId: string | null = null;
           let title = "—";
           if (a.sourceTemplateEventId) {
@@ -336,6 +346,7 @@ export default function SubjectPage() {
     termRange?.start,
     termRange?.end,
     showEmpty,
+    rollingSettings,
   ]);
 
   return (
