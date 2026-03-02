@@ -70,7 +70,6 @@ function eachDateKeyInclusive(startKey: string, endKey: string): string[] {
   return out;
 }
 
-/** Returns settings scoped to just the active year's term dates. */
 function settingsForYear(settings: any, year: number): any {
   const yc = (settings?.termYears ?? []).find((t: any) => t.year === year);
   if (!yc)
@@ -195,7 +194,6 @@ export default function SubjectPage() {
         end: format(addDays(today, 14), "yyyy-MM-dd"),
       };
     }
-
     if (termSel === "all") {
       const items = [pick("t1"), pick("t2"), pick("t3"), pick("t4")].filter(
         (x) => x.start,
@@ -290,7 +288,7 @@ export default function SubjectPage() {
         placementByKey.set(k, o);
       }
 
-      // Pass 1: find matching date/slots in-memory (no sequential Firestore reads)
+      // Pass 1: find matching slots in-memory
       type PendingRow = {
         dateKey: string;
         label: DayLabel;
@@ -363,7 +361,7 @@ export default function SubjectPage() {
           }
         }
       }
-      // Pass 2: fetch plans only for dates that have this subject, all in parallel
+      // Pass 2: fetch plans for matching dates only, in parallel
       const uniqueDates = Array.from(new Set(pending.map((r) => r.dateKey)));
       const planResults = await Promise.all(
         uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
@@ -374,7 +372,7 @@ export default function SubjectPage() {
         for (const p of planResults[i]) m.set(p.slotId, p.html ?? "");
         plansByDate.set(uniqueDates[i], m);
       }
-      // Pass 3: assemble rows, applying showEmpty filter
+      // Pass 3: assemble with showEmpty filter
       const out: LessonRow[] = [];
       for (const r of pending) {
         const html = plansByDate.get(r.dateKey)?.get(r.slotId) ?? "";
@@ -418,18 +416,17 @@ export default function SubjectPage() {
     rollingSettings,
   ]);
 
-  // Re-fetch html for visible rows whenever a plan saves (event carries no detail)
   useEffect(() => {
     if (rows.length === 0) return;
     const onChanged = async () => {
       const uniqueDates = Array.from(new Set(rows.map((r) => r.dateKey)));
-      const planResults = await Promise.all(
+      const results = await Promise.all(
         uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
       );
       const fresh = new Map<string, Map<string, string>>();
       for (let i = 0; i < uniqueDates.length; i++) {
         const m = new Map<string, string>();
-        for (const p of planResults[i]) m.set(p.slotId, p.html ?? "");
+        for (const p of results[i]) m.set(p.slotId, p.html ?? "");
         fresh.set(uniqueDates[i], m);
       }
       setRows((prev) =>
@@ -448,20 +445,43 @@ export default function SubjectPage() {
     <div className="grid" id="lessons-print-root">
       <style>{`
         @media print {
-          body > * { display: none !important; }
+          /* Force light mode — override the app's dark theme */
           #lessons-print-root,
-          #lessons-print-root * { display: revert !important; }
-          #lessons-print-root .no-print { display: none !important; }
-          #lessons-print-root .card { break-inside: avoid; border: 1px solid #ccc !important; margin-bottom: 16px; }
-          #lessons-print-root h1 { font-size: 18pt; margin-bottom: 8pt; }
-          #lessons-print-root .print-title-bar { font-weight: bold; font-size: 11pt; margin-bottom: 4pt; }
-          #lessons-print-root .print-subject-label { color: #555; font-size: 9pt; }
-          @media print {
-            /* Hide editor toolbars, show only content */
-            [contenteditable] { border: none !important; outline: none !important; }
+          #lessons-print-root * {
+            background: #fff !important;
+            color: #000 !important;
+            border-color: #ccc !important;
+            box-shadow: none !important;
           }
+          /* Hide everything outside our container, and hide the toolbar */
+          body > * { display: none !important; }
+          #lessons-print-root { display: block !important; }
+          #lessons-print-root .no-print { display: none !important; }
+          /* Replace solid colour stripe with a left border */
+          #lessons-print-root .lesson-stripe { display: none !important; }
+          #lessons-print-root .lesson-card-inner {
+            border-left: 4px solid var(--stripe-color, #9ca3af) !important;
+            padding-left: 12px !important;
+          }
+          /* Card borders and spacing */
+          #lessons-print-root .card {
+            border: 1px solid #ddd !important;
+            break-inside: avoid;
+            margin-bottom: 12px;
+            border-radius: 4px !important;
+          }
+          /* Hide editor toolbar buttons, show only content */
+          #lessons-print-root [role="toolbar"],
+          #lessons-print-root button { display: none !important; }
+          #lessons-print-root [contenteditable] {
+            border: none !important;
+            outline: none !important;
+            min-height: unset !important;
+          }
+          h1 { font-size: 16pt; margin-bottom: 6pt; }
         }
       `}</style>
+
       <h1>Lessons</h1>
 
       <div className="card no-print">
@@ -536,7 +556,7 @@ export default function SubjectPage() {
               <button
                 className="btn"
                 onClick={() => window.print()}
-                title="Print / export as PDF"
+                title="Print / save as PDF"
               >
                 🖨 Print / PDF
               </button>
@@ -571,10 +591,14 @@ export default function SubjectPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "6px 1fr",
+                  ["--stripe-color" as any]: r.color,
                 }}
               >
-                <div style={{ background: r.color }} />
-                <div style={{ padding: 14 }}>
+                <div
+                  className="lesson-stripe"
+                  style={{ background: r.color }}
+                />
+                <div className="lesson-card-inner" style={{ padding: 14 }}>
                   <div
                     className="row"
                     style={{
@@ -592,10 +616,10 @@ export default function SubjectPage() {
                                 settingsForYear(rollingSettings, activeYear),
                               )
                             : null;
-                          const weekLabel = tw
+                          const termPart = tw
                             ? `Term ${tw.term} · Week ${tw.week}${tw.set} · `
                             : "";
-                          return `${weekLabel}${r.slotLabel} · ${format(parseISO(r.dateKey), "EEE d MMM yyyy")}`;
+                          return `${termPart}${r.slotLabel} · ${format(parseISO(r.dateKey), "EEE d MMM yyyy")}`;
                         })()}
                       </div>
                       <div className="muted" style={{ marginTop: 4 }}>
