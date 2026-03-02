@@ -288,7 +288,6 @@ export default function SubjectPage() {
         placementByKey.set(k, o);
       }
 
-      // Pass 1: find matching slots in-memory
       type PendingRow = {
         dateKey: string;
         label: DayLabel;
@@ -361,7 +360,6 @@ export default function SubjectPage() {
           }
         }
       }
-      // Pass 2: fetch plans for matching dates only, in parallel
       const uniqueDates = Array.from(new Set(pending.map((r) => r.dateKey)));
       const planResults = await Promise.all(
         uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
@@ -372,7 +370,6 @@ export default function SubjectPage() {
         for (const p of planResults[i]) m.set(p.slotId, p.html ?? "");
         plansByDate.set(uniqueDates[i], m);
       }
-      // Pass 3: assemble with showEmpty filter
       const out: LessonRow[] = [];
       for (const r of pending) {
         const html = plansByDate.get(r.dateKey)?.get(r.slotId) ?? "";
@@ -445,46 +442,34 @@ export default function SubjectPage() {
     <div className="grid" id="lessons-print-root">
       <style>{`
         @media print {
-          /* Force light mode — override the app's dark theme */
-          #lessons-print-root,
-          #lessons-print-root * {
-            background: #fff !important;
-            color: #000 !important;
+          /* Hide everything via visibility so our container can override it */
+          body { visibility: hidden; }
+          #lessons-print-root { visibility: visible; position: absolute; top: 0; left: 0; width: 100%; }
+          /* Force light mode — white background, black text */
+          #lessons-print-root * { visibility: visible; }
+          #lessons-print-root, #lessons-print-root * {
+            background: white !important;
+            color: black !important;
             border-color: #ccc !important;
             box-shadow: none !important;
           }
-          /* Hide everything outside our container, and hide the toolbar */
-          body > * { display: none !important; }
-          #lessons-print-root { display: block !important; }
-          #lessons-print-root .no-print { display: none !important; }
+          /* Hide toolbar */
+          .lessons-no-print { display: none !important; }
           /* Replace solid colour stripe with a left border */
-          #lessons-print-root .lesson-stripe { display: none !important; }
-          #lessons-print-root .lesson-card-inner {
-            border-left: 4px solid var(--stripe-color, #9ca3af) !important;
-            padding-left: 12px !important;
-          }
-          /* Card borders and spacing */
-          #lessons-print-root .card {
-            border: 1px solid #ddd !important;
-            break-inside: avoid;
-            margin-bottom: 12px;
-            border-radius: 4px !important;
-          }
-          /* Hide editor toolbar buttons, show only content */
-          #lessons-print-root [role="toolbar"],
-          #lessons-print-root button { display: none !important; }
-          #lessons-print-root [contenteditable] {
-            border: none !important;
-            outline: none !important;
-            min-height: unset !important;
-          }
-          h1 { font-size: 16pt; margin-bottom: 6pt; }
+          .lesson-stripe { display: none !important; }
+          .lesson-card-inner { border-left: 4px solid var(--lesson-color, #9ca3af) !important; }
+          /* Cards */
+          .card { border: 1px solid #ddd !important; break-inside: avoid; margin-bottom: 14px; border-radius: 4px !important; }
+          /* Hide editor UI, keep content */
+          [role="toolbar"], button, select, input, label { display: none !important; }
+          [contenteditable] { border: none !important; outline: none !important; min-height: unset !important; }
+          h1 { font-size: 16pt; }
         }
       `}</style>
 
       <h1>Lessons</h1>
 
-      <div className="card no-print">
+      <div className="card lessons-no-print">
         <div
           className="row"
           style={{ gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}
@@ -553,11 +538,7 @@ export default function SubjectPage() {
             <div className="badge">Active year</div>
             <div>{activeYear}</div>
             {rows.length > 0 && (
-              <button
-                className="btn"
-                onClick={() => window.print()}
-                title="Print / save as PDF"
-              >
+              <button className="btn" onClick={() => window.print()}>
                 🖨 Print / PDF
               </button>
             )}
@@ -591,7 +572,7 @@ export default function SubjectPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "6px 1fr",
-                  ["--stripe-color" as any]: r.color,
+                  ["--lesson-color" as any]: r.color,
                 }}
               >
                 <div
