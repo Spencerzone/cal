@@ -92,6 +92,14 @@ export default function TodayPage() {
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(
     new Map(),
   );
+
+  const subjectPalette = useMemo(() => {
+    const colours = Array.from(subjectById.values())
+      .map((s) => s?.color)
+      .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+      .map((c) => c.trim().toLowerCase());
+    return Array.from(new Set(colours)).sort();
+  }, [subjectById]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
 
@@ -805,6 +813,7 @@ export default function TodayPage() {
                             initialHtml={plan?.html ?? ""}
                             attachments={atts}
                             year={activeYear}
+                            palette={subjectPalette}
                           />
                         </div>
                       ) : null}
