@@ -267,17 +267,22 @@ export default function SubjectPage() {
           const a = assignmentByKey.get(key);
           if (!a) continue;
 
-          // base subject from template event
+          // base subject from template event — template linkage must take priority
+          // over manualTitle because buildSlotAssignments always copies e.title
+          // into manualTitle, so checking manualTitle first means baseSubjectId
+          // would never be set for template-linked assignments.
           let baseSubjectId: string | null = null;
           let title = "—";
-          if (a.manualTitle) {
-            title = a.manualTitle;
-          } else if (a.sourceTemplateEventId) {
+          if (a.sourceTemplateEventId) {
             const te = templateById.get(a.sourceTemplateEventId);
             if (te) {
               title = te.title;
               baseSubjectId = subjectIdForTemplateEvent(te);
+            } else if (a.manualTitle) {
+              title = a.manualTitle;
             }
+          } else if (a.manualTitle) {
+            title = a.manualTitle;
           }
 
           const ov = placementByKey.get(key);
