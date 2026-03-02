@@ -90,6 +90,25 @@ function compactBlockLabel(label: string): string {
   return label;
 }
 
+/** Returns a RollingSettings scoped to just the active year's term dates.
+ * Used so termInfoForDate checks only the active year, not all years. */
+function settingsForYear(settings: any, year: number): any {
+  const yc = (settings?.termYears ?? []).find((t: any) => t.year === year);
+  if (!yc)
+    return {
+      ...settings,
+      termYears: [],
+      termStarts: undefined,
+      termEnds: undefined,
+    };
+  return {
+    ...settings,
+    termYears: [yc],
+    termStarts: yc.starts,
+    termEnds: yc.ends,
+  };
+}
+
 export default function TodayPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
@@ -580,7 +599,10 @@ export default function TodayPage() {
             <div>
               {(() => {
                 const tw = rollingSettings
-                  ? termInfoForDate(selectedDate, rollingSettings)
+                  ? termInfoForDate(
+                      selectedDate,
+                      settingsForYear(rollingSettings, activeYear),
+                    )
                   : null;
                 return tw ? (
                   <span className="muted">
@@ -597,17 +619,19 @@ export default function TodayPage() {
       </div>
 
       {(() => {
-        const hasAnyTerms =
-          (rollingSettings?.termYears &&
-            rollingSettings.termYears.length > 0) ||
-          !!rollingSettings?.termStarts;
-        const inTerm = rollingSettings
-          ? !!termInfoForDate(selectedDate, rollingSettings)
+        const yearSettings = rollingSettings
+          ? settingsForYear(rollingSettings, activeYear)
+          : null;
+        const hasAnyTerms = yearSettings
+          ? yearSettings.termYears?.length > 0 || !!yearSettings.termStarts
+          : false;
+        const inTerm = yearSettings
+          ? !!termInfoForDate(selectedDate, yearSettings)
           : false;
         if (!hasAnyTerms || inTerm) return null;
         const dateKey = format(selectedDate, "yyyy-MM-dd");
-        const next = rollingSettings
-          ? nextTermStartAfter(dateKey, rollingSettings)
+        const next = yearSettings
+          ? nextTermStartAfter(dateKey, yearSettings)
           : null;
         return (
           <div className="card">

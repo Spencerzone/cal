@@ -84,6 +84,24 @@ function timeRangeFromTemplate(day: Date, e: CycleTemplateEvent): string {
   return `${format(s, "H:mm")}–${format(t, "H:mm")}`;
 }
 
+/** Returns a RollingSettings scoped to just the active year's term dates. */
+function settingsForYear(settings: any, year: number): any {
+  const yc = (settings?.termYears ?? []).find((t: any) => t.year === year);
+  if (!yc)
+    return {
+      ...settings,
+      termYears: [],
+      termStarts: undefined,
+      termEnds: undefined,
+    };
+  return {
+    ...settings,
+    termYears: [yc],
+    termStarts: yc.starts,
+    termEnds: yc.ends,
+  };
+}
+
 export default function WeekPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
@@ -709,7 +727,10 @@ export default function WeekPage() {
             {(() => {
               const mondayKey = format(weekStart, "yyyy-MM-dd");
               const termInfo = rollingSettings
-                ? termInfoForDate(weekStart, rollingSettings)
+                ? termInfoForDate(
+                    weekStart,
+                    settingsForYear(rollingSettings, activeYear),
+                  )
                 : null;
               const suffix = (dayLabelByDate.get(mondayKey) ?? "").slice(-1);
               return termInfo ? (
@@ -727,16 +748,18 @@ export default function WeekPage() {
 
       {(() => {
         const mondayKey = format(weekStart, "yyyy-MM-dd");
-        const hasAnyTerms =
-          (rollingSettings?.termYears &&
-            rollingSettings.termYears.length > 0) ||
-          !!rollingSettings?.termStarts;
-        const inTerm = rollingSettings
-          ? !!termInfoForDate(weekStart, rollingSettings)
+        const yearSettings = rollingSettings
+          ? settingsForYear(rollingSettings, activeYear)
+          : null;
+        const hasAnyTerms = yearSettings
+          ? yearSettings.termYears?.length > 0 || !!yearSettings.termStarts
+          : false;
+        const inTerm = yearSettings
+          ? !!termInfoForDate(weekStart, yearSettings)
           : false;
         if (!hasAnyTerms || inTerm) return null;
-        const next = rollingSettings
-          ? nextTermStartAfter(mondayKey, rollingSettings)
+        const next = yearSettings
+          ? nextTermStartAfter(mondayKey, yearSettings)
           : null;
         return (
           <div className="card">
@@ -775,37 +798,16 @@ export default function WeekPage() {
         >
           <thead>
             <tr>
-              {weekDays.map((d) => {
-                const isToday = isSameDay(d, new Date());
-                return (
-                  <th
-                    key={format(d, "yyyy-MM-dd")}
-                    style={{
-                      textAlign: "left",
-                      ...(isToday && {
-                        background: "rgba(99,102,241,0.15)",
-                        borderRadius: 6,
-                        padding: "2px 6px",
-                      }),
-                    }}
-                    className={isToday ? undefined : "muted"}
-                  >
-                    {isToday ? (
-                      <strong>
-                        {format(d, "EEE")}{" "}
-                        <span style={{ fontWeight: 500 }}>
-                          {format(d, "d/M")}
-                        </span>
-                      </strong>
-                    ) : (
-                      <>
-                        {format(d, "EEE")}{" "}
-                        <span className="muted">{format(d, "d/M")}</span>
-                      </>
-                    )}
-                  </th>
-                );
-              })}
+              {weekDays.map((d) => (
+                <th
+                  key={format(d, "yyyy-MM-dd")}
+                  style={{ textAlign: "left" }}
+                  className="muted"
+                >
+                  {format(d, "EEE")}{" "}
+                  <span className="muted">{format(d, "d/M")}</span>
+                </th>
+              ))}
             </tr>
           </thead>
 
