@@ -133,13 +133,114 @@ export default function RichTextPlanEditor(props: {
   }, [openPicker]);
 
   const swatches = useMemo(() => {
-    const uniq = Array.from(
-      new Set(
-        palette.map((c) => (c || "").trim().toLowerCase()).filter(Boolean),
-      ),
-    );
+    const base = ["#000000", "#ffffff"];
+    const extra = palette
+      .map((c) => (c || "").trim().toLowerCase())
+      .filter(Boolean);
+    const uniq = Array.from(new Set([...base, ...extra]));
     return uniq.slice(0, 24);
   }, [palette]);
+
+  /**
+   * For display only: if a colour is too light to read on a light background,
+   * shift it to a darker accessible equivalent. The stored HTML is never touched.
+   * Works by parsing inline color/background-color styles in the rendered HTML.
+   */
+  function accessibleHtml(raw: string): string {
+    if (!raw) return raw;
+    // Only needed in light mode
+    const isLight = document.documentElement.dataset.theme === "light";
+    if (!isLight) return raw;
+    return raw.replace(
+      /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgb[^)]+\))/g,
+      (match, colour) => {
+        const l = perceivedLightness(colour);
+        if (l === null || l < 0.7) return match; // already dark enough
+        // Darken: shift lightness toward 0.35 in HSL space
+        return `color: ${darkenForDisplay(colour)}`;
+      },
+    );
+  }
+
+  function perceivedLightness(hex: string): number | null {
+    const m = hex.match(/^#([0-9a-f]{3,8})$/i);
+    if (!m) return null;
+    let h = m[1];
+    if (h.length === 3)
+      h = h
+        .split("")
+        .map((c) => c + c)
+        .join("");
+    if (h.length !== 6) return null;
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
+    const toL = (c: number) =>
+      c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return 0.2126 * toL(r) + 0.7152 * toL(g) + 0.0722 * toL(b);
+  }
+
+  function darkenForDisplay(hex: string): string {
+    const m = hex.match(/^#([0-9a-f]{3,8})$/i);
+    if (!m) return hex;
+    let h = m[1];
+    if (h.length === 3)
+      h = h
+        .split("")
+        .map((c) => c + c)
+        .join("");
+    if (h.length !== 6) return hex;
+    let r = parseInt(h.slice(0, 2), 16) / 255;
+    let g = parseInt(h.slice(2, 4), 16) / 255;
+    let b = parseInt(h.slice(4, 6), 16) / 255;
+    // Convert to HSL
+    const max = Math.max(r, g, b),
+      min = Math.min(r, g, b),
+      d = max - min;
+    let hh = 0,
+      ss = 0,
+      ll = (max + min) / 2;
+    if (d !== 0) {
+      ss = d / (1 - Math.abs(2 * ll - 1));
+      if (max === r) hh = ((g - b) / d) % 6;
+      else if (max === g) hh = (b - r) / d + 2;
+      else hh = (r - g) / d + 4;
+      hh = (hh * 60 + 360) % 360;
+    }
+    // Clamp lightness to 0.38 (dark enough for WCAG AA on white)
+    ll = Math.min(ll, 0.38);
+    // HSL back to RGB
+    const c2 = (1 - Math.abs(2 * ll - 1)) * ss;
+    const x = c2 * (1 - Math.abs(((hh / 60) % 2) - 1));
+    const m2 = ll - c2 / 2;
+    let r2 = 0,
+      g2 = 0,
+      b2 = 0;
+    if (hh < 60) {
+      r2 = c2;
+      g2 = x;
+    } else if (hh < 120) {
+      r2 = x;
+      g2 = c2;
+    } else if (hh < 180) {
+      g2 = c2;
+      b2 = x;
+    } else if (hh < 240) {
+      g2 = x;
+      b2 = c2;
+    } else if (hh < 300) {
+      r2 = x;
+      b2 = c2;
+    } else {
+      r2 = c2;
+      b2 = x;
+    }
+    const to255 = (v: number) =>
+      Math.round((v + m2) * 255)
+        .toString(16)
+        .padStart(2, "0");
+    return `#${to255(r2)}${to255(g2)}${to255(b2)}`;
+  }
 
   function onInput() {
     dirtyRef.current = true;
@@ -281,17 +382,6 @@ export default function RichTextPlanEditor(props: {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {active ? (
-        <div
-          className="row"
-          style={{ justifyContent: "flex-end", alignItems: "center" }}
-        >
-          <span className="muted" style={{ fontSize: 12 }}>
-            Auto-saves
-          </span>
-        </div>
-      ) : null}
-
       {!active ? (
         <div
           role="button"
@@ -336,7 +426,7 @@ export default function RichTextPlanEditor(props: {
           {hasContent ? (
             <div
               style={{ color: "var(--editor-text)" }}
-              dangerouslySetInnerHTML={{ __html: html }}
+              dangerouslySetInnerHTML={{ __html: accessibleHtml(html) }}
             />
           ) : (
             <div className="muted">Click to add a lesson plan…</div>
@@ -384,16 +474,50 @@ export default function RichTextPlanEditor(props: {
               type="button"
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("insertUnorderedList")}
+              title="Bullet list"
             >
-              • List
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 15 15"
+                fill="currentColor"
+                style={{ display: "block" }}
+              >
+                <circle cx="2" cy="3.5" r="1.5" />
+                <rect x="5" y="2.75" width="9" height="1.5" rx="0.75" />
+                <circle cx="2" cy="7.5" r="1.5" />
+                <rect x="5" y="6.75" width="9" height="1.5" rx="0.75" />
+                <circle cx="2" cy="11.5" r="1.5" />
+                <rect x="5" y="10.75" width="9" height="1.5" rx="0.75" />
+              </svg>
             </button>
             <button
               className="btn"
               type="button"
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("insertOrderedList")}
+              title="Numbered list"
             >
-              1. List
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 15 15"
+                fill="currentColor"
+                style={{ display: "block" }}
+              >
+                <text x="0" y="5" fontSize="5" fontWeight="700">
+                  1.
+                </text>
+                <rect x="5" y="2.75" width="9" height="1.5" rx="0.75" />
+                <text x="0" y="9" fontSize="5" fontWeight="700">
+                  2.
+                </text>
+                <rect x="5" y="6.75" width="9" height="1.5" rx="0.75" />
+                <text x="0" y="13" fontSize="5" fontWeight="700">
+                  3.
+                </text>
+                <rect x="5" y="10.75" width="9" height="1.5" rx="0.75" />
+              </svg>
             </button>
 
             <div style={{ position: "relative" }}>
@@ -406,7 +530,31 @@ export default function RichTextPlanEditor(props: {
                 }
                 title="Text colour"
               >
-                Text
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 15 15"
+                  fill="currentColor"
+                  style={{ display: "block" }}
+                >
+                  <text
+                    x="1.5"
+                    y="12"
+                    fontSize="13"
+                    fontWeight="700"
+                    fontFamily="sans-serif"
+                  >
+                    A
+                  </text>
+                  <rect
+                    x="1"
+                    y="13.5"
+                    width="13"
+                    height="1.5"
+                    rx="0.75"
+                    fill="#e05c5c"
+                  />
+                </svg>
               </button>
               <button
                 className="btn"
@@ -417,7 +565,31 @@ export default function RichTextPlanEditor(props: {
                 }
                 title="Highlight"
               >
-                Highlight
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 15 15"
+                  fill="none"
+                  style={{ display: "block" }}
+                >
+                  <rect
+                    x="2.5"
+                    y="2"
+                    width="10"
+                    height="7"
+                    rx="2"
+                    fill="#fde047"
+                  />
+                  <path d="M4.5 9 L7.5 13 L10.5 9 Z" fill="#fde047" />
+                  <rect
+                    x="4.5"
+                    y="3.5"
+                    width="6"
+                    height="1.5"
+                    rx="0.75"
+                    fill="rgba(255,255,255,0.5)"
+                  />
+                </svg>
               </button>
 
               {openPicker ? (
