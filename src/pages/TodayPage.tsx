@@ -702,9 +702,15 @@ export default function TodayPage() {
             <div>
               <span className="muted">Now:</span>{" "}
               {isViewingToday && currentNext.current ? (
-                <strong style={{ color: currentNext.current.color }}>
-                  {currentNext.current.title}
-                </strong>
+                <>
+                  <strong style={{ color: currentNext.current.color }}>
+                    {currentNext.current.title}
+                  </strong>
+                  <span className="muted">
+                    {" "}
+                    ({format(new Date(currentNext.current.end), "H:mm")})
+                  </span>
+                </>
               ) : (
                 <span className="muted">—</span>
               )}
@@ -713,9 +719,15 @@ export default function TodayPage() {
             <div>
               <span className="muted">Next:</span>{" "}
               {isViewingToday && currentNext.next ? (
-                <strong style={{ color: currentNext.next.color }}>
-                  {currentNext.next.title}
-                </strong>
+                <>
+                  <strong style={{ color: currentNext.next.color }}>
+                    {currentNext.next.title}
+                  </strong>
+                  <span className="muted">
+                    {" "}
+                    ({format(new Date(currentNext.next.start), "H:mm")})
+                  </span>
+                </>
               ) : (
                 <span className="muted">—</span>
               )}
