@@ -431,8 +431,9 @@ export default function TodayPage() {
         const subject = subjectById.get(sid) ?? subjectById.get(safeDocId(sid));
         const detail = detailForTemplateEvent(e);
         const title = subject ? displayTitle(subject, detail) : e.title;
+        const color = subject?.color ?? "#9ca3af";
 
-        return { title, start, end };
+        return { title, start, end, color };
       })
       .sort((a, b) => a.start - b.start);
 
@@ -701,7 +702,9 @@ export default function TodayPage() {
             <div>
               <span className="muted">Now:</span>{" "}
               {isViewingToday && currentNext.current ? (
-                <strong>{currentNext.current.title}</strong>
+                <strong style={{ color: currentNext.current.color }}>
+                  {currentNext.current.title}
+                </strong>
               ) : (
                 <span className="muted">—</span>
               )}
@@ -710,7 +713,9 @@ export default function TodayPage() {
             <div>
               <span className="muted">Next:</span>{" "}
               {isViewingToday && currentNext.next ? (
-                <strong>{currentNext.next.title}</strong>
+                <strong style={{ color: currentNext.next.color }}>
+                  {currentNext.next.title}
+                </strong>
               ) : (
                 <span className="muted">—</span>
               )}
