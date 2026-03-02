@@ -235,6 +235,16 @@ export default function SubjectPage() {
         ? await getPlacementsForDayLabels(userId, activeYear, uniqueLabels)
         : [];
 
+      for (const p of placements) {
+        console.log(
+          "[DBG] placement",
+          (p as any).dayLabel,
+          (p as any).slotId,
+          "subjectId:",
+          (p as any).subjectId,
+        );
+      }
+
       console.log(
         "[DBG] SubjectPage termRange:",
         termRange,
@@ -251,24 +261,7 @@ export default function SubjectPage() {
         "placements:",
         placements.length,
       );
-      // Log first few assignments to check sourceTemplateEventId and what subjectId they resolve to
-      for (const a of assignments.slice(0, 5)) {
-        const te = a.sourceTemplateEventId
-          ? templateById.get(a.sourceTemplateEventId)
-          : undefined;
-        const sid = te ? subjectIdForTemplateEvent(te) : null;
-        console.log(
-          "[DBG] assignment",
-          a.dayLabel,
-          a.slotId,
-          "srcId:",
-          a.sourceTemplateEventId,
-          "te.code:",
-          te?.code,
-          "resolvedSid:",
-          sid,
-        );
-      }
+      // Log all placements to see if selectedSubjectId appears there
 
       const assignmentByKey = new Map<string, SlotAssignment>();
       for (const a of assignments)
