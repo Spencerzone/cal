@@ -775,16 +775,37 @@ export default function WeekPage() {
         >
           <thead>
             <tr>
-              {weekDays.map((d) => (
-                <th
-                  key={format(d, "yyyy-MM-dd")}
-                  style={{ textAlign: "left" }}
-                  className="muted"
-                >
-                  {format(d, "EEE")}{" "}
-                  <span className="muted">{format(d, "d/M")}</span>
-                </th>
-              ))}
+              {weekDays.map((d) => {
+                const isToday = isSameDay(d, new Date());
+                return (
+                  <th
+                    key={format(d, "yyyy-MM-dd")}
+                    style={{
+                      textAlign: "left",
+                      ...(isToday && {
+                        background: "rgba(99,102,241,0.15)",
+                        borderRadius: 6,
+                        padding: "2px 6px",
+                      }),
+                    }}
+                    className={isToday ? undefined : "muted"}
+                  >
+                    {isToday ? (
+                      <strong>
+                        {format(d, "EEE")}{" "}
+                        <span style={{ fontWeight: 500 }}>
+                          {format(d, "d/M")}
+                        </span>
+                      </strong>
+                    ) : (
+                      <>
+                        {format(d, "EEE")}{" "}
+                        <span className="muted">{format(d, "d/M")}</span>
+                      </>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
