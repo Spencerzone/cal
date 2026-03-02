@@ -336,7 +336,7 @@ export default function SubjectPage() {
               !pending.some(
                 (r) => r.dateKey === dateKey && r.slotId === slot.id,
               )
-            ) {
+            )
               pending.push({
                 dateKey,
                 label,
@@ -345,7 +345,6 @@ export default function SubjectPage() {
                 title: selectedSubject?.title ?? slot.label,
                 color: selectedSubject?.color ?? "#9ca3af",
               });
-            }
           }
         }
       }
@@ -354,10 +353,10 @@ export default function SubjectPage() {
       const planResults = await Promise.all(
         uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
       );
-      const plansByDate = new Map<string, Map<SlotId, string>>();
+      const plansByDate = new Map<string, Map<string, string>>();
       for (let i = 0; i < uniqueDates.length; i++) {
-        const m = new Map<SlotId, string>();
-        for (const p of planResults[i]) m.set(p.slotId as SlotId, p.html ?? "");
+        const m = new Map<string, string>();
+        for (const p of planResults[i]) m.set(p.slotId, p.html ?? "");
         plansByDate.set(uniqueDates[i], m);
       }
       // Pass 3: assemble with showEmpty filter
@@ -375,7 +374,6 @@ export default function SubjectPage() {
           html,
         });
       }
-
       out.sort((a, b) =>
         a.dateKey === b.dateKey
           ? a.slotLabel.localeCompare(b.slotLabel)
@@ -404,28 +402,32 @@ export default function SubjectPage() {
     rollingSettings,
   ]);
 
-  // When any lesson plan is saved, refresh just the affected row's html in-place
+  // When a plan saves, re-fetch html for all visible rows in parallel and patch in-place.
+  // upsertLessonPlan dispatches a plain Event (no detail), so we refresh all visible dates.
   useEffect(() => {
-    const onChanged = async (evt: any) => {
-      const { dateKey, slotId } = evt.detail ?? {};
-      if (!dateKey || !slotId) {
-        // No detail — do a targeted refresh of all visible rows' plans
-        setRows((prev) => prev.map((r) => ({ ...r }))); // trigger re-render; plans reload via initialHtml update below
-        return;
+    if (rows.length === 0) return;
+    const onChanged = async () => {
+      const uniqueDates = Array.from(new Set(rows.map((r) => r.dateKey)));
+      const planResults = await Promise.all(
+        uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
+      );
+      const fresh = new Map<string, Map<string, string>>();
+      for (let i = 0; i < uniqueDates.length; i++) {
+        const m = new Map<string, string>();
+        for (const p of planResults[i]) m.set(p.slotId, p.html ?? "");
+        fresh.set(uniqueDates[i], m);
       }
-      const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
-      const plan = plans.find((p) => p.slotId === slotId);
-      const html = plan?.html ?? "";
       setRows((prev) =>
-        prev.map((r) =>
-          r.dateKey === dateKey && r.slotId === slotId ? { ...r, html } : r,
-        ),
+        prev.map((r) => ({
+          ...r,
+          html: fresh.get(r.dateKey)?.get(r.slotId) ?? "",
+        })),
       );
     };
     window.addEventListener("lessonplans-changed", onChanged as any);
     return () =>
       window.removeEventListener("lessonplans-changed", onChanged as any);
-  }, [userId, activeYear]);
+  }, [userId, activeYear, rows]);
 
   return (
     <div className="grid">
