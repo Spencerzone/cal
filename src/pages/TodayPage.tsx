@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDays, format } from "date-fns";
+import {
+  addDays,
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  getDay,
+} from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
@@ -90,8 +101,6 @@ function compactBlockLabel(label: string): string {
   return label;
 }
 
-/** Returns a RollingSettings scoped to just the active year's term dates.
- * Used so termInfoForDate checks only the active year, not all years. */
 function settingsForYear(settings: any, year: number): any {
   const yc = (settings?.termYears ?? []).find((t: any) => t.year === year);
   if (!yc)
@@ -151,6 +160,9 @@ export default function TodayPage() {
     adjustToWeekday(new Date(), 1),
   );
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() =>
+    startOfMonth(new Date()),
+  );
 
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
   const activeYear = useMemo(
@@ -453,15 +465,38 @@ export default function TodayPage() {
   }
 
   function DatePickerPopover() {
-    const value = format(selectedDate, "yyyy-MM-dd");
-    const labelText = `${format(selectedDate, "EEE d MMM")}`;
+    const labelText = format(selectedDate, "EEE d MMM");
+    const today = new Date();
+
+    // Build calendar grid: Mon–Sun, pad with nulls
+    const monthStart = startOfMonth(calendarMonth);
+    const monthEnd = endOfMonth(calendarMonth);
+    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    // Mon=0 … Sun=6
+    const startPad = (getDay(monthStart) + 6) % 7;
+    const cells: (Date | null)[] = [...Array(startPad).fill(null), ...days];
+    // Pad end to complete last row
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const accentColor = "#6366f1"; // indigo to match app theme
 
     return (
       <div style={{ position: "relative" }}>
+        {/* Click-outside backdrop */}
+        {showDatePicker && (
+          <div
+            onClick={() => setShowDatePicker(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 49 }}
+          />
+        )}
+
         <button
           className="btn"
           type="button"
-          onClick={() => setShowDatePicker((v) => !v)}
+          onClick={() => {
+            setCalendarMonth(startOfMonth(selectedDate));
+            setShowDatePicker((v) => !v);
+          }}
           aria-label="Choose date"
         >
           {labelText}
@@ -475,60 +510,142 @@ export default function TodayPage() {
               right: 0,
               top: "calc(100% + 8px)",
               zIndex: 50,
-              width: 280,
-              background: "#0b0b0b",
+              width: 268,
+              background: "#111",
+              padding: 12,
             }}
           >
+            {/* Month nav header */}
             <div
               className="row"
-              style={{ justifyContent: "space-between", alignItems: "center" }}
+              style={{
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 8,
+              }}
             >
-              <div className="muted">Jump to date</div>
               <button
                 className="btn"
                 type="button"
-                onClick={() => setShowDatePicker(false)}
+                style={{ padding: "2px 8px" }}
+                onClick={() => setCalendarMonth((m) => subMonths(m, 1))}
               >
-                ✕
+                ‹
+              </button>
+              <strong style={{ fontSize: 13 }}>
+                {format(calendarMonth, "MMMM yyyy")}
+              </strong>
+              <button
+                className="btn"
+                type="button"
+                style={{ padding: "2px 8px" }}
+                onClick={() => setCalendarMonth((m) => addMonths(m, 1))}
+              >
+                ›
               </button>
             </div>
 
-            <div style={{ marginTop: 10 }}>
-              <input
-                type="date"
-                value={value}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (!next) return;
-                  setSelectedDate(
-                    adjustToWeekday(new Date(`${next}T00:00:00`), 1),
-                  );
-                  setShowDatePicker(false);
-                }}
-                style={{ width: "100%" }}
-              />
+            {/* Day-of-week headers */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 2,
+                marginBottom: 4,
+              }}
+            >
+              {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+                <div
+                  key={d}
+                  style={{
+                    textAlign: "center",
+                    fontSize: 10,
+                    opacity: 0.45,
+                    fontWeight: 600,
+                  }}
+                >
+                  {d}
+                </div>
+              ))}
             </div>
 
+            {/* Day cells */}
             <div
-              className="row"
-              style={{ justifyContent: "space-between", marginTop: 10 }}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 2,
+              }}
+            >
+              {cells.map((d, i) => {
+                if (!d) return <div key={i} />;
+                const isToday = isSameDay(d, today);
+                const isSelected = isSameDay(d, selectedDate);
+                const isCurrentMonth = isSameMonth(d, calendarMonth);
+                const isWeekend = [0, 6].includes(getDay(d));
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDate(d);
+                      setShowDatePicker(false);
+                    }}
+                    style={{
+                      border: "none",
+                      borderRadius: "50%",
+                      width: 32,
+                      height: 32,
+                      margin: "0 auto",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontWeight: isToday ? 700 : 400,
+                      background: isSelected
+                        ? accentColor
+                        : isToday
+                          ? `${accentColor}33`
+                          : "transparent",
+                      color: isSelected
+                        ? "#fff"
+                        : !isCurrentMonth
+                          ? "rgba(255,255,255,0.2)"
+                          : isWeekend
+                            ? "rgba(255,255,255,0.45)"
+                            : "rgba(255,255,255,0.9)",
+                      outline:
+                        isToday && !isSelected
+                          ? `2px solid ${accentColor}`
+                          : "none",
+                    }}
+                  >
+                    {format(d, "d")}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Today shortcut */}
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                justifyContent: "center",
+              }}
             >
               <button
                 className="btn"
                 type="button"
                 onClick={() => {
                   onGoToday();
+                  setCalendarMonth(startOfMonth(today));
                   setShowDatePicker(false);
                 }}
+                style={{ fontSize: 12 }}
               >
                 Today
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setShowDatePicker(false)}
-              >
-                Close
               </button>
             </div>
           </div>
