@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { format, parseISO, isValid } from "date-fns";
+import {
+  format,
+  parseISO,
+  isValid,
+  subDays,
+  addDays,
+  startOfDay,
+} from "date-fns";
 import { useAuth } from "../auth/AuthProvider";
 import type {
   DayLabel,
@@ -97,7 +104,7 @@ export default function SubjectPage() {
   );
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
 
-  const [termSel, setTermSel] = useState<"all" | 1 | 2 | 3 | 4>("all");
+  const [termSel, setTermSel] = useState<"all" | "now" | 1 | 2 | 3 | 4>("now");
   const [showEmpty, setShowEmpty] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -180,6 +187,14 @@ export default function SubjectPage() {
       start: (starts?.[k] ?? "").trim(),
       end: (ends?.[k] ?? "").trim(),
     });
+
+    if (termSel === "now") {
+      const today = startOfDay(new Date());
+      return {
+        start: format(subDays(today, 7), "yyyy-MM-dd"),
+        end: format(addDays(today, 14), "yyyy-MM-dd"),
+      };
+    }
 
     if (termSel === "all") {
       const items = [pick("t1"), pick("t2"), pick("t3"), pick("t4")].filter(
@@ -275,7 +290,7 @@ export default function SubjectPage() {
         placementByKey.set(k, o);
       }
 
-      // Pass 1: find matching date/slots in-memory (no Firestore reads)
+      // Pass 1: find matching date/slots in-memory (no sequential Firestore reads)
       type PendingRow = {
         dateKey: string;
         label: DayLabel;
@@ -348,7 +363,7 @@ export default function SubjectPage() {
           }
         }
       }
-      // Pass 2: fetch plans only for matching dates, all in parallel
+      // Pass 2: fetch plans only for dates that have this subject, all in parallel
       const uniqueDates = Array.from(new Set(pending.map((r) => r.dateKey)));
       const planResults = await Promise.all(
         uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
@@ -359,7 +374,7 @@ export default function SubjectPage() {
         for (const p of planResults[i]) m.set(p.slotId, p.html ?? "");
         plansByDate.set(uniqueDates[i], m);
       }
-      // Pass 3: assemble with showEmpty filter
+      // Pass 3: assemble rows, applying showEmpty filter
       const out: LessonRow[] = [];
       for (const r of pending) {
         const html = plansByDate.get(r.dateKey)?.get(r.slotId) ?? "";
@@ -374,6 +389,7 @@ export default function SubjectPage() {
           html,
         });
       }
+
       out.sort((a, b) =>
         a.dateKey === b.dateKey
           ? a.slotLabel.localeCompare(b.slotLabel)
@@ -402,8 +418,7 @@ export default function SubjectPage() {
     rollingSettings,
   ]);
 
-  // When a plan saves, re-fetch html for all visible rows in parallel and patch in-place.
-  // upsertLessonPlan dispatches a plain Event (no detail), so we refresh all visible dates.
+  // Re-fetch html for visible rows whenever a plan saves (event carries no detail)
   useEffect(() => {
     if (rows.length === 0) return;
     const onChanged = async () => {
@@ -430,10 +445,26 @@ export default function SubjectPage() {
   }, [userId, activeYear, rows]);
 
   return (
-    <div className="grid">
+    <div className="grid" id="lessons-print-root">
+      <style>{`
+        @media print {
+          body > * { display: none !important; }
+          #lessons-print-root,
+          #lessons-print-root * { display: revert !important; }
+          #lessons-print-root .no-print { display: none !important; }
+          #lessons-print-root .card { break-inside: avoid; border: 1px solid #ccc !important; margin-bottom: 16px; }
+          #lessons-print-root h1 { font-size: 18pt; margin-bottom: 8pt; }
+          #lessons-print-root .print-title-bar { font-weight: bold; font-size: 11pt; margin-bottom: 4pt; }
+          #lessons-print-root .print-subject-label { color: #555; font-size: 9pt; }
+          @media print {
+            /* Hide editor toolbars, show only content */
+            [contenteditable] { border: none !important; outline: none !important; }
+          }
+        }
+      `}</style>
       <h1>Lessons</h1>
 
-      <div className="card">
+      <div className="card no-print">
         <div
           className="row"
           style={{ gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}
@@ -468,10 +499,15 @@ export default function SubjectPage() {
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                   const v = e.target.value;
                   setTermSel(
-                    v === "all" ? "all" : (parseInt(v, 10) as 1 | 2 | 3 | 4),
+                    v === "all"
+                      ? "all"
+                      : v === "now"
+                        ? "now"
+                        : (parseInt(v, 10) as 1 | 2 | 3 | 4),
                   );
                 }}
               >
+                <option value="now">Around now (±2 weeks)</option>
                 <option value="all">All terms</option>
                 <option value={1}>Term 1</option>
                 <option value={2}>Term 2</option>
@@ -496,6 +532,15 @@ export default function SubjectPage() {
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
             <div className="badge">Active year</div>
             <div>{activeYear}</div>
+            {rows.length > 0 && (
+              <button
+                className="btn"
+                onClick={() => window.print()}
+                title="Print / export as PDF"
+              >
+                🖨 Print / PDF
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -540,7 +585,6 @@ export default function SubjectPage() {
                   >
                     <div>
                       <div style={{ fontWeight: 700 }}>
-                        {format(parseISO(r.dateKey), "EEE d MMM yyyy")}
                         {(() => {
                           const tw = rollingSettings
                             ? termInfoForDate(
@@ -548,12 +592,11 @@ export default function SubjectPage() {
                                 settingsForYear(rollingSettings, activeYear),
                               )
                             : null;
-                          return tw
-                            ? ` · Term ${tw.term} · Week ${tw.week}`
+                          const weekLabel = tw
+                            ? `Term ${tw.term} · Week ${tw.week}${tw.set} · `
                             : "";
+                          return `${weekLabel}${r.slotLabel} · ${format(parseISO(r.dateKey), "EEE d MMM yyyy")}`;
                         })()}
-                        {" · "}
-                        {r.slotLabel}
                       </div>
                       <div className="muted" style={{ marginTop: 4 }}>
                         {selectedSubject?.title ?? "(unknown subject)"}
