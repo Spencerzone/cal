@@ -224,17 +224,6 @@ export default function SubjectPage() {
         dateLabelPairs.push({ dateKey: dk, label: stored });
       }
 
-      console.log(
-        "[DBG] SubjectPage termRange:",
-        termRange,
-        "dateKeys:",
-        dateKeys.length,
-        "dateLabelPairs:",
-        dateLabelPairs.length,
-        "selectedSubjectId:",
-        selectedSubjectId,
-      );
-
       const uniqueLabels = Array.from(
         new Set(dateLabelPairs.map((x) => x.label)),
       );
@@ -245,6 +234,41 @@ export default function SubjectPage() {
       const placements = uniqueLabels.length
         ? await getPlacementsForDayLabels(userId, activeYear, uniqueLabels)
         : [];
+
+      console.log(
+        "[DBG] SubjectPage termRange:",
+        termRange,
+        "dateKeys:",
+        dateKeys.length,
+        "dateLabelPairs:",
+        dateLabelPairs.length,
+        "selectedSubjectId:",
+        selectedSubjectId,
+      );
+      console.log(
+        "[DBG] assignments:",
+        assignments.length,
+        "placements:",
+        placements.length,
+      );
+      // Log first few assignments to check sourceTemplateEventId and what subjectId they resolve to
+      for (const a of assignments.slice(0, 5)) {
+        const te = a.sourceTemplateEventId
+          ? templateById.get(a.sourceTemplateEventId)
+          : undefined;
+        const sid = te ? subjectIdForTemplateEvent(te) : null;
+        console.log(
+          "[DBG] assignment",
+          a.dayLabel,
+          a.slotId,
+          "srcId:",
+          a.sourceTemplateEventId,
+          "te.code:",
+          te?.code,
+          "resolvedSid:",
+          sid,
+        );
+      }
 
       const assignmentByKey = new Map<string, SlotAssignment>();
       for (const a of assignments)
@@ -303,7 +327,11 @@ export default function SubjectPage() {
           const resolvedSubjectId =
             ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
 
-          if (resolvedSubjectId !== selectedSubjectId) continue;
+          if (resolvedSubjectId !== selectedSubjectId) {
+            // Uncomment to debug mismatches:
+            // if (baseSubjectId) console.log("[DBG] mismatch base:", baseSubjectId, "ovSid:", ovSubjectId, "resolved:", resolvedSubjectId, "selected:", selectedSubjectId);
+            continue;
+          }
 
           const html = plansBySlot.get(slot.id) ?? "";
           if (!showEmpty && isHtmlEffectivelyEmpty(html)) continue;
