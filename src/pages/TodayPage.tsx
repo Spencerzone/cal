@@ -31,7 +31,11 @@ import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
 
-import { getSubjectsByUser, safeDocId } from "../db/subjectQueries";
+import {
+  getSubjectsByUser,
+  getAllSubjectsByUser,
+  safeDocId,
+} from "../db/subjectQueries";
 import {
   subjectIdForTemplateEvent,
   detailForTemplateEvent,
@@ -103,14 +107,11 @@ export default function TodayPage() {
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(
     new Map(),
   );
+  const [allSubjectColours, setAllSubjectColours] = useState<string[]>([]);
 
-  const subjectPalette = useMemo(() => {
-    const colours = Array.from(subjectById.values())
-      .map((s) => s?.color)
-      .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
-      .map((c) => c.trim().toLowerCase());
-    return Array.from(new Set(colours)).sort();
-  }, [subjectById]);
+  // allSubjectColours is populated from ALL subjects (any year) so new users
+  // see their subject colours in the editor palette immediately
+  const subjectPalette = allSubjectColours;
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [now, setNow] = useState<Date>(new Date());
 
@@ -202,13 +203,29 @@ export default function TodayPage() {
   }, [userId, activeYear]);
 
   async function loadSubjects() {
+    // Year-scoped for timetable display
     const subs = await getSubjectsByUser(userId, activeYear);
     const m = new Map<string, Subject>();
     for (const s of subs) {
       m.set(s.id, s);
-      m.set(safeDocId(s.id), s); // allow lookup by sanitised id too
+      m.set(safeDocId(s.id), s);
     }
     setSubjectById(m);
+    // All subjects (any year) for the colour palette — new users may have
+    // subjects that haven't been assigned to the active year yet
+    const allSubs = await getAllSubjectsByUser(userId);
+    setAllSubjectColours(
+      Array.from(
+        new Set(
+          allSubs
+            .map((s) => s?.color)
+            .filter(
+              (c): c is string => typeof c === "string" && c.trim().length > 0,
+            )
+            .map((c) => c.trim().toLowerCase()),
+        ),
+      ).sort(),
+    );
   }
 
   // load subjects and keep in sync with edits
