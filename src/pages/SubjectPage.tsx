@@ -116,8 +116,9 @@ export default function SubjectPage() {
     if (!userId) return;
     let alive = true;
     (async () => {
-      const subs = await getSubjectsByUser(userId, activeYear);
+      const allSubs = await getSubjectsByUser(userId, activeYear);
       if (!alive) return;
+      const subs = allSubs.filter((s) => (s as any).kind === "subject");
       subs.sort((a, b) => a.title.localeCompare(b.title));
       setSubjects(subs);
       setSubjectsById(new Map(subs.map((s) => [s.id, s])));
@@ -129,8 +130,9 @@ export default function SubjectPage() {
     })();
     const onChanged = () => {
       (async () => {
-        const subs = await getSubjectsByUser(userId, activeYear);
+        const allSubs = await getSubjectsByUser(userId, activeYear);
         if (!alive) return;
+        const subs = allSubs.filter((s) => (s as any).kind === "subject");
         subs.sort((a, b) => a.title.localeCompare(b.title));
         setSubjects(subs);
         setSubjectsById(new Map(subs.map((s) => [s.id, s])));
@@ -266,6 +268,7 @@ export default function SubjectPage() {
           const key = `${label}::${slot.id}`;
           const a = assignmentByKey.get(key);
           if (!a) continue;
+          if (a.kind !== "class") continue; // skip duties, breaks, free
 
           // Template linkage takes priority — buildSlotAssignments always copies
           // e.title into manualTitle, so checking manualTitle first would prevent
