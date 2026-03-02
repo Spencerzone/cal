@@ -235,34 +235,6 @@ export default function SubjectPage() {
         ? await getPlacementsForDayLabels(userId, activeYear, uniqueLabels)
         : [];
 
-      for (const p of placements) {
-        console.log(
-          "[DBG] placement",
-          (p as any).dayLabel,
-          (p as any).slotId,
-          "subjectId:",
-          (p as any).subjectId,
-        );
-      }
-
-      console.log(
-        "[DBG] SubjectPage termRange:",
-        termRange,
-        "dateKeys:",
-        dateKeys.length,
-        "dateLabelPairs:",
-        dateLabelPairs.length,
-        "selectedSubjectId:",
-        selectedSubjectId,
-      );
-      console.log(
-        "[DBG] assignments:",
-        assignments.length,
-        "placements:",
-        placements.length,
-      );
-      // Log all placements to see if selectedSubjectId appears there
-
       const assignmentByKey = new Map<string, SlotAssignment>();
       for (const a of assignments)
         assignmentByKey.set(`${a.dayLabel}::${a.slotId}`, a);
@@ -320,11 +292,7 @@ export default function SubjectPage() {
           const resolvedSubjectId =
             ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
 
-          if (resolvedSubjectId !== selectedSubjectId) {
-            // Uncomment to debug mismatches:
-            // if (baseSubjectId) console.log("[DBG] mismatch base:", baseSubjectId, "ovSid:", ovSubjectId, "resolved:", resolvedSubjectId, "selected:", selectedSubjectId);
-            continue;
-          }
+          if (resolvedSubjectId !== selectedSubjectId) continue;
 
           const html = plansBySlot.get(slot.id) ?? "";
           if (!showEmpty && isHtmlEffectivelyEmpty(html)) continue;
@@ -337,6 +305,47 @@ export default function SubjectPage() {
             slotLabel: slot.label,
             title,
             color: colour,
+            html,
+          });
+        }
+      }
+
+      // Also add rows sourced purely from placement overrides (subjects that have
+      // no template assignment — e.g. "before school" slots added via MatrixPage).
+      for (const { dateKey, label } of dateLabelPairs) {
+        const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
+        const plansBySlot = new Map<SlotId, string>();
+        for (const p of plans)
+          plansBySlot.set(p.slotId as SlotId, p.html ?? "");
+
+        for (const slot of SLOT_DEFS) {
+          const key = `${label}::${slot.id}`;
+          const ov = placementByKey.get(key);
+          if (!ov) continue;
+          const ovSubjectId = Object.prototype.hasOwnProperty.call(
+            ov,
+            "subjectId",
+          )
+            ? ov.subjectId
+            : undefined;
+          if (ovSubjectId !== selectedSubjectId) continue;
+
+          // Skip if already added via assignment loop
+          const alreadyAdded = out.some(
+            (r) => r.dateKey === dateKey && r.slotId === slot.id,
+          );
+          if (alreadyAdded) continue;
+
+          const html = plansBySlot.get(slot.id) ?? "";
+          if (!showEmpty && isHtmlEffectivelyEmpty(html)) continue;
+
+          out.push({
+            dateKey,
+            dayLabel: label,
+            slotId: slot.id,
+            slotLabel: slot.label,
+            title: selectedSubject?.title ?? slot.label,
+            color: selectedSubject?.color ?? "#9ca3af",
             html,
           });
         }
