@@ -1,6 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as RMouseEvent,
+} from "react";
 import type { LessonAttachment, SlotId } from "../db/db";
-import { addUrlAttachmentToPlan, deleteAttachment, updateUrlAttachment, upsertLessonPlan } from "../db/lessonPlanQueries";
+import {
+  addUrlAttachmentToPlan,
+  deleteAttachment,
+  updateUrlAttachment,
+  upsertLessonPlan,
+} from "../db/lessonPlanQueries";
 
 export default function RichTextPlanEditor(props: {
   userId: string;
@@ -11,11 +22,21 @@ export default function RichTextPlanEditor(props: {
   attachments: LessonAttachment[];
   palette?: string[];
 }) {
-  const { userId, year, dateKey, slotId, initialHtml, attachments, palette = [] } = props;
+  const {
+    userId,
+    year,
+    dateKey,
+    slotId,
+    initialHtml,
+    attachments,
+    palette = [],
+  } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
 
-  const [openPicker, setOpenPicker] = useState<null | "text" | "highlight">(null);
+  const [openPicker, setOpenPicker] = useState<null | "text" | "highlight">(
+    null,
+  );
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const customTextRef = useRef<HTMLInputElement | null>(null);
   const customHiRef = useRef<HTMLInputElement | null>(null);
@@ -23,9 +44,12 @@ export default function RichTextPlanEditor(props: {
   const [html, setHtml] = useState<string>(initialHtml);
   const [active, setActive] = useState<boolean>(false);
 
-  const [urlForm, setUrlForm] = useState<null | { mode: "add" | "edit"; id?: string; name: string; url: string }>(
-    null
-  );
+  const [urlForm, setUrlForm] = useState<null | {
+    mode: "add" | "edit";
+    id?: string;
+    name: string;
+    url: string;
+  }>(null);
 
   const saveTimer = useRef<number | null>(null);
   const dirtyRef = useRef<boolean>(false);
@@ -56,7 +80,13 @@ export default function RichTextPlanEditor(props: {
   function scheduleSave(nextHtml: string) {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      upsertLessonPlan(userId, year, dateKey, slotId, normaliseForDb(nextHtml ?? ""));
+      upsertLessonPlan(
+        userId,
+        year,
+        dateKey,
+        slotId,
+        normaliseForDb(nextHtml ?? ""),
+      );
     }, 600);
   }
 
@@ -98,11 +128,16 @@ export default function RichTextPlanEditor(props: {
       setOpenPicker(null);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
   }, [openPicker]);
 
   const swatches = useMemo(() => {
-    const uniq = Array.from(new Set(palette.map((c) => (c || "").trim().toLowerCase()).filter(Boolean)));
+    const base = ["#000000", "#ffffff"];
+    const extra = palette
+      .map((c) => (c || "").trim().toLowerCase())
+      .filter(Boolean);
+    const uniq = Array.from(new Set([...base, ...extra]));
     return uniq.slice(0, 24);
   }, [palette]);
 
@@ -141,7 +176,15 @@ export default function RichTextPlanEditor(props: {
         let node: Node | null = r.startContainer;
         if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
         let block: HTMLElement | null = node as HTMLElement | null;
-        while (block && block !== ref.current && !(block.tagName === "P" || block.tagName === "DIV" || block.tagName === "LI")) {
+        while (
+          block &&
+          block !== ref.current &&
+          !(
+            block.tagName === "P" ||
+            block.tagName === "DIV" ||
+            block.tagName === "LI"
+          )
+        ) {
           block = block.parentElement;
         }
         if (block && block !== ref.current) {
@@ -217,9 +260,9 @@ export default function RichTextPlanEditor(props: {
     const url = urlForm.url.trim();
     if (!url) return;
     if (urlForm.mode === "add") {
-      await addUrlAttachmentToPlan(userId, year, planKey, name, url);
+      await addUrlAttachmentToPlan(userId, planKey, name, url);
     } else if (urlForm.mode === "edit" && urlForm.id) {
-      await updateUrlAttachment(userId, year, urlForm.id, { name: name || url, url });
+      await updateUrlAttachment(userId, urlForm.id, { name: name || url, url });
     }
     setUrlForm(null);
   }
@@ -238,12 +281,6 @@ export default function RichTextPlanEditor(props: {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {active ? (
-        <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
-          <span className="muted" style={{ fontSize: 12 }}>Auto-saves</span>
-        </div>
-      ) : null}
-
       {!active ? (
         <div
           role="button"
@@ -298,31 +335,229 @@ export default function RichTextPlanEditor(props: {
 
       {active ? (
         <>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("bold")}>B</button>
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("italic")}>I</button>
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("underline")}>U</button>
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("insertUnorderedList")}>• List</button>
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("insertOrderedList")}>1. List</button>
+          <div
+            className="row"
+            style={{
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginTop: 8,
+            }}
+          >
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={() => exec("bold")}
+            >
+              B
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={() => exec("italic")}
+            >
+              I
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={() => exec("underline")}
+            >
+              U
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={() => exec("insertUnorderedList")}
+              title="Bullet list"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ display: "block" }}
+              >
+                <circle cx="2" cy="4.5" r="1.5" fill="currentColor" />
+                <rect
+                  x="5.5"
+                  y="3.75"
+                  width="9"
+                  height="1.5"
+                  rx="0.75"
+                  fill="currentColor"
+                />
+                <circle cx="2" cy="8" r="1.5" fill="currentColor" />
+                <rect
+                  x="5.5"
+                  y="7.25"
+                  width="9"
+                  height="1.5"
+                  rx="0.75"
+                  fill="currentColor"
+                />
+                <circle cx="2" cy="11.5" r="1.5" fill="currentColor" />
+                <rect
+                  x="5.5"
+                  y="10.75"
+                  width="9"
+                  height="1.5"
+                  rx="0.75"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={() => exec("insertOrderedList")}
+              title="Numbered list"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ display: "block" }}
+              >
+                <text
+                  x="0"
+                  y="5.5"
+                  fontSize="5"
+                  fontWeight="700"
+                  fill="currentColor"
+                >
+                  1.
+                </text>
+                <rect
+                  x="5.5"
+                  y="3.75"
+                  width="9"
+                  height="1.5"
+                  rx="0.75"
+                  fill="currentColor"
+                />
+                <text
+                  x="0"
+                  y="9.5"
+                  fontSize="5"
+                  fontWeight="700"
+                  fill="currentColor"
+                >
+                  2.
+                </text>
+                <rect
+                  x="5.5"
+                  y="7.25"
+                  width="9"
+                  height="1.5"
+                  rx="0.75"
+                  fill="currentColor"
+                />
+                <text
+                  x="0"
+                  y="13.5"
+                  fontSize="5"
+                  fontWeight="700"
+                  fill="currentColor"
+                >
+                  3.
+                </text>
+                <rect
+                  x="5.5"
+                  y="10.75"
+                  width="9"
+                  height="1.5"
+                  rx="0.75"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
 
             <div style={{ position: "relative" }}>
               <button
                 className="btn"
                 type="button"
                 onMouseDown={toolbarMouseDown}
-                onClick={() => setOpenPicker((p) => (p === "text" ? null : "text"))}
+                onClick={() =>
+                  setOpenPicker((p) => (p === "text" ? null : "text"))
+                }
                 title="Text colour"
               >
-                Text
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: "block" }}
+                >
+                  <text
+                    x="2"
+                    y="12"
+                    fontSize="12"
+                    fontWeight="700"
+                    fill="currentColor"
+                    fontFamily="sans-serif"
+                  >
+                    A
+                  </text>
+                  <rect
+                    x="1"
+                    y="14"
+                    width="14"
+                    height="1.5"
+                    rx="0.75"
+                    fill="#e05c5c"
+                  />
+                </svg>
               </button>
               <button
                 className="btn"
                 type="button"
                 onMouseDown={toolbarMouseDown}
-                onClick={() => setOpenPicker((p) => (p === "highlight" ? null : "highlight"))}
+                onClick={() =>
+                  setOpenPicker((p) => (p === "highlight" ? null : "highlight"))
+                }
                 title="Highlight"
               >
-                Highlight
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: "block" }}
+                >
+                  {/* marker body */}
+                  <rect
+                    x="3"
+                    y="3"
+                    width="10"
+                    height="7"
+                    rx="2"
+                    fill="#fde047"
+                    opacity="0.9"
+                  />
+                  {/* tip */}
+                  <path d="M5 10 L8 13 L11 10 Z" fill="#fde047" opacity="0.9" />
+                  {/* shine */}
+                  <rect
+                    x="5"
+                    y="4.5"
+                    width="6"
+                    height="1.5"
+                    rx="0.75"
+                    fill="rgba(255,255,255,0.45)"
+                  />
+                </svg>
               </button>
 
               {openPicker ? (
@@ -341,7 +576,14 @@ export default function RichTextPlanEditor(props: {
                     border: "1px solid rgba(255,255,255,0.14)",
                   }}
                 >
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div
+                    className="row"
+                    style={{
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
                     <div className="muted" style={{ fontSize: 12 }}>
                       {openPicker === "text" ? "Text colour" : "Highlight"}
                     </div>
@@ -350,7 +592,8 @@ export default function RichTextPlanEditor(props: {
                       type="button"
                       onMouseDown={toolbarMouseDown}
                       onClick={() => {
-                        if (openPicker === "text") customTextRef.current?.click();
+                        if (openPicker === "text")
+                          customTextRef.current?.click();
                         else customHiRef.current?.click();
                       }}
                       title="Custom colour"
@@ -374,7 +617,11 @@ export default function RichTextPlanEditor(props: {
                       onChange={(e) => {
                         try {
                           // eslint-disable-next-line deprecation/deprecation
-                          document.execCommand("hiliteColor", false, e.target.value);
+                          document.execCommand(
+                            "hiliteColor",
+                            false,
+                            e.target.value,
+                          );
                         } catch {
                           exec("backColor", e.target.value);
                         }
@@ -388,7 +635,13 @@ export default function RichTextPlanEditor(props: {
 
                   <div style={{ height: 8 }} />
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(8, 1fr)",
+                      gap: 6,
+                    }}
+                  >
                     {swatches.map((c) => (
                       <button
                         key={c}
@@ -426,11 +679,23 @@ export default function RichTextPlanEditor(props: {
               ) : null}
             </div>
 
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={onAddUrl}>
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={onAddUrl}
+            >
               + URL
             </button>
 
-            <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => exec("removeFormat")}>Clear</button>
+            <button
+              className="btn"
+              type="button"
+              onMouseDown={toolbarMouseDown}
+              onClick={() => exec("removeFormat")}
+            >
+              Clear
+            </button>
 
             <button
               className="btn"
@@ -448,24 +713,46 @@ export default function RichTextPlanEditor(props: {
 
           {/* URL attachment form */}
           {urlForm ? (
-            <div className="card" style={{ marginTop: 8, background: "#0f0f0f" }} onMouseDown={(e) => e.stopPropagation()}>
+            <div
+              className="card"
+              style={{ marginTop: 8, background: "#0f0f0f" }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                 <input
                   value={urlForm.name}
                   placeholder="Label (optional)"
-                  onChange={(e) => setUrlForm((cur) => (cur ? { ...cur, name: e.target.value } : cur))}
+                  onChange={(e) =>
+                    setUrlForm((cur) =>
+                      cur ? { ...cur, name: e.target.value } : cur,
+                    )
+                  }
                   style={{ flex: "1 1 220px" }}
                 />
                 <input
                   value={urlForm.url}
                   placeholder="URL"
-                  onChange={(e) => setUrlForm((cur) => (cur ? { ...cur, url: e.target.value } : cur))}
+                  onChange={(e) =>
+                    setUrlForm((cur) =>
+                      cur ? { ...cur, url: e.target.value } : cur,
+                    )
+                  }
                   style={{ flex: "2 1 320px" }}
                 />
-                <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={onSubmitUrl}>
+                <button
+                  className="btn"
+                  type="button"
+                  onMouseDown={toolbarMouseDown}
+                  onClick={onSubmitUrl}
+                >
                   Save
                 </button>
-                <button className="btn" type="button" onMouseDown={toolbarMouseDown} onClick={() => setUrlForm(null)}>
+                <button
+                  className="btn"
+                  type="button"
+                  onMouseDown={toolbarMouseDown}
+                  onClick={() => setUrlForm(null)}
+                >
                   Cancel
                 </button>
               </div>
@@ -474,7 +761,11 @@ export default function RichTextPlanEditor(props: {
 
           {/* Attachments list (URLs) */}
           {attachments && attachments.length ? (
-            <div className="card" style={{ marginTop: 8, background: "#0f0f0f" }} onMouseDown={(e) => e.stopPropagation()}>
+            <div
+              className="card"
+              style={{ marginTop: 8, background: "#0f0f0f" }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
                 Links
               </div>
@@ -482,20 +773,41 @@ export default function RichTextPlanEditor(props: {
                 {attachments
                   .filter((a) => (a.kind ?? "file") === "url")
                   .map((a) => (
-                    <div key={a.id} className="row" style={{ gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                    <div
+                      key={a.id}
+                      className="row"
+                      style={{
+                        gap: 8,
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <div style={{ minWidth: 0 }}>
                         <button
                           className="btn"
                           type="button"
                           onMouseDown={toolbarMouseDown}
                           onClick={() => openAttachment(a)}
-                          style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                          style={{
+                            maxWidth: 420,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
                           title={a.url ?? a.name}
                         >
                           {a.name}
                         </button>
                         {a.url ? (
-                          <div className="muted" style={{ fontSize: 12, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div
+                            className="muted"
+                            style={{
+                              fontSize: 12,
+                              marginTop: 2,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
                             {a.url}
                           </div>
                         ) : null}
@@ -505,7 +817,14 @@ export default function RichTextPlanEditor(props: {
                           className="btn"
                           type="button"
                           onMouseDown={toolbarMouseDown}
-                          onClick={() => setUrlForm({ mode: "edit", id: a.id, name: a.name ?? "", url: a.url ?? "" })}
+                          onClick={() =>
+                            setUrlForm({
+                              mode: "edit",
+                              id: a.id,
+                              name: a.name ?? "",
+                              url: a.url ?? "",
+                            })
+                          }
                           title="Edit"
                         >
                           Edit
@@ -514,7 +833,7 @@ export default function RichTextPlanEditor(props: {
                           className="btn"
                           type="button"
                           onMouseDown={toolbarMouseDown}
-                          onClick={() => deleteAttachment(userId, year, a.id)}
+                          onClick={() => deleteAttachment(userId, a.id)}
                           title="Remove"
                         >
                           Remove
