@@ -454,6 +454,32 @@ export default function TodayPage() {
       cells.push(d);
     while (cells.length % 7 !== 0) cells.push(null);
 
+    const btnRef = useRef<HTMLButtonElement | null>(null);
+    const popRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+      if (!showDatePicker || !btnRef.current || !popRef.current) return;
+      const btn = btnRef.current.getBoundingClientRect();
+      const pop = popRef.current;
+      const PAD = 10;
+      const popW = pop.offsetWidth || 268;
+      const popH = pop.offsetHeight || 320;
+
+      // Prefer right-aligned to button, shift left if it clips
+      let left = btn.right - popW;
+      if (left < PAD) left = PAD;
+      if (left + popW > window.innerWidth - PAD)
+        left = window.innerWidth - PAD - popW;
+
+      // Prefer below, flip above if it clips
+      let top = btn.bottom + 8;
+      if (top + popH > window.innerHeight - PAD) top = btn.top - popH - 8;
+      if (top < PAD) top = PAD;
+
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    }, [showDatePicker, calendarMonth]);
+
     return (
       <div style={{ position: "relative" }}>
         {showDatePicker && (
@@ -465,6 +491,7 @@ export default function TodayPage() {
         <button
           className="btn"
           type="button"
+          ref={btnRef}
           aria-label="Choose date"
           onClick={() => {
             setCalendarMonth(startOfMonth(selectedDate));
@@ -478,9 +505,7 @@ export default function TodayPage() {
           <div
             className="card"
             style={{
-              position: "absolute",
-              right: 0,
-              top: "calc(100% + 8px)",
+              position: "fixed",
               zIndex: 50,
               width: 268,
               background: "var(--popover-bg)",
