@@ -18,6 +18,7 @@ import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getPlacementsForDayLabels } from "../db/placementQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
 import { getLessonPlansForDate } from "../db/lessonPlanQueries";
+import { termInfoForDate } from "../rolling/termWeek";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 
 type SlotDef = { id: SlotId; label: string };
@@ -60,6 +61,24 @@ function eachDateKeyInclusive(startKey: string, endKey: string): string[] {
     d.setDate(d.getDate() + 1);
   }
   return out;
+}
+
+/** Returns settings scoped to just the active year's term dates. */
+function settingsForYear(settings: any, year: number): any {
+  const yc = (settings?.termYears ?? []).find((t: any) => t.year === year);
+  if (!yc)
+    return {
+      ...settings,
+      termYears: [],
+      termStarts: undefined,
+      termEnds: undefined,
+    };
+  return {
+    ...settings,
+    termYears: [yc],
+    termStarts: yc.starts,
+    termEnds: yc.ends,
+  };
 }
 
 export default function SubjectPage() {
@@ -125,7 +144,7 @@ export default function SubjectPage() {
       // Default selection
       setSelectedSubjectId((prev) => {
         if (prev && subs.some((s) => s.id === prev)) return prev;
-        return ""; // blank by default — user must select a subject
+        return "";
       });
     })();
     const onChanged = () => {
@@ -256,7 +275,7 @@ export default function SubjectPage() {
         placementByKey.set(k, o);
       }
 
-      // --- Pass 1: determine which dates actually have this subject (no plan fetches yet) ---
+      // Pass 1: find matching date/slots in-memory (no Firestore reads)
       type PendingRow = {
         dateKey: string;
         label: DayLabel;
@@ -264,15 +283,11 @@ export default function SubjectPage() {
         slotLabel: string;
         title: string;
         color: string;
-        fromPlacement: boolean;
       };
       const pending: PendingRow[] = [];
-
       for (const { dateKey, label } of dateLabelPairs) {
         for (const slot of SLOT_DEFS) {
           const key = `${label}::${slot.id}`;
-
-          // Check assignment path
           const a = assignmentByKey.get(key);
           if (a && a.kind === "class") {
             let baseSubjectId: string | null = null;
@@ -293,9 +308,10 @@ export default function SubjectPage() {
               ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")
                 ? ov.subjectId
                 : undefined;
-            const resolvedSubjectId =
-              ovSubjectId === undefined ? baseSubjectId : ovSubjectId;
-            if (resolvedSubjectId === selectedSubjectId) {
+            if (
+              (ovSubjectId === undefined ? baseSubjectId : ovSubjectId) ===
+              selectedSubjectId
+            ) {
               pending.push({
                 dateKey,
                 label,
@@ -303,13 +319,10 @@ export default function SubjectPage() {
                 slotLabel: slot.label,
                 title,
                 color: selectedSubject?.color ?? "#0f0f0f",
-                fromPlacement: false,
               });
               continue;
             }
           }
-
-          // Check placement-only path (no assignment)
           const ov = placementByKey.get(key);
           if (ov) {
             const ovSubjectId = Object.prototype.hasOwnProperty.call(
@@ -331,30 +344,23 @@ export default function SubjectPage() {
                 slotLabel: slot.label,
                 title: selectedSubject?.title ?? slot.label,
                 color: selectedSubject?.color ?? "#9ca3af",
-                fromPlacement: true,
               });
             }
           }
         }
       }
-
-      // --- Pass 2: fetch lesson plans only for dates that have this subject, all in parallel ---
-      const uniqueDatesWithSubject = Array.from(
-        new Set(pending.map((r) => r.dateKey)),
-      );
+      // Pass 2: fetch plans only for matching dates, all in parallel
+      const uniqueDates = Array.from(new Set(pending.map((r) => r.dateKey)));
       const planResults = await Promise.all(
-        uniqueDatesWithSubject.map((dk) =>
-          getLessonPlansForDate(userId, activeYear, dk),
-        ),
+        uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
       );
       const plansByDate = new Map<string, Map<SlotId, string>>();
-      for (let i = 0; i < uniqueDatesWithSubject.length; i++) {
+      for (let i = 0; i < uniqueDates.length; i++) {
         const m = new Map<SlotId, string>();
         for (const p of planResults[i]) m.set(p.slotId as SlotId, p.html ?? "");
-        plansByDate.set(uniqueDatesWithSubject[i], m);
+        plansByDate.set(uniqueDates[i], m);
       }
-
-      // --- Pass 3: assemble final rows, applying showEmpty filter ---
+      // Pass 3: assemble with showEmpty filter
       const out: LessonRow[] = [];
       for (const r of pending) {
         const html = plansByDate.get(r.dateKey)?.get(r.slotId) ?? "";
@@ -397,6 +403,29 @@ export default function SubjectPage() {
     showEmpty,
     rollingSettings,
   ]);
+
+  // When any lesson plan is saved, refresh just the affected row's html in-place
+  useEffect(() => {
+    const onChanged = async (evt: any) => {
+      const { dateKey, slotId } = evt.detail ?? {};
+      if (!dateKey || !slotId) {
+        // No detail — do a targeted refresh of all visible rows' plans
+        setRows((prev) => prev.map((r) => ({ ...r }))); // trigger re-render; plans reload via initialHtml update below
+        return;
+      }
+      const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
+      const plan = plans.find((p) => p.slotId === slotId);
+      const html = plan?.html ?? "";
+      setRows((prev) =>
+        prev.map((r) =>
+          r.dateKey === dateKey && r.slotId === slotId ? { ...r, html } : r,
+        ),
+      );
+    };
+    window.addEventListener("lessonplans-changed", onChanged as any);
+    return () =>
+      window.removeEventListener("lessonplans-changed", onChanged as any);
+  }, [userId, activeYear]);
 
   return (
     <div className="grid">
@@ -509,7 +538,19 @@ export default function SubjectPage() {
                   >
                     <div>
                       <div style={{ fontWeight: 700 }}>
-                        {format(parseISO(r.dateKey), "EEE d MMM yyyy")} ·{" "}
+                        {format(parseISO(r.dateKey), "EEE d MMM yyyy")}
+                        {(() => {
+                          const tw = rollingSettings
+                            ? termInfoForDate(
+                                parseISO(r.dateKey),
+                                settingsForYear(rollingSettings, activeYear),
+                              )
+                            : null;
+                          return tw
+                            ? ` · Term ${tw.term} · Week ${tw.week}`
+                            : "";
+                        })()}
+                        {" · "}
                         {r.slotLabel}
                       </div>
                       <div className="muted" style={{ marginTop: 4 }}>
