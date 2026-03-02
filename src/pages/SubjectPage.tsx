@@ -458,12 +458,17 @@ export default function SubjectPage() {
             color: black !important;
             box-shadow: none !important;
           }
-          #lessons-print-root h1 { font-size: 14pt; margin: 0 0 10pt 0; }
+          /* Hide toolbar card, loading states, empty states */
           .lessons-no-print { display: none !important; visibility: hidden !important; }
+          /* Hide "Click to add a lesson plan…" placeholder and subject label */
+          .lesson-placeholder, .lesson-subject-label { display: none !important; visibility: hidden !important; }
+          /* Hide cards with no plan content when printing */
+          .lesson-card:has(.lesson-plan-empty) { display: none !important; visibility: hidden !important; }
+          /* Lesson cards */
           .lesson-card {
             border: 1px solid #ddd !important;
             border-radius: 4px !important;
-            margin-bottom: 10pt;
+            margin-bottom: 8pt;
             break-inside: avoid;
             page-break-inside: avoid;
             overflow: visible !important;
@@ -473,15 +478,16 @@ export default function SubjectPage() {
           .lesson-stripe {
             width: 6px !important;
             flex-shrink: 0 !important;
-            /* Force the browser to print the background colour */
             print-color-adjust: exact !important;
             -webkit-print-color-adjust: exact !important;
           }
-          .lesson-card-inner { padding: 10pt 12pt !important; flex: 1; }
-          .lesson-title { font-weight: bold; font-size: 11pt; margin-bottom: 4pt; }
-          .lesson-subject-label { font-size: 9pt; color: #444 !important; margin-bottom: 6pt; }
-          [role="toolbar"], button, select, input[type="text"],
-          input[type="checkbox"] { display: none !important; visibility: hidden !important; }
+          .lesson-card-inner { padding: 8pt 12pt !important; flex: 1; }
+          .lesson-title { font-weight: bold; font-size: 10pt; margin-bottom: 3pt; }
+          /* Print heading inline with first card — no separate page */
+          #lessons-print-root > h1 { font-size: 13pt; margin: 0 0 8pt 0; }
+          /* Hide editor toolbars and controls */
+          [role="toolbar"], button, select,
+          input[type="text"], input[type="checkbox"] { display: none !important; visibility: hidden !important; }
           [contenteditable] { border: none !important; outline: none !important; min-height: unset !important; font-size: 10pt; }
         }
       `}</style>
@@ -566,7 +572,7 @@ export default function SubjectPage() {
       </div>
 
       {loading ? (
-        <div className="card">
+        <div className="card lessons-no-print">
           <div className="muted">Loading lessons…</div>
         </div>
       ) : !selectedSubjectId ? (
@@ -635,15 +641,23 @@ export default function SubjectPage() {
                   </div>
 
                   <div className="space" />
-                  <RichTextPlanEditor
-                    userId={userId}
-                    year={activeYear}
-                    dateKey={r.dateKey}
-                    slotId={r.slotId}
-                    initialHtml={r.html}
-                    attachments={[]}
-                    palette={subjectPalette}
-                  />
+                  <div
+                    className={
+                      isHtmlEffectivelyEmpty(r.html)
+                        ? "lesson-plan-empty"
+                        : undefined
+                    }
+                  >
+                    <RichTextPlanEditor
+                      userId={userId}
+                      year={activeYear}
+                      dateKey={r.dateKey}
+                      slotId={r.slotId}
+                      initialHtml={r.html}
+                      attachments={[]}
+                      palette={subjectPalette}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
