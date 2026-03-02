@@ -458,10 +458,7 @@ export default function SubjectPage() {
             color: black !important;
             box-shadow: none !important;
           }
-          #lessons-print-root h1 {
-            font-size: 14pt;
-            margin: 0 0 10pt 0;
-          }
+          #lessons-print-root h1 { font-size: 14pt; margin: 0 0 10pt 0; }
           .lessons-no-print { display: none !important; visibility: hidden !important; }
           .lesson-card {
             border: 1px solid #ddd !important;
@@ -472,34 +469,20 @@ export default function SubjectPage() {
             overflow: visible !important;
             display: block !important;
           }
-          .lesson-card-layout {
-            display: flex !important;
-            gap: 0 !important;
+          .lesson-card-layout { display: flex !important; }
+          .lesson-stripe {
+            width: 6px !important;
+            flex-shrink: 0 !important;
+            /* Force the browser to print the background colour */
+            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
           }
-          .lesson-stripe { width: 5px !important; min-height: 100% !important; flex-shrink: 0; }
-          .lesson-card-inner {
-            padding: 10pt 12pt !important;
-            flex: 1;
-          }
-          .lesson-title {
-            font-weight: bold;
-            font-size: 11pt;
-            white-space: normal !important;
-            margin-bottom: 4pt;
-          }
-          .lesson-subject-label {
-            font-size: 9pt;
-            color: #444 !important;
-            margin-bottom: 6pt;
-          }
+          .lesson-card-inner { padding: 10pt 12pt !important; flex: 1; }
+          .lesson-title { font-weight: bold; font-size: 11pt; margin-bottom: 4pt; }
+          .lesson-subject-label { font-size: 9pt; color: #444 !important; margin-bottom: 6pt; }
           [role="toolbar"], button, select, input[type="text"],
-          input[type="checkbox"], label.row { display: none !important; visibility: hidden !important; }
-          [contenteditable] {
-            border: none !important;
-            outline: none !important;
-            min-height: unset !important;
-            font-size: 10pt;
-          }
+          input[type="checkbox"] { display: none !important; visibility: hidden !important; }
+          [contenteditable] { border: none !important; outline: none !important; min-height: unset !important; font-size: 10pt; }
         }
       `}</style>
 
@@ -610,7 +593,13 @@ export default function SubjectPage() {
               >
                 <div
                   className="lesson-stripe"
-                  style={{ background: r.color }}
+                  style={
+                    {
+                      background: r.color,
+                      printColorAdjust: "exact",
+                      WebkitPrintColorAdjust: "exact",
+                    } as any
+                  }
                 />
                 <div className="lesson-card-inner" style={{ padding: 14 }}>
                   <div
