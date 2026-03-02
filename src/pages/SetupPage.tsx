@@ -7,6 +7,25 @@ import {
 } from "../rolling/settings";
 import { NavLink } from "react-router-dom";
 
+/** Extract term starts/ends for a specific year from termYears array, falling back to flat fields. */
+function termDatesForYear(s: RollingSettings, year: number) {
+  const yc = (s.termYears ?? []).find((t) => t.year === year);
+  const starts =
+    yc?.starts ?? (year === (s.activeYear ?? year) ? (s.termStarts ?? {}) : {});
+  const ends =
+    yc?.ends ?? (year === (s.activeYear ?? year) ? (s.termEnds ?? {}) : {});
+  return {
+    t1s: (starts.t1 ?? "").trim(),
+    t2s: (starts.t2 ?? "").trim(),
+    t3s: (starts.t3 ?? "").trim(),
+    t4s: (starts.t4 ?? "").trim(),
+    t1e: (ends.t1 ?? "").trim(),
+    t2e: (ends.t2 ?? "").trim(),
+    t3e: (ends.t3 ?? "").trim(),
+    t4e: (ends.t4 ?? "").trim(),
+  };
+}
+
 export default function SetupPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
@@ -23,21 +42,29 @@ export default function SetupPage() {
   const [t4s, setT4s] = useState("");
   const [t4e, setT4e] = useState("");
 
+  function applyTermDates(s: RollingSettings, year: number) {
+    const d = termDatesForYear(s, year);
+    setT1s(d.t1s);
+    setT2s(d.t2s);
+    setT3s(d.t3s);
+    setT4s(d.t4s);
+    setT1e(d.t1e);
+    setT2e(d.t2e);
+    setT3e(d.t3e);
+    setT4e(d.t4e);
+  }
+
+  // Load settings once; also re-load when changed externally
   useEffect(() => {
     if (!userId) return;
     let alive = true;
     const load = async () => {
       const s = await getRollingSettings(userId);
       if (!alive) return;
+      const year = s.activeYear ?? new Date().getFullYear();
       setSettings(s);
-      setT1s((s.termStarts?.t1 ?? "").trim());
-      setT2s((s.termStarts?.t2 ?? "").trim());
-      setT3s((s.termStarts?.t3 ?? "").trim());
-      setT4s((s.termStarts?.t4 ?? "").trim());
-      setT1e((s.termEnds?.t1 ?? "").trim());
-      setT2e((s.termEnds?.t2 ?? "").trim());
-      setT3e((s.termEnds?.t3 ?? "").trim());
-      setT4e((s.termEnds?.t4 ?? "").trim());
+      setActiveYear(year);
+      applyTermDates(s, year);
     };
     load();
     const onChange = () => load();
@@ -48,24 +75,42 @@ export default function SetupPage() {
     };
   }, [userId]);
 
+  // When the user picks a different year in the dropdown, reload term dates for that year
+  // (without saving yet — blanks if no data exists for that year)
+  function onYearChange(y: number) {
+    setActiveYear(y);
+    if (settings) applyTermDates(settings, y);
+  }
+
   async function save() {
     if (!userId) return;
     const current = (await getRollingSettings(userId)) as any;
-    const next: RollingSettings = {
-      ...current,
-      termStarts: {
+
+    // Upsert this year into termYears array
+    const existing: any[] = current.termYears ?? [];
+    const idx = existing.findIndex((t: any) => t.year === activeYear);
+    const yearEntry = {
+      year: activeYear,
+      starts: {
         t1: t1s.trim(),
         t2: t2s.trim(),
         t3: t3s.trim(),
         t4: t4s.trim(),
       },
-      termEnds: {
-        t1: t1e.trim(),
-        t2: t2e.trim(),
-        t3: t3e.trim(),
-        t4: t4e.trim(),
-      },
+      ends: { t1: t1e.trim(), t2: t2e.trim(), t3: t3e.trim(), t4: t4e.trim() },
+    };
+    const nextTermYears =
+      idx >= 0
+        ? existing.map((t: any, i: number) => (i === idx ? yearEntry : t))
+        : [...existing, yearEntry];
+
+    const next: RollingSettings = {
+      ...current,
       activeYear,
+      termYears: nextTermYears,
+      // Also keep flat fields in sync for the active year (backwards compat)
+      termStarts: yearEntry.starts,
+      termEnds: yearEntry.ends,
     };
     await setRollingSettings(userId, next);
     setSettings(next);
@@ -117,7 +162,8 @@ export default function SetupPage() {
             onChange={async (e) => {
               const y = parseInt(e.target.value, 10);
               if (!Number.isFinite(y)) return;
-              setActiveYear(y);
+              onYearChange(y);
+              // Save the active year immediately so all other pages switch over
               await setRollingSettings(userId, {
                 ...(settings ?? ({} as any)),
                 activeYear: y,
@@ -138,9 +184,10 @@ export default function SetupPage() {
       </div>
 
       <div className="card">
-        <h2>NSW term dates</h2>
+        <h2>NSW term dates — {activeYear}</h2>
         <div className="muted" style={{ marginBottom: 10 }}>
           Used to display Term/Week in Today and Week. Leave blank to hide.
+          Dates are saved per year.
         </div>
 
         <div
@@ -213,23 +260,19 @@ export default function SetupPage() {
           style={{ marginTop: 12, justifyContent: "flex-end" }}
         >
           <button className="btn" type="button" onClick={save}>
-            Save
+            Save term dates for {activeYear}
           </button>
         </div>
       </div>
 
       {settings ? (
         <div className="card">
-          <div className="badge">Current</div>
+          <div className="badge">Stored term years</div>
           <pre
             style={{ whiteSpace: "pre-wrap", marginTop: 8 }}
             className="muted"
           >
-            {JSON.stringify(
-              { termStarts: settings.termStarts, termEnds: settings.termEnds },
-              null,
-              2,
-            )}
+            {JSON.stringify(settings.termYears ?? [], null, 2)}
           </pre>
         </div>
       ) : null}

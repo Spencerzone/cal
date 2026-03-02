@@ -4,9 +4,13 @@ import { useAuth } from "../auth/AuthProvider";
 import { getRollingSettings } from "../rolling/settings";
 import type { Subject, SubjectKind } from "../db/db";
 import { ensureSubjectsFromTemplates } from "../db/seedSubjects";
-import { deleteSubject, getAllSubjectsByUser, restoreSubject, upsertSubject } from "../db/subjectQueries";
+import {
+  deleteSubject,
+  getAllSubjectsByUser,
+  restoreSubject,
+  upsertSubject,
+} from "../db/subjectQueries";
 import { subjectIdForManual, autoHexColorForKey } from "../db/subjectUtils";
-
 
 const KIND_LABEL: Record<SubjectKind, string> = {
   subject: "Subject",
@@ -19,7 +23,9 @@ export default function SubjectsPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
+  const [activeYear, setActiveYear] = useState<number>(
+    new Date().getFullYear(),
+  );
   const [filter, setFilter] = useState<SubjectKind | "all">("all");
 
   useEffect(() => {
@@ -35,7 +41,8 @@ export default function SubjectsPage() {
       })();
     };
     window.addEventListener("rolling-settings-changed", on as any);
-    return () => window.removeEventListener("rolling-settings-changed", on as any);
+    return () =>
+      window.removeEventListener("rolling-settings-changed", on as any);
   }, [userId]);
 
   const [q, setQ] = useState("");
@@ -62,8 +69,9 @@ export default function SubjectsPage() {
     refresh();
     const onChanged = () => refresh();
     window.addEventListener("subjects-changed", onChanged as any);
-    return () => window.removeEventListener("subjects-changed", onChanged as any);
-  }, [userId]);
+    return () =>
+      window.removeEventListener("subjects-changed", onChanged as any);
+  }, [userId, activeYear]);
 
   const visible = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -72,8 +80,9 @@ export default function SubjectsPage() {
       .filter((s) => (filter === "all" ? true : s.kind === filter))
       .filter((s) =>
         query
-          ? (s.title || "").toLowerCase().includes(query) || (s.code || "").toLowerCase().includes(query)
-          : true
+          ? (s.title || "").toLowerCase().includes(query) ||
+            (s.code || "").toLowerCase().includes(query)
+          : true,
       )
       .sort((a, b) => {
         if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
@@ -113,31 +122,69 @@ export default function SubjectsPage() {
       <h1>Subjects</h1>
 
       <div className="card">
-        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
-            <option value="all">All</option>
-            <option value="subject">Subjects</option>
-            <option value="duty">Duties</option>
-            <option value="break">Breaks</option>
-          </select>
+        <div
+          className="row"
+          style={{
+            gap: 8,
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+          }}
+        >
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
+            >
+              <option value="all">All</option>
+              <option value="subject">Subjects</option>
+              <option value="duty">Duties</option>
+              <option value="break">Breaks</option>
+            </select>
 
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" style={{ minWidth: 220 }} />
-          <label className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-            Show archived
-          </label>
-          <button onClick={refresh}>Refresh</button>
-          <button onClick={syncFromTemplate} title="Create any missing subjects based on the current timetable template">
-            Sync from template
-          </button>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search"
+              style={{ minWidth: 220 }}
+            />
+            <label
+              className="muted"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+              />
+              Show archived
+            </label>
+            <button onClick={refresh}>Refresh</button>
+            <button
+              onClick={syncFromTemplate}
+              title="Create any missing subjects based on the current timetable template"
+            >
+              Sync from template
+            </button>
+          </div>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <div className="badge">Active year</div>
+            <div>{activeYear}</div>
+          </div>
         </div>
 
         <div className="space" />
 
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          className="row"
+          style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}
+        >
           <strong className="muted">Add</strong>
 
-          <select value={newKind} onChange={(e) => setNewKind(e.target.value as any)}>
+          <select
+            value={newKind}
+            onChange={(e) => setNewKind(e.target.value as any)}
+          >
             <option value="subject">Subject</option>
             <option value="duty">Duty</option>
             <option value="break">Break</option>
@@ -155,11 +202,17 @@ export default function SubjectsPage() {
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder={newKind === "duty" ? "Duty name (e.g. Oval North)" : "Name"}
+            placeholder={
+              newKind === "duty" ? "Duty name (e.g. Oval North)" : "Name"
+            }
             style={{ minWidth: 260 }}
           />
 
-          <input type="color" value={normaliseToHex(newColor) ?? "#3b82f6"} onChange={(e) => setNewColor(e.target.value)} />
+          <input
+            type="color"
+            value={normaliseToHex(newColor) ?? "#3b82f6"}
+            onChange={(e) => setNewColor(e.target.value)}
+          />
           <button onClick={addNew}>Add</button>
         </div>
 
@@ -169,7 +222,13 @@ export default function SubjectsPage() {
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 8 }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "separate",
+            borderSpacing: 8,
+          }}
+        >
           <thead>
             <tr>
               <th style={{ textAlign: "left", width: 110 }} className="muted">
@@ -181,8 +240,12 @@ export default function SubjectsPage() {
               <th style={{ textAlign: "left", width: 160 }} className="muted">
                 Code
               </th>
-              <th style={{ textAlign: "left", width: 120 }} className="muted">Kind</th>
-              <th style={{ textAlign: "left", width: 120 }} className="muted">Actions</th>
+              <th style={{ textAlign: "left", width: 120 }} className="muted">
+                Kind
+              </th>
+              <th style={{ textAlign: "left", width: 120 }} className="muted">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -226,7 +289,9 @@ export default function SubjectsPage() {
                   {s.code ?? "—"}
                 </td>
 
-                <td style={{ verticalAlign: "top" }} className="muted">{KIND_LABEL[s.kind]}</td>
+                <td style={{ verticalAlign: "top" }} className="muted">
+                  {KIND_LABEL[s.kind]}
+                </td>
 
                 <td style={{ verticalAlign: "top" }}>
                   <button
@@ -238,7 +303,7 @@ export default function SubjectsPage() {
                       }
 
                       const ok = window.confirm(
-                        `Archive “${s.title}”? This hides it from Subjects but keeps historical references. It can be restored by enabling “Show archived”.`
+                        `Archive “${s.title}”? This hides it from Subjects but keeps historical references. It can be restored by enabling “Show archived”.`,
                       );
                       if (!ok) return;
                       await deleteSubject(userId, s.id);
@@ -267,6 +332,7 @@ export default function SubjectsPage() {
 
 function normaliseToHex(color: string | undefined): string | null {
   if (!color) return null;
-  if (color.startsWith("#") && (color.length === 7 || color.length === 4)) return color;
+  if (color.startsWith("#") && (color.length === 7 || color.length === 4))
+    return color;
   return null;
 }
