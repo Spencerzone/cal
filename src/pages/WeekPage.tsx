@@ -675,8 +675,6 @@ export default function WeekPage() {
 
   return (
     <div className="grid">
-      <h1>Week</h1>
-
       <div className="card">
         <div
           className="row"
