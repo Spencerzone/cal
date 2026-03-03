@@ -47,7 +47,7 @@ import {
   getLessonPlansForDate,
 } from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
-import { termWeekForDate } from "../rolling/termWeek";
+import { termInfoForDate } from "../rolling/termWeek";
 
 type Cell =
   | { kind: "blank" }
@@ -693,11 +693,7 @@ export default function TodayPage() {
                   {weekdayFromLabel(label)},{" "}
                   Week{" "}
                   {rollingSettings
-                    ? (termWeekForDate(
-                        selectedDate,
-                        rollingSettings.termStarts,
-                        rollingSettings.termEnds,
-                      )?.week ?? "")
+                    ? (termInfoForDate(selectedDate, rollingSettings)?.week ?? "")
                     : ""}
                   {label.slice(3)}
                 </strong>
