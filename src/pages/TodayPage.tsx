@@ -743,11 +743,7 @@ export default function TodayPage() {
             <div>
               {(() => {
                 const tw = rollingSettings
-                  ? termWeekForDate(
-                      selectedDate,
-                      rollingSettings.termStarts,
-                      rollingSettings.termEnds,
-                    )
+                  ? termInfoForDate(selectedDate, rollingSettings)
                   : null;
                 return tw ? (
                   <span className="muted">
