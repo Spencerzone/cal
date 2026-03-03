@@ -47,7 +47,7 @@ import {
   getLessonPlansForDate,
 } from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
-import { termWeekForDate } from "../rolling/termWeek";
+import { termInfoForDate } from "../rolling/termWeek";
 
 type Cell =
   | { kind: "blank" }
