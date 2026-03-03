@@ -818,6 +818,15 @@ export default function TodayPage() {
                   ? "#9ca3af"
                   : (overrideSubject?.color ?? subject?.color ?? "#9ca3af");
 
+              const isClass =
+                cell.kind === "template"
+                  ? cell.e.type === "class"
+                  : cell.kind === "manual"
+                    ? cell.a.kind === "class"
+                    : cell.kind === "placed"
+                      ? subject?.kind === "subject"
+                      : false;
+
               const resolvedRoom =
                 cell.kind === "template"
                   ? roomOverride === undefined
@@ -859,7 +868,7 @@ export default function TodayPage() {
                   <td style={{ verticalAlign: "top" }}>
                     <div
                       className="slotCard slotClickable"
-                      style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
+                      style={{ ...({ ["--slotStrip" as any]: isClass ? strip : "transparent" } as any) }}
                       role={slotId ? "button" : undefined}
                       tabIndex={slotId ? 0 : undefined}
                       onClick={() => {
