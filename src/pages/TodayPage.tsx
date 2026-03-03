@@ -693,7 +693,11 @@ export default function TodayPage() {
                   {weekdayFromLabel(label)},{" "}
                   Week{" "}
                   {rollingSettings
-                    ? (termInfoForDate(selectedDate, rollingSettings)?.week ?? "")
+                    ? (termWeekForDate(
+                        selectedDate,
+                        rollingSettings.termStarts,
+                        rollingSettings.termEnds,
+                      )?.week ?? "")
                     : ""}
                   {label.slice(3)}
                 </strong>
