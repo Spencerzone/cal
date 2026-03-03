@@ -310,8 +310,6 @@ export default function MatrixPage() {
 
   return (
     <div className="grid">
-      <h1>Fortnight matrix</h1>
-
       <div className="card">
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <button

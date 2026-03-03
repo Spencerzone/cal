@@ -667,8 +667,6 @@ export default function TodayPage() {
 
   return (
     <div className="grid">
-      <h1>Today</h1>
-
       <div className="card">
         <div
           className="row"
@@ -692,7 +690,16 @@ export default function TodayPage() {
               <span className="muted">Cycle:</span>{" "}
               {label ? (
                 <strong>
-                  {weekdayFromLabel(label)} {label.slice(3)}
+                  {weekdayFromLabel(label)},{" "}
+                  Week{" "}
+                  {rollingSettings
+                    ? (termWeekForDate(
+                        selectedDate,
+                        rollingSettings.termStarts,
+                        rollingSettings.termEnds,
+                      )?.week ?? "")
+                    : ""}
+                  {label.slice(3)}
                 </strong>
               ) : (
                 <span className="muted">No school day</span>
@@ -764,14 +771,6 @@ export default function TodayPage() {
             borderSpacing: 8,
           }}
         >
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left" }} className="muted">
-                Details
-              </th>
-            </tr>
-          </thead>
-
           <tbody>
             {cells.map(({ block, slotId, cell }) => {
               const plan = slotId ? planBySlot.get(slotId) : undefined;
