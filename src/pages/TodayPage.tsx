@@ -702,9 +702,15 @@ export default function TodayPage() {
             <div>
               <span className="muted">Now:</span>{" "}
               {isViewingToday && currentNext.current ? (
-                <strong style={{ color: currentNext.current.color }}>
-                  {currentNext.current.title}
-                </strong>
+                <>
+                  <strong style={{ color: currentNext.current.color }}>
+                    {currentNext.current.title}
+                  </strong>
+                  <span className="muted">
+                    {" "}
+                    ({format(new Date(currentNext.current.end), "H:mm")})
+                  </span>
+                </>
               ) : (
                 <span className="muted">—</span>
               )}
@@ -713,9 +719,15 @@ export default function TodayPage() {
             <div>
               <span className="muted">Next:</span>{" "}
               {isViewingToday && currentNext.next ? (
-                <strong style={{ color: currentNext.next.color }}>
-                  {currentNext.next.title}
-                </strong>
+                <>
+                  <strong style={{ color: currentNext.next.color }}>
+                    {currentNext.next.title}
+                  </strong>
+                  <span className="muted">
+                    {" "}
+                    ({format(new Date(currentNext.next.start), "H:mm")})
+                  </span>
+                </>
               ) : (
                 <span className="muted">—</span>
               )}
@@ -806,6 +818,15 @@ export default function TodayPage() {
                   ? "#9ca3af"
                   : (overrideSubject?.color ?? subject?.color ?? "#9ca3af");
 
+              const isClass =
+                cell.kind === "template"
+                  ? cell.e.type === "class"
+                  : cell.kind === "manual"
+                    ? cell.a.kind === "class"
+                    : cell.kind === "placed"
+                      ? subject?.kind === "subject"
+                      : false;
+
               const resolvedRoom =
                 cell.kind === "template"
                   ? roomOverride === undefined
@@ -847,7 +868,7 @@ export default function TodayPage() {
                   <td style={{ verticalAlign: "top" }}>
                     <div
                       className="slotCard slotClickable"
-                      style={{ ...({ ["--slotStrip" as any]: strip } as any) }}
+                      style={{ ...({ ["--slotStrip" as any]: isClass ? strip : "transparent" } as any) }}
                       role={slotId ? "button" : undefined}
                       tabIndex={slotId ? 0 : undefined}
                       onClick={() => {
