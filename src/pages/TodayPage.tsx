@@ -736,21 +736,7 @@ export default function TodayPage() {
               )}
             </div>
 
-            <div>
-              {(() => {
-                const tw = rollingSettings
-                  ? termInfoForDate(selectedDate, rollingSettings)
-                  : null;
-                return tw ? (
-                  <span className="muted">
-                    Term {tw.term} · Week {tw.week}
-                    {label?.slice(3)}
-                  </span>
-                ) : (
-                  <span className="muted">&nbsp;</span>
-                );
-              })()}
-            </div>
+            
           </div>
         </div>
       </div>
