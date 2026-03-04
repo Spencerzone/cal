@@ -108,6 +108,24 @@ a {
   border-color: var(--line2);
 }
 
+.themeBtn {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.themeBtn:hover {
+  border-color: var(--line2);
+}
+
 .topbarTitle {
   display: flex;
   align-items: baseline;
