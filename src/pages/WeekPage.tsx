@@ -1,5 +1,6 @@
 // src/pages/WeekPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   addDays,
   addWeeks,
@@ -106,6 +107,7 @@ function settingsForYear(settings: any, year: number): any {
 export default function WeekPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
+  const navigate = useNavigate();
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(
     new Map(),
   );
@@ -695,6 +697,14 @@ export default function WeekPage() {
               onClick={() => setWeekStart((d) => addWeeks(d, 1))}
             >
               Next →
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigate("/")}
+              style={{ marginLeft: 4 }}
+            >
+              ← Today
             </button>
           </div>
           <div>
