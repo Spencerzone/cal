@@ -393,7 +393,7 @@ export default function RichTextPlanEditor(props: {
       ref={wrapRef}
       className="card"
       style={{
-        marginTop: 8,
+        marginTop: 4,
         background: "var(--panel3)",
         ...(hasContent ? filledCardStyle : {}),
       }}
@@ -442,14 +442,14 @@ export default function RichTextPlanEditor(props: {
             }
           }}
           style={{
-            marginTop: label ? 4 : 8,
+            marginTop: label ? 2 : 4,
             width: "100%",
             boxSizing: "border-box",
-            minHeight: compact && !hasContent ? 36 : 72,
+            minHeight: compact ? 30 : 60,
             maxHeight: 260,
             overflowY: "auto",
-            padding: compact && !hasContent ? "8px 10px" : 10,
-            borderRadius: 12,
+            padding: compact && !hasContent ? "6px 8px" : "8px 10px",
+            borderRadius: 8,
             background: "var(--editor-bg)",
             border: "1px solid var(--editor-border)",
             cursor: "text",
