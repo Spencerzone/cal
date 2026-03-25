@@ -732,29 +732,6 @@ export default function TodayPage() {
             <button className="btn" type="button" onClick={onNextDay}>
               Next →
             </button>
-            {!isViewingToday && (
-              <button
-                className="btn"
-                type="button"
-                onClick={onGoToday}
-                style={{
-                  background: "#4c8dff",
-                  color: "#fff",
-                  borderColor: "#4c8dff",
-                  fontWeight: 600,
-                }}
-              >
-                Today
-              </button>
-            )}
-            <button
-              className="btn"
-              type="button"
-              onClick={() => navigate("/week")}
-              style={{ marginLeft: 4 }}
-            >
-              Week →
-            </button>
           </div>
 
           <div
