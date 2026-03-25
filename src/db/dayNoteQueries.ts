@@ -11,21 +11,34 @@ export async function getDayNote(
 ): Promise<string> {
   const snap = await getDoc(dayNoteDoc(userId, dateKey));
   if (!snap.exists()) return "";
-  return (snap.data()?.text as string) ?? "";
+  const data = snap.data();
+  // Support both old 'text' field and new 'html' field
+  return (data?.html as string) ?? (data?.text as string) ?? "";
+}
+
+function isHtmlEffectivelyEmpty(raw: string): boolean {
+  const s = (raw ?? "").trim();
+  if (!s) return true;
+  return s
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/<\/?p[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .trim()
+    .length === 0;
 }
 
 export async function setDayNote(
   userId: string,
   dateKey: string,
-  text: string,
+  html: string,
 ): Promise<void> {
-  const trimmed = text.trim();
-  if (!trimmed) {
+  if (isHtmlEffectivelyEmpty(html)) {
     await deleteDoc(dayNoteDoc(userId, dateKey));
   } else {
     await setDoc(dayNoteDoc(userId, dateKey), {
       dateKey,
-      text: trimmed,
+      html,
       updatedAt: Date.now(),
     });
   }

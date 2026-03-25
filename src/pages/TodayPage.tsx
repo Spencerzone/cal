@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   addDays,
@@ -139,8 +139,7 @@ export default function TodayPage() {
   const [activePlanSlot, setActivePlanSlot] = useState<SlotId | null>(null);
   const openPlanHasEverHadContentRef = useRef<Map<SlotId, boolean>>(new Map());
 
-  const [dayNote, setDayNoteState] = useState<string>("");
-  const dayNoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dayNoteHtml, setDayNoteHtml] = useState<string>("");
 
   const [selectedDate, setSelectedDate] = useState<Date>(() =>
     adjustToWeekday(new Date(), 1),
@@ -169,22 +168,8 @@ export default function TodayPage() {
   // Load day note whenever the selected date changes
   useEffect(() => {
     if (!userId) return;
-    getDayNote(userId, dateKey).then(setDayNoteState);
-    const onChanged = () => getDayNote(userId, dateKey).then(setDayNoteState);
-    window.addEventListener("daynote-changed", onChanged as any);
-    return () => window.removeEventListener("daynote-changed", onChanged as any);
+    getDayNote(userId, dateKey).then(setDayNoteHtml);
   }, [userId, dateKey]);
-
-  const onDayNoteChange = useCallback(
-    (text: string) => {
-      setDayNoteState(text);
-      if (dayNoteSaveTimer.current) clearTimeout(dayNoteSaveTimer.current);
-      dayNoteSaveTimer.current = setTimeout(() => {
-        setDayNote(userId, dateKey, text);
-      }, 600);
-    },
-    [userId, dateKey],
-  );
 
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
     const s = (raw ?? "").trim();
@@ -699,6 +684,32 @@ export default function TodayPage() {
           style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}
         >
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            {/* Week-view quick switch — timetable grid icon */}
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigate("/week")}
+              title="Week view"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="0"   y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="3.5" y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="7"   y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="10.5" y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="14"  y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="0"   y="5" width="2" height="4" rx="0.5"/>
+                <rect x="3.5" y="5" width="2" height="4" rx="0.5"/>
+                <rect x="7"   y="5" width="2" height="4" rx="0.5"/>
+                <rect x="10.5" y="5" width="2" height="4" rx="0.5"/>
+                <rect x="14"  y="5" width="2" height="4" rx="0.5"/>
+                <rect x="0"   y="10" width="2" height="4" rx="0.5"/>
+                <rect x="3.5" y="10" width="2" height="4" rx="0.5"/>
+                <rect x="7"   y="10" width="2" height="4" rx="0.5"/>
+                <rect x="10.5" y="10" width="2" height="4" rx="0.5"/>
+                <rect x="14"  y="10" width="2" height="4" rx="0.5"/>
+              </svg>
+            </button>
             <button className="btn" type="button" onClick={onPrevDay}>
               ← Prev
             </button>
@@ -721,14 +732,6 @@ export default function TodayPage() {
                 Today
               </button>
             )}
-            <button
-              className="btn"
-              type="button"
-              onClick={() => navigate("/week")}
-              style={{ marginLeft: 4 }}
-            >
-              Week →
-            </button>
           </div>
 
           <div
@@ -805,49 +808,20 @@ export default function TodayPage() {
       </div>
 
       {/* Day note */}
-      <div
-        className="card"
-        style={
-          dayNote.trim()
-            ? {
-                borderColor: "#f59e0b",
-                background: "rgba(245,158,11,0.08)",
-              }
-            : {}
-        }
-      >
-        {dayNote.trim() && (
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 0.5,
-              textTransform: "uppercase",
-              color: "#f59e0b",
-              marginBottom: 6,
-            }}
-          >
-            Day Note
-          </div>
-        )}
-        <textarea
-          value={dayNote}
-          onChange={(e) => onDayNoteChange(e.target.value)}
-          placeholder="Add a note for today… (e.g. Cross Country, Professional Learning)"
-          rows={dayNote.trim() ? Math.max(2, dayNote.split("\n").length) : 1}
-          style={{
-            width: "100%",
-            background: "transparent",
-            border: "none",
-            outline: "none",
-            resize: "none",
-            color: dayNote.trim() ? "var(--text)" : "var(--muted)",
-            fontSize: 14,
-            fontFamily: "inherit",
-            padding: 0,
-          }}
-        />
-      </div>
+      <RichTextPlanEditor
+        userId={userId}
+        dateKey={dateKey}
+        initialHtml={dayNoteHtml}
+        attachments={[]}
+        palette={subjectPalette}
+        placeholder="Add a note for today…"
+        label="Day Note"
+        filledCardStyle={{
+          borderColor: "#f59e0b",
+          background: "rgba(245,158,11,0.08)",
+        }}
+        onSave={(html) => setDayNote(userId, dateKey, html)}
+      />
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table

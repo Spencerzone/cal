@@ -1,4 +1,4 @@
-import {
+import React, {
   useEffect,
   useMemo,
   useRef,
@@ -15,12 +15,20 @@ import {
 
 export default function RichTextPlanEditor(props: {
   userId: string;
-  year: number;
+  year?: number;
   dateKey: string;
-  slotId: SlotId;
+  slotId?: SlotId;
   initialHtml: string;
-  attachments: LessonAttachment[];
+  attachments?: LessonAttachment[];
   palette?: string[];
+  /** If provided, called instead of upsertLessonPlan when saving. */
+  onSave?: (html: string) => void;
+  /** Overrides the default inactive-state placeholder text. */
+  placeholder?: string;
+  /** Small label shown above the editor when the note has content. */
+  label?: string;
+  /** Extra card styles applied only when the editor has content. */
+  filledCardStyle?: React.CSSProperties;
 }) {
   const {
     userId,
@@ -28,8 +36,12 @@ export default function RichTextPlanEditor(props: {
     dateKey,
     slotId,
     initialHtml,
-    attachments,
+    attachments = [],
     palette = [],
+    onSave,
+    placeholder,
+    label,
+    filledCardStyle,
   } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -80,13 +92,12 @@ export default function RichTextPlanEditor(props: {
   function scheduleSave(nextHtml: string) {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      upsertLessonPlan(
-        userId,
-        year,
-        dateKey,
-        slotId,
-        normaliseForDb(nextHtml ?? ""),
-      );
+      const norm = normaliseForDb(nextHtml ?? "");
+      if (onSave) {
+        onSave(norm);
+      } else if (slotId && year !== undefined) {
+        upsertLessonPlan(userId, year, dateKey, slotId, norm);
+      }
     }, 600);
   }
 
@@ -378,10 +389,28 @@ export default function RichTextPlanEditor(props: {
     <div
       ref={wrapRef}
       className="card"
-      style={{ marginTop: 8, background: "var(--panel3)" }}
+      style={{
+        marginTop: 8,
+        background: "var(--panel3)",
+        ...(hasContent ? filledCardStyle : {}),
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      {label && hasContent && (
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+            textTransform: "uppercase" as const,
+            color: "#f59e0b",
+            marginBottom: 4,
+          }}
+        >
+          {label}
+        </div>
+      )}
       {!active ? (
         <div
           role="button"
@@ -429,7 +458,7 @@ export default function RichTextPlanEditor(props: {
               dangerouslySetInnerHTML={{ __html: accessibleHtml(html) }}
             />
           ) : (
-            <div className="muted">Click to add a lesson plan…</div>
+            <div className="muted">{placeholder ?? "Click to add a lesson plan…"}</div>
           )}
         </div>
       ) : null}
