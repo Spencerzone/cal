@@ -256,7 +256,7 @@ export default function WeekPage() {
       const template = await getAllCycleTemplateEvents(userId, activeYear);
       setTemplateById(new Map(template.map((e) => [e.id, e])));
     })();
-  }, [userId]);
+  }, [userId, activeYear]);
 
   // Load assignments for each Mon-Fri date in the viewed week
   useEffect(() => {

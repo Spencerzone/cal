@@ -33,14 +33,19 @@ export async function setDayNote(
   dateKey: string,
   html: string,
 ): Promise<void> {
-  if (isHtmlEffectivelyEmpty(html)) {
-    await deleteDoc(dayNoteDoc(userId, dateKey));
-  } else {
-    await setDoc(dayNoteDoc(userId, dateKey), {
-      dateKey,
-      html,
-      updatedAt: Date.now(),
-    });
+  try {
+    if (isHtmlEffectivelyEmpty(html)) {
+      await deleteDoc(dayNoteDoc(userId, dateKey));
+    } else {
+      await setDoc(dayNoteDoc(userId, dateKey), {
+        dateKey,
+        html,
+        updatedAt: Date.now(),
+      });
+    }
+  } catch (e) {
+    console.error("[dayNoteQueries] Failed to save day note", e);
+    throw e;
   }
   window.dispatchEvent(new Event("daynote-changed"));
 }
