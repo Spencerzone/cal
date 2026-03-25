@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   addDays,
@@ -139,7 +139,8 @@ export default function TodayPage() {
   const [activePlanSlot, setActivePlanSlot] = useState<SlotId | null>(null);
   const openPlanHasEverHadContentRef = useRef<Map<SlotId, boolean>>(new Map());
 
-  const [dayNoteHtml, setDayNoteHtml] = useState<string>("");
+  const [dayNote, setDayNoteState] = useState<string>("");
+  const dayNoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<Date>(() =>
     adjustToWeekday(new Date(), 1),
@@ -168,8 +169,22 @@ export default function TodayPage() {
   // Load day note whenever the selected date changes
   useEffect(() => {
     if (!userId) return;
-    getDayNote(userId, dateKey).then(setDayNoteHtml);
+    getDayNote(userId, dateKey).then(setDayNoteState);
+    const onChanged = () => getDayNote(userId, dateKey).then(setDayNoteState);
+    window.addEventListener("daynote-changed", onChanged as any);
+    return () => window.removeEventListener("daynote-changed", onChanged as any);
   }, [userId, dateKey]);
+
+  const onDayNoteChange = useCallback(
+    (text: string) => {
+      setDayNoteState(text);
+      if (dayNoteSaveTimer.current) clearTimeout(dayNoteSaveTimer.current);
+      dayNoteSaveTimer.current = setTimeout(() => {
+        setDayNote(userId, dateKey, text);
+      }, 600);
+    },
+    [userId, dateKey],
+  );
 
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
     const s = (raw ?? "").trim();
@@ -732,6 +747,14 @@ export default function TodayPage() {
                 Today
               </button>
             )}
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigate("/week")}
+              style={{ marginLeft: 4 }}
+            >
+              Week →
+            </button>
           </div>
 
           <div
@@ -788,40 +811,55 @@ export default function TodayPage() {
               )}
             </div>
 
-            <div>
-              {(() => {
-                const tw = rollingSettings
-                  ? termInfoForDate(selectedDate, rollingSettings)
-                  : null;
-                return tw ? (
-                  <span className="muted">
-                    Term {tw.term} · Week {tw.week}
-                    {label?.slice(3)}
-                  </span>
-                ) : (
-                  <span className="muted">&nbsp;</span>
-                );
-              })()}
-            </div>
+            
           </div>
         </div>
       </div>
 
       {/* Day note */}
-      <RichTextPlanEditor
-        userId={userId}
-        dateKey={dateKey}
-        initialHtml={dayNoteHtml}
-        attachments={[]}
-        palette={subjectPalette}
-        placeholder="Add a note for today…"
-        label="Day Note"
-        filledCardStyle={{
-          borderColor: "#f59e0b",
-          background: "rgba(245,158,11,0.08)",
-        }}
-        onSave={(html) => setDayNote(userId, dateKey, html)}
-      />
+      <div
+        className="card"
+        style={
+          dayNote.trim()
+            ? {
+                borderColor: "#f59e0b",
+                background: "rgba(245,158,11,0.08)",
+              }
+            : {}
+        }
+      >
+        {dayNote.trim() && (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              color: "#f59e0b",
+              marginBottom: 6,
+            }}
+          >
+            Day Note
+          </div>
+        )}
+        <textarea
+          value={dayNote}
+          onChange={(e) => onDayNoteChange(e.target.value)}
+          placeholder="Add a note for today… (e.g. Cross Country, Professional Learning)"
+          rows={dayNote.trim() ? Math.max(2, dayNote.split("\n").length) : 1}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            resize: "none",
+            color: dayNote.trim() ? "var(--text)" : "var(--muted)",
+            fontSize: 14,
+            fontFamily: "inherit",
+            padding: 0,
+          }}
+        />
+      </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table
