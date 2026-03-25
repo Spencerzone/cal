@@ -299,36 +299,39 @@ export default function WeekPage() {
   useEffect(() => {
     const load = async () => {
       if (!userId || !activeYear || weekDays.length === 0) return;
+
+      // Fetch all 5 days' plans in parallel
+      const dayResults = await Promise.all(
+        weekDays.map(async (d) => {
+          const dateKey = format(d, "yyyy-MM-dd");
+          const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
+          const pMap = new Map<SlotId, LessonPlan>();
+          for (const p of plans) pMap.set(p.slotId, p);
+
+          // Fetch all attachments for this day's plans in parallel
+          const attEntries = await Promise.all(
+            Array.from(pMap).map(async ([slotId]) => {
+              const planKey = `${dateKey}::${slotId}`;
+              try {
+                const atts = await getAttachmentsForPlan(userId, activeYear, planKey);
+                return [slotId, atts] as const;
+              } catch (e) {
+                console.warn("getAttachmentsForPlan failed", { planKey, e });
+                return [slotId, []] as const;
+              }
+            }),
+          );
+          const aMap = new Map<SlotId, LessonAttachment[]>(attEntries);
+          return { dateKey, pMap, aMap };
+        }),
+      );
+
       const pOut = new Map<string, Map<SlotId, LessonPlan>>();
       const aOut = new Map<string, Map<SlotId, LessonAttachment[]>>();
-
-      for (const d of weekDays) {
-        const dateKey = format(d, "yyyy-MM-dd");
-        const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
-
-        const pMap = new Map<SlotId, LessonPlan>();
-        const aMap = new Map<SlotId, LessonAttachment[]>();
-
-        for (const p of plans) pMap.set(p.slotId, p);
-        for (const [slotId] of pMap) {
-          const planKey = `${dateKey}::${slotId}`;
-          try {
-            const atts = await getAttachmentsForPlan(
-              userId,
-              activeYear,
-              planKey,
-            );
-            aMap.set(slotId, atts);
-          } catch (e) {
-            console.warn("getAttachmentsForPlan failed", { planKey, e });
-            aMap.set(slotId, []);
-          }
-        }
-
+      for (const { dateKey, pMap, aMap } of dayResults) {
         pOut.set(dateKey, pMap);
         aOut.set(dateKey, aMap);
       }
-
       setPlansByDate(pOut);
       setAttachmentsByDate(aOut);
     };

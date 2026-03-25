@@ -140,6 +140,7 @@ export default function TodayPage() {
   const openPlanHasEverHadContentRef = useRef<Map<SlotId, boolean>>(new Map());
 
   const [dayNoteHtml, setDayNoteHtml] = useState<string>("");
+  const templateMetaRef = useRef<{ year: number; meta: any } | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<Date>(() =>
     adjustToWeekday(new Date(), 1),
@@ -211,7 +212,8 @@ export default function TodayPage() {
       alive = false;
       window.removeEventListener("rolling-settings-changed", onChange as any);
     };
-  }, [userId, activeYear]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // activeYear is derived from rollingSettings — including it would cause circular refetch
 
   async function loadSubjects() {
     // Year-scoped for timetable display
@@ -280,7 +282,7 @@ export default function TodayPage() {
 
   // compute day's DayLabel (canonical), then apply mapping to reach stored label
   useEffect(() => {
-    if (!rollingSettings) return; // wait for settings to load before computing label
+    if (!rollingSettings) return;
     (async () => {
       const canonical = dayLabelForDate(
         dateKey,
@@ -293,7 +295,14 @@ export default function TodayPage() {
         return;
       }
 
-      const meta = await getTemplateMeta(userId, activeYear);
+      // Cache template meta per activeYear — it doesn't change between days
+      let meta = templateMetaRef.current?.year === activeYear
+        ? templateMetaRef.current.meta
+        : null;
+      if (meta === null) {
+        meta = await getTemplateMeta(userId, activeYear);
+        templateMetaRef.current = { year: activeYear, meta };
+      }
       const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
       setLabel(stored);
 
@@ -336,20 +345,24 @@ export default function TodayPage() {
     window.addEventListener("placements-changed", onChanged as any);
     return () =>
       window.removeEventListener("placements-changed", onChanged as any);
-  }, [label]);
+  }, [label, userId, activeYear]);
 
   // Load lesson plans + attachments for the selected date
   useEffect(() => {
     const load = async () => {
       const plans = await getLessonPlansForDate(userId, activeYear, dateKey);
       const pMap = new Map<SlotId, LessonPlan>();
-      const aMap = new Map<SlotId, LessonAttachment[]>();
 
       for (const p of plans) pMap.set(p.slotId, p);
-      for (const [slotId, plan] of pMap) {
-        const atts = await getAttachmentsForPlan(userId, activeYear, plan.key);
-        aMap.set(slotId, atts);
-      }
+
+      // Fetch all attachments in parallel instead of sequentially
+      const attEntries = await Promise.all(
+        Array.from(pMap).map(async ([slotId, plan]) => {
+          const atts = await getAttachmentsForPlan(userId, activeYear, plan.key);
+          return [slotId, atts] as const;
+        }),
+      );
+      const aMap = new Map<SlotId, LessonAttachment[]>(attEntries);
 
       setPlanBySlot(pMap);
       setAttachmentsBySlot(aMap);
@@ -360,7 +373,7 @@ export default function TodayPage() {
     window.addEventListener("lessonplans-changed", onChanged as any);
     return () =>
       window.removeEventListener("lessonplans-changed", onChanged as any);
-  }, [dateKey]);
+  }, [dateKey, userId, activeYear]);
 
   // If a plan is emptied/deleted, collapse the editor back to hidden state.
   useEffect(() => {
