@@ -731,6 +731,27 @@ export default function TodayPage() {
             <button className="btn" type="button" onClick={onNextDay}>
               Next →
             </button>
+            {!isViewingToday && (
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setSelectedDate(adjustToWeekday(new Date(), 1))}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "#4c8dff",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2"/>
+                  <polyline points="10.5 2 13 2 13 4.5"/>
+                </svg>
+                <span>Today</span>
+              </button>
+            )}
           </div>
 
           <div
