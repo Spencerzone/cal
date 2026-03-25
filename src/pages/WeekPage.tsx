@@ -718,14 +718,6 @@ export default function WeekPage() {
             >
               Next →
             </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={() => navigate("/")}
-              style={{ marginLeft: 4 }}
-            >
-              ← Today
-            </button>
           </div>
           <div>
             {(() => {
