@@ -699,6 +699,32 @@ export default function TodayPage() {
           style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}
         >
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            {/* Week-view quick switch — timetable grid icon */}
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigate("/week")}
+              title="Week view"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="0"   y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="3.5" y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="7"   y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="10.5" y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="14"  y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
+                <rect x="0"   y="5" width="2" height="4" rx="0.5"/>
+                <rect x="3.5" y="5" width="2" height="4" rx="0.5"/>
+                <rect x="7"   y="5" width="2" height="4" rx="0.5"/>
+                <rect x="10.5" y="5" width="2" height="4" rx="0.5"/>
+                <rect x="14"  y="5" width="2" height="4" rx="0.5"/>
+                <rect x="0"   y="10" width="2" height="4" rx="0.5"/>
+                <rect x="3.5" y="10" width="2" height="4" rx="0.5"/>
+                <rect x="7"   y="10" width="2" height="4" rx="0.5"/>
+                <rect x="10.5" y="10" width="2" height="4" rx="0.5"/>
+                <rect x="14"  y="10" width="2" height="4" rx="0.5"/>
+              </svg>
+            </button>
             <button className="btn" type="button" onClick={onPrevDay}>
               ← Prev
             </button>

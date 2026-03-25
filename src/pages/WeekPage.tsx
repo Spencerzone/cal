@@ -683,6 +683,22 @@ export default function WeekPage() {
           style={{ justifyContent: "space-between", flexWrap: "wrap" }}
         >
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            {/* Today quick switch — single-day calendar icon */}
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigate("/")}
+              title="Today view"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="3" width="14" height="12" rx="2"/>
+                <line x1="1" y1="7.5" x2="15" y2="7.5"/>
+                <line x1="5" y1="1" x2="5" y2="5"/>
+                <line x1="11" y1="1" x2="11" y2="5"/>
+                <circle cx="8" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
+              </svg>
+            </button>
             <button
               className="btn"
               type="button"
