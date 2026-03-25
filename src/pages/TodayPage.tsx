@@ -804,7 +804,7 @@ export default function TodayPage() {
           style={{
             width: "100%",
             borderCollapse: "separate",
-            borderSpacing: 8,
+            borderSpacing: 4,
           }}
         >
           <tbody>
@@ -1009,6 +1009,7 @@ export default function TodayPage() {
                             attachments={atts}
                             year={activeYear}
                             palette={subjectPalette}
+                            compact
                           />
                         </div>
                       ) : null}
