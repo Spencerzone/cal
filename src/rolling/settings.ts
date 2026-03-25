@@ -51,7 +51,7 @@ export interface RollingSettings {
 const KEY = "rolling";
 
 const DEFAULTS: RollingSettings = {
-  cycleStartDate: "2026-01-01",
+  cycleStartDate: new Date().toISOString().slice(0, 10),
   excludedDates: [],
   overrides: [],
   activeYear: new Date().getFullYear(),

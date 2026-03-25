@@ -45,23 +45,25 @@ export async function upsertLessonPlan(
   const key = planKeyFor(dateKey, slotId);
   const trimmed = (html ?? "").trim();
 
-  if (!trimmed) {
-    await deleteLessonPlan(userId, year, dateKey, slotId);
-    window.dispatchEvent(new Event("lessonplans-changed"));
-    return;
+  try {
+    if (!trimmed) {
+      await deleteLessonPlan(userId, year, dateKey, slotId);
+    } else {
+      const plan: LessonPlan = {
+        year,
+        key,
+        userId,
+        dateKey,
+        slotId,
+        html: html ?? "",
+        updatedAt: Date.now(),
+      };
+      await setDoc(lessonPlanDoc(userId, key), plan, { merge: false });
+    }
+  } catch (e) {
+    console.error("[lessonPlanQueries] Failed to save lesson plan", e);
+    throw e;
   }
-
-  const plan: LessonPlan = {
-    year,
-    key,
-    userId,
-    dateKey,
-    slotId,
-    html: html ?? "",
-    updatedAt: Date.now(),
-  };
-
-  await setDoc(lessonPlanDoc(userId, key), plan, { merge: false });
   window.dispatchEvent(new Event("lessonplans-changed"));
 }
 
@@ -149,7 +151,12 @@ export async function addUrlAttachmentToPlan(
     createdAt: Date.now(),
   };
 
-  await setDoc(lessonAttachmentDoc(userId, id), att, { merge: false });
+  try {
+    await setDoc(lessonAttachmentDoc(userId, id), att, { merge: false });
+  } catch (e) {
+    console.error("[lessonPlanQueries] Failed to add URL attachment", e);
+    throw e;
+  }
   window.dispatchEvent(new Event("lessonplans-changed"));
 }
 
@@ -161,7 +168,12 @@ export async function updateUrlAttachment(
   const next: any = {};
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.url !== undefined) next.url = normaliseUrl(patch.url);
-  await updateDoc(lessonAttachmentDoc(userId, id), next);
+  try {
+    await updateDoc(lessonAttachmentDoc(userId, id), next);
+  } catch (e) {
+    console.error("[lessonPlanQueries] Failed to update URL attachment", e);
+    throw e;
+  }
   window.dispatchEvent(new Event("lessonplans-changed"));
 }
 
@@ -169,7 +181,11 @@ export async function deleteAttachment(
   userId: string,
   id: string,
 ): Promise<void> {
-  // Delete metadata doc if it exists
-  await deleteDoc(lessonAttachmentDoc(userId, id));
+  try {
+    await deleteDoc(lessonAttachmentDoc(userId, id));
+  } catch (e) {
+    console.error("[lessonPlanQueries] Failed to delete attachment", e);
+    throw e;
+  }
   window.dispatchEvent(new Event("lessonplans-changed"));
 }

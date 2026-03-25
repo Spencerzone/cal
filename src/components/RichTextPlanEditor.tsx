@@ -3,6 +3,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as RMouseEvent,
 } from "react";
 import type { LessonAttachment, SlotId } from "../db/db";
@@ -29,6 +30,8 @@ export default function RichTextPlanEditor(props: {
   label?: string;
   /** If true, the inactive empty state uses a compact single-line height. */
   compact?: boolean;
+  /** Extra styles applied to the outer card when the editor has content. */
+  filledCardStyle?: CSSProperties;
 }) {
   const {
     userId,
