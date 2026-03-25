@@ -391,20 +391,21 @@ export default function RichTextPlanEditor(props: {
       className="card"
       style={{
         marginTop: 8,
+        background: "var(--panel3)",
         ...(hasContent ? filledCardStyle : {}),
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {label && (
+      {label && hasContent && (
         <div
           style={{
             fontSize: 11,
             fontWeight: 700,
             letterSpacing: 0.5,
             textTransform: "uppercase" as const,
-            color: hasContent ? "#f59e0b" : "var(--muted)",
-            marginBottom: 6,
+            color: "#f59e0b",
+            marginBottom: 4,
           }}
         >
           {label}
