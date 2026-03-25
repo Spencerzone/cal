@@ -690,7 +690,7 @@ export default function TodayPage() {
               type="button"
               onClick={() => navigate("/week")}
               title="Week view"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px" }}
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <rect x="0"   y="0" width="2" height="4" rx="0.5" opacity="0.55"/>
@@ -788,11 +788,15 @@ export default function TodayPage() {
         palette={subjectPalette}
         placeholder="Add a note for today…"
         label="Day Note"
+        compact
         filledCardStyle={{
           borderColor: "#f59e0b",
           background: "rgba(245,158,11,0.08)",
         }}
-        onSave={(html) => setDayNote(userId, dateKey, html)}
+        onSave={(html) => {
+          setDayNoteHtml(html);
+          setDayNote(userId, dateKey, html);
+        }}
       />
 
       <div className="card" style={{ overflowX: "auto" }}>
