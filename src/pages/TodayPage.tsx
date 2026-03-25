@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   addDays,
   addMonths,
@@ -48,6 +49,7 @@ import {
 } from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 import { termInfoForDate } from "../rolling/termWeek";
+import { getDayNote, setDayNote } from "../db/dayNoteQueries";
 
 type Cell =
   | { kind: "blank" }
@@ -104,6 +106,7 @@ function compactBlockLabel(label: string): string {
 export default function TodayPage() {
   const { user } = useAuth();
   const userId = user?.uid || "";
+  const navigate = useNavigate();
   const [subjectById, setSubjectById] = useState<Map<string, Subject>>(
     new Map(),
   );
@@ -136,6 +139,9 @@ export default function TodayPage() {
   const [activePlanSlot, setActivePlanSlot] = useState<SlotId | null>(null);
   const openPlanHasEverHadContentRef = useRef<Map<SlotId, boolean>>(new Map());
 
+  const [dayNote, setDayNoteState] = useState<string>("");
+  const dayNoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [selectedDate, setSelectedDate] = useState<Date>(() =>
     adjustToWeekday(new Date(), 1),
   );
@@ -158,6 +164,26 @@ export default function TodayPage() {
   const isViewingToday = useMemo(
     () => format(new Date(), "yyyy-MM-dd") === dateKey,
     [dateKey],
+  );
+
+  // Load day note whenever the selected date changes
+  useEffect(() => {
+    if (!userId) return;
+    getDayNote(userId, dateKey).then(setDayNoteState);
+    const onChanged = () => getDayNote(userId, dateKey).then(setDayNoteState);
+    window.addEventListener("daynote-changed", onChanged as any);
+    return () => window.removeEventListener("daynote-changed", onChanged as any);
+  }, [userId, dateKey]);
+
+  const onDayNoteChange = useCallback(
+    (text: string) => {
+      setDayNoteState(text);
+      if (dayNoteSaveTimer.current) clearTimeout(dayNoteSaveTimer.current);
+      dayNoteSaveTimer.current = setTimeout(() => {
+        setDayNote(userId, dateKey, text);
+      }, 600);
+    },
+    [userId, dateKey],
   );
 
   function isHtmlEffectivelyEmpty(raw: string | null | undefined): boolean {
@@ -680,6 +706,29 @@ export default function TodayPage() {
             <button className="btn" type="button" onClick={onNextDay}>
               Next →
             </button>
+            {!isViewingToday && (
+              <button
+                className="btn"
+                type="button"
+                onClick={onGoToday}
+                style={{
+                  background: "#4c8dff",
+                  color: "#fff",
+                  borderColor: "#4c8dff",
+                  fontWeight: 600,
+                }}
+              >
+                Today
+              </button>
+            )}
+            <button
+              className="btn"
+              type="button"
+              onClick={() => navigate("/week")}
+              style={{ marginLeft: 4 }}
+            >
+              Week →
+            </button>
           </div>
 
           <div
@@ -739,6 +788,51 @@ export default function TodayPage() {
             
           </div>
         </div>
+      </div>
+
+      {/* Day note */}
+      <div
+        className="card"
+        style={
+          dayNote.trim()
+            ? {
+                borderColor: "#f59e0b",
+                background: "rgba(245,158,11,0.08)",
+              }
+            : {}
+        }
+      >
+        {dayNote.trim() && (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              color: "#f59e0b",
+              marginBottom: 6,
+            }}
+          >
+            Day Note
+          </div>
+        )}
+        <textarea
+          value={dayNote}
+          onChange={(e) => onDayNoteChange(e.target.value)}
+          placeholder="Add a note for today… (e.g. Cross Country, Professional Learning)"
+          rows={dayNote.trim() ? Math.max(2, dayNote.split("\n").length) : 1}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            resize: "none",
+            color: dayNote.trim() ? "var(--text)" : "var(--muted)",
+            fontSize: 14,
+            fontFamily: "inherit",
+            padding: 0,
+          }}
+        />
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
@@ -963,13 +1057,6 @@ export default function TodayPage() {
         </table>
       </div>
 
-      {isViewingToday ? null : (
-        <div className="card">
-          <button className="btn" type="button" onClick={onGoToday}>
-            Back to today
-          </button>
-        </div>
-      )}
     </div>
   );
 }
