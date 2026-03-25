@@ -698,6 +698,7 @@ export default function WeekPage() {
                 <line x1="11" y1="1" x2="11" y2="5"/>
                 <circle cx="8" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
               </svg>
+              <span>Today</span>
             </button>
             <button
               className="btn"
