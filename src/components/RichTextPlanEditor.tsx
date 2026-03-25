@@ -27,8 +27,8 @@ export default function RichTextPlanEditor(props: {
   placeholder?: string;
   /** Small label shown above the editor when the note has content. */
   label?: string;
-  /** Extra card styles applied only when the editor has content. */
-  filledCardStyle?: React.CSSProperties;
+  /** If true, the inactive empty state uses a compact single-line height. */
+  compact?: boolean;
 }) {
   const {
     userId,
@@ -42,6 +42,7 @@ export default function RichTextPlanEditor(props: {
     placeholder,
     label,
     filledCardStyle,
+    compact = false,
   } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -67,11 +68,13 @@ export default function RichTextPlanEditor(props: {
   const dirtyRef = useRef<boolean>(false);
   const hydratedRef = useRef<boolean>(false);
 
-  // Adopt DB/prop updates only when not editing (avoids cursor/focus loss).
+  // Adopt external prop changes only (not on every active→inactive transition).
+  // Removing `active` from deps prevents the stale-initialHtml reset that
+  // would wipe typed content before the debounced save fires.
   useEffect(() => {
     if (active || dirtyRef.current) return;
     setHtml(initialHtml);
-  }, [initialHtml, active]);
+  }, [initialHtml]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function isHtmlEffectivelyEmpty(raw: string): boolean {
     const s = (raw ?? "").trim();
@@ -439,13 +442,13 @@ export default function RichTextPlanEditor(props: {
             }
           }}
           style={{
-            marginTop: 8,
+            marginTop: label ? 4 : 8,
             width: "100%",
             boxSizing: "border-box",
-            minHeight: 72,
+            minHeight: compact && !hasContent ? 36 : 72,
             maxHeight: 260,
             overflowY: "auto",
-            padding: 10,
+            padding: compact && !hasContent ? "8px 10px" : 10,
             borderRadius: 12,
             background: "var(--editor-bg)",
             border: "1px solid var(--editor-border)",
