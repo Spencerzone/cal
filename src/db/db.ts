@@ -258,3 +258,22 @@ export function userEventMetaCol(uid: string) {
 export function userEventMetaDoc(uid: string, eventId: string) {
   return doc(db, "users", uid, "userEventMeta", eventId);
 }
+
+export type TodoItem = {
+  id: string;
+  userId: string;
+  subjectId: string | null; // null = general list
+  title: string;
+  dueDate: string | null;   // yyyy-MM-dd or null
+  completed: boolean;
+  order: number;            // float for custom sort
+  createdAt: number;
+  updatedAt: number;
+};
+
+export function todosCol(uid: string) {
+  return collection(db, "users", uid, "todos");
+}
+export function todoDoc(uid: string, todoId: string) {
+  return doc(todosCol(uid), safeDocId(todoId));
+}
