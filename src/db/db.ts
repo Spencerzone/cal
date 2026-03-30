@@ -277,3 +277,16 @@ export function todosCol(uid: string) {
 export function todoDoc(uid: string, todoId: string) {
   return doc(todosCol(uid), safeDocId(todoId));
 }
+
+export interface CustomList {
+  id: string;       // crypto.randomUUID() — used as subjectId on TodoItem
+  title: string;
+  color: string | null;
+  order: number;
+  createdAt: number;
+}
+
+export interface TodoListConfig {
+  hiddenListIds: string[]; // "general" sentinel or a subject/custom list ID
+  customLists: CustomList[];
+}
