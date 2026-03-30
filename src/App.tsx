@@ -21,6 +21,7 @@ import BlocksPage from "./pages/BlocksPage";
 import SubjectsPage from "./pages/SubjectsPage";
 import SetupPage from "./pages/SetupPage";
 import LoginPage from "./pages/LoginPage";
+import TodosPage from "./pages/TodosPage";
 
 export default function App() {
   const location = useLocation();
@@ -120,6 +121,7 @@ export default function App() {
     if (location.pathname.startsWith("/import")) return "Import";
     if (location.pathname.startsWith("/mapping")) return "Mapping";
     if (location.pathname.startsWith("/blocks")) return "Blocks";
+    if (location.pathname.startsWith("/todos")) return "To-Dos";
     if (location.pathname.startsWith("/login")) return "Login";
     return "DayBook";
   }, [location.pathname]);
@@ -169,6 +171,12 @@ export default function App() {
                 className={({ isActive }) => (isActive ? "active" : "")}
               >
                 Lessons
+              </NavLink>
+              <NavLink
+                to="/todos"
+                className={({ isActive }) => (isActive ? "active" : "")}
+              >
+                To-Dos
               </NavLink>
               <div className="navDivider" />
               <NavLink
@@ -280,6 +288,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <SetupPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/todos"
+              element={
+                <RequireAuth>
+                  <TodosPage />
                 </RequireAuth>
               }
             />
