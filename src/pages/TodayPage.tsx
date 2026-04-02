@@ -48,7 +48,7 @@ import {
   getLessonPlansForDate,
 } from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
-import { termInfoForDate } from "../rolling/termWeek";
+import { termInfoForDate, nextTermStartAfter } from "../rolling/termWeek";
 import { getDayNote, setDayNote } from "../db/dayNoteQueries";
 
 type Cell =
@@ -165,6 +165,15 @@ export default function TodayPage() {
     () => format(new Date(), "yyyy-MM-dd") === dateKey,
     [dateKey],
   );
+
+  const hasAnyTerms = rollingSettings
+    ? (rollingSettings.termYears?.length ?? 0) > 0 || !!rollingSettings.termStarts
+    : false;
+  const isOutOfTerm = hasAnyTerms && !label;
+  const nextTermStart =
+    isOutOfTerm && rollingSettings
+      ? nextTermStartAfter(dateKey, rollingSettings)
+      : null;
 
   // Load day note whenever the selected date changes
   useEffect(() => {
@@ -812,6 +821,29 @@ export default function TodayPage() {
           </div>
         </div>
       </div>
+
+      {isOutOfTerm && (
+        <div className="card">
+          <div>
+            <strong>Holiday / non-term</strong>
+          </div>
+          <div className="muted">
+            No lessons shown for days outside configured terms.
+          </div>
+          {nextTermStart && <div className="space" />}
+          {nextTermStart && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => {
+                setSelectedDate(new Date(nextTermStart + "T00:00:00"));
+              }}
+            >
+              Skip to next term
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Day note */}
       <RichTextPlanEditor
