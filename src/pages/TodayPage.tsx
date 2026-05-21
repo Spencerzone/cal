@@ -55,7 +55,7 @@ type Cell =
   | { kind: "blank" }
   | { kind: "free" }
   | { kind: "manual"; a: SlotAssignment }
-  | { kind: "placed"; subjectId: string }
+  | { kind: "placed"; subjectId: string; e?: CycleTemplateEvent }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
@@ -414,8 +414,13 @@ export default function TodayPage() {
       if (ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")) {
         const sid = ov.subjectId;
         if (sid === null) return { block: b, slotId, cell: { kind: "blank" } };
-        if (typeof sid === "string")
-          return { block: b, slotId, cell: { kind: "placed", subjectId: sid } };
+        if (typeof sid === "string") {
+          const a = assignmentBySlot.get(slotId);
+          const e = a?.sourceTemplateEventId
+            ? templateById.get(a.sourceTemplateEventId)
+            : undefined;
+          return { block: b, slotId, cell: { kind: "placed", subjectId: sid, e } };
+        }
       }
 
       const a = assignmentBySlot.get(slotId);
@@ -439,25 +444,38 @@ export default function TodayPage() {
     });
   }, [blocks, assignmentBySlot, placementBySlot, templateById]);
 
-  // current/next computed only from template events (ignore blank/free/manual/placed)
+  // current/next computed from template events and placed-with-timing cells
   const currentNext = useMemo(() => {
     const realEvents = cells
-      .filter((x) => x.cell.kind === "template")
+      .filter(
+        (x) =>
+          x.cell.kind === "template" ||
+          (x.cell.kind === "placed" && x.cell.e != null),
+      )
       .map((x) => {
-        const e = (x.cell as any).e as CycleTemplateEvent;
-        const start = minutesToLocalDateTime(
-          dateLocal,
-          e.startMinutes,
-        ).getTime();
-        const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
-
-        const sid = subjectIdForTemplateEvent(e);
-        const subject = subjectById.get(sid) ?? subjectById.get(safeDocId(sid));
-        const detail = detailForTemplateEvent(e);
-        const title = subject ? displayTitle(subject, detail) : e.title;
-        const color = subject?.color ?? "#9ca3af";
-
-        return { title, start, end, color };
+        const cell = x.cell;
+        if (cell.kind === "template") {
+          const e = cell.e;
+          const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
+          const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
+          const sid = subjectIdForTemplateEvent(e);
+          const subject = subjectById.get(sid) ?? subjectById.get(safeDocId(sid));
+          const detail = detailForTemplateEvent(e);
+          const title = subject ? displayTitle(subject, detail) : e.title;
+          const color = subject?.color ?? "#9ca3af";
+          return { title, start, end, color };
+        } else {
+          // placed cell with template timing
+          const e = (cell as { kind: "placed"; subjectId: string; e: CycleTemplateEvent }).e;
+          const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
+          const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
+          const subject =
+            subjectById.get((cell as any).subjectId) ??
+            subjectById.get(safeDocId((cell as any).subjectId));
+          const title = subject?.title ?? (cell as any).subjectId;
+          const color = subject?.color ?? "#9ca3af";
+          return { title, start, end, color };
+        }
       })
       .sort((a, b) => a.start - b.start);
 
@@ -930,7 +948,9 @@ export default function TodayPage() {
               const timeText =
                 cell.kind === "template"
                   ? timeRangeFromTemplate(dateLocal, cell.e)
-                  : null;
+                  : cell.kind === "placed" && cell.e
+                    ? timeRangeFromTemplate(dateLocal, cell.e)
+                    : null;
 
               return (
                 <tr key={block.id}>
