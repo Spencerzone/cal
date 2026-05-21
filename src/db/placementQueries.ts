@@ -122,7 +122,17 @@ export async function getPlacementsForDayLabels(
     const snap = await getDocs(q);
     out.push(...snap.docs.map((d) => d.data() as Placement));
   }
-  return out;
+
+  // Deduplicate: legacy docs use key `${dayLabel}::${slotId}` (no year prefix) but
+  // still store `year` as a field, so the query returns both old and new docs for the
+  // same slot. Prefer the canonical year-prefixed document over legacy ones.
+  const best = new Map<string, Placement>();
+  for (const p of out) {
+    const k = `${p.dayLabel}::${p.slotId}`;
+    const isCanonical = p.key === keyFor(year, p.dayLabel, p.slotId);
+    if (!best.has(k) || isCanonical) best.set(k, p);
+  }
+  return Array.from(best.values());
 }
 
 export async function getPlacement(
@@ -144,23 +154,27 @@ export async function upsertPlacementPatch(
   patch: PlacementPatch,
 ): Promise<void> {
   const ref = placementDoc(userId, keyFor(year, dayLabel, slotId));
+  // Legacy docs used `${dayLabel}::${slotId}` as the document ID (no year prefix)
+  // but still stored `year` as a field, so queries return both. Read and migrate on write.
+  const legacyRef = placementDoc(userId, `${dayLabel}::${slotId}`);
 
   await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    const existing = snap.exists() ? (snap.data() as Placement) : undefined;
-    const merged = mergePlacement(
-      existing,
-      userId,
-      year,
-      dayLabel,
-      slotId,
-      patch,
-    );
+    const [snap, legacySnap] = await Promise.all([tx.get(ref), tx.get(legacyRef)]);
+    // Prefer the canonical doc; fall back to legacy so its data isn't lost
+    const existing = snap.exists()
+      ? (snap.data() as Placement)
+      : legacySnap.exists()
+        ? (legacySnap.data() as Placement)
+        : undefined;
+    const merged = mergePlacement(existing, userId, year, dayLabel, slotId, patch);
 
     if (!merged) {
       if (snap.exists()) tx.delete(ref);
+      if (legacySnap.exists()) tx.delete(legacyRef);
     } else {
       tx.set(ref, merged, { merge: false });
+      // Remove legacy doc so it can no longer shadow the canonical one
+      if (legacySnap.exists()) tx.delete(legacyRef);
     }
   });
 
