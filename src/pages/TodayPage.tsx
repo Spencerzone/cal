@@ -28,6 +28,7 @@ import type {
 import { getRollingSettings } from "../rolling/settings";
 import { dayLabelForDate } from "../rolling/cycle";
 import { getTemplateMeta, applyMetaToLabel } from "../rolling/templateMapping";
+import { slotForEvent } from "../rolling/buildSlotAssignments";
 import { ensureDefaultBlocks } from "../db/seed";
 import { getVisibleBlocks } from "../db/blockQueries";
 import { SLOT_DEFS } from "../rolling/slots";
@@ -398,6 +399,29 @@ export default function TodayPage() {
     }
   }, [openPlanSlot, activePlanSlot, planBySlot, attachmentsBySlot]);
 
+  // Direct slot → template event map for the current day label.
+  // Used as a fallback when the slot assignment chain is missing or out of sync.
+  const templateBySlot = useMemo(() => {
+    if (!label) return new Map<SlotId, CycleTemplateEvent>();
+    const m = new Map<SlotId, CycleTemplateEvent>();
+    for (const e of templateById.values()) {
+      if (e.dayLabel !== label) continue;
+      const sid = slotForEvent(e.periodCode, e.title);
+      if (!sid) continue;
+      const existing = m.get(sid);
+      if (!existing) {
+        m.set(sid, e);
+      } else {
+        const rankOf = (ev: CycleTemplateEvent) =>
+          ev.type === "class" ? 0 : ev.type === "duty" ? 1 : 2;
+        const re = rankOf(e), rx = rankOf(existing);
+        if (re < rx || (re === rx && e.startMinutes < existing.startMinutes))
+          m.set(sid, e);
+      }
+    }
+    return m;
+  }, [templateById, label]);
+
   // Build “cells” for each block: ALWAYS render a row, blank if no assignment / overridden blank
   const cells = useMemo((): Array<{
     block: Block;
@@ -416,9 +440,10 @@ export default function TodayPage() {
         if (sid === null) return { block: b, slotId, cell: { kind: "blank" } };
         if (typeof sid === "string") {
           const a = assignmentBySlot.get(slotId);
-          const e = a?.sourceTemplateEventId
-            ? templateById.get(a.sourceTemplateEventId)
-            : undefined;
+          const e =
+            (a?.sourceTemplateEventId
+              ? templateById.get(a.sourceTemplateEventId)
+              : undefined) ?? templateBySlot.get(slotId);
           return { block: b, slotId, cell: { kind: "placed", subjectId: sid, e } };
         }
       }
@@ -442,16 +467,18 @@ export default function TodayPage() {
 
       return { block: b, slotId, cell: { kind: "blank" } };
     });
-  }, [blocks, assignmentBySlot, placementBySlot, templateById]);
+  }, [blocks, assignmentBySlot, placementBySlot, templateById, templateBySlot]);
 
-  // current/next computed from template events and placed-with-timing cells
+  // current/next computed from template events, placed-with-timing cells, and manual cells
+  // that have a template event resolvable via templateBySlot
   const currentNext = useMemo(() => {
     const realEvents = cells
-      .filter(
-        (x) =>
-          x.cell.kind === "template" ||
-          (x.cell.kind === "placed" && x.cell.e != null),
-      )
+      .filter((x) => {
+        if (x.cell.kind === "template") return true;
+        if (x.cell.kind === "placed" && x.cell.e != null) return true;
+        if (x.cell.kind === "manual" && x.slotId && templateBySlot.get(x.slotId)) return true;
+        return false;
+      })
       .map((x) => {
         const cell = x.cell;
         if (cell.kind === "template") {
@@ -464,16 +491,22 @@ export default function TodayPage() {
           const title = subject ? displayTitle(subject, detail) : e.title;
           const color = subject?.color ?? "#9ca3af";
           return { title, start, end, color };
-        } else {
-          // placed cell with template timing
-          const e = (cell as { kind: "placed"; subjectId: string; e: CycleTemplateEvent }).e;
+        } else if (cell.kind === "placed") {
+          const e = cell.e as CycleTemplateEvent;
           const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
           const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
           const subject =
-            subjectById.get((cell as any).subjectId) ??
-            subjectById.get(safeDocId((cell as any).subjectId));
-          const title = subject?.title ?? (cell as any).subjectId;
+            subjectById.get(cell.subjectId) ?? subjectById.get(safeDocId(cell.subjectId));
+          const title = subject?.title ?? cell.subjectId;
           const color = subject?.color ?? "#9ca3af";
+          return { title, start, end, color };
+        } else {
+          // manual cell — use templateBySlot timing
+          const e = templateBySlot.get(x.slotId!)!;
+          const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
+          const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
+          const title = (cell as { kind: "manual"; a: { manualTitle: string } }).a.manualTitle;
+          const color = "#9ca3af";
           return { title, start, end, color };
         }
       })
@@ -484,7 +517,7 @@ export default function TodayPage() {
       realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
     const next = realEvents.find((e) => e.start > nowMs) ?? null;
     return { current, next };
-  }, [cells, now, dateLocal, subjectById]);
+  }, [cells, now, dateLocal, subjectById, templateBySlot]);
 
   function onPrevDay() {
     setSelectedDate((d) => adjustToWeekday(addDays(d, -1), -1));
@@ -945,12 +978,15 @@ export default function TodayPage() {
                           ? displayTitle(subject, detail)
                           : cell.e.title;
 
+              const slotTemplate = slotId ? templateBySlot.get(slotId) : undefined;
               const timeText =
                 cell.kind === "template"
                   ? timeRangeFromTemplate(dateLocal, cell.e)
                   : cell.kind === "placed" && cell.e
                     ? timeRangeFromTemplate(dateLocal, cell.e)
-                    : null;
+                    : cell.kind === "manual" && slotTemplate
+                      ? timeRangeFromTemplate(dateLocal, slotTemplate)
+                      : null;
 
               return (
                 <tr key={block.id}>

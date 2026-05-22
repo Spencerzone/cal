@@ -17,7 +17,7 @@ function normalisePeriodCode(raw: string | null | undefined): string {
   return (raw ?? "").trim().toUpperCase();
 }
 
-function slotForEvent(
+export function slotForEvent(
   periodCode: string | null | undefined,
   title: string,
 ): SlotId | null {
