@@ -58,29 +58,30 @@ export default function SetupPage() {
   const [t4w, setT4w] = useState<"A" | "B">("A");
 
   const [templateEvents, setTemplateEvents] = useState<CycleTemplateEvent[]>([]);
-  const [slotStartInputs, setSlotStartInputs] = useState<Partial<Record<SlotId, string>>>({});
-  const [slotEndInputs, setSlotEndInputs] = useState<Partial<Record<SlotId, string>>>({});
+  // weekday → slotId → { start: "HH:MM", end: "HH:MM" }
+  const [slotTimingInputs, setSlotTimingInputs] = useState<
+    Partial<Record<string, Partial<Record<SlotId, { start: string; end: string }>>>>
+  >({});
   const [slotTimingsSaved, setSlotTimingsSaved] = useState(false);
 
   function minutesToHHMM(m: number): string {
     const h = Math.floor(m / 60);
     const min = m % 60;
-    return `${h}:${String(min).padStart(2, "0")}`;
+    return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
   }
 
   function applySlotTimings(s: RollingSettings) {
     const st = s.slotTimings ?? {};
-    const starts: Partial<Record<SlotId, string>> = {};
-    const ends: Partial<Record<SlotId, string>> = {};
-    for (const { id } of SLOT_DEFS) {
-      const t = st[id];
-      if (t) {
-        starts[id] = minutesToHHMM(t.startMinutes);
-        ends[id] = minutesToHHMM(t.endMinutes);
+    const inputs: Partial<Record<string, Partial<Record<SlotId, { start: string; end: string }>>>> = {};
+    for (const [weekday, slots] of Object.entries(st)) {
+      if (!slots) continue;
+      inputs[weekday] = {};
+      for (const { id } of SLOT_DEFS) {
+        const t = (slots as any)[id];
+        if (t) inputs[weekday]![id] = { start: minutesToHHMM(t.startMinutes), end: minutesToHHMM(t.endMinutes) };
       }
     }
-    setSlotStartInputs(starts);
-    setSlotEndInputs(ends);
+    setSlotTimingInputs(inputs);
   }
 
   function applyTermDates(s: RollingSettings, year: number) {
@@ -140,15 +141,17 @@ export default function SetupPage() {
   async function saveSlotTimings() {
     if (!userId) return;
     const current = await getRollingSettings(userId);
-    const timings: Partial<Record<SlotId, { startMinutes: number; endMinutes: number }>> = {};
-    for (const { id } of SLOT_DEFS) {
-      const s = (slotStartInputs[id] ?? "").trim();
-      const e = (slotEndInputs[id] ?? "").trim();
-      if (s && e) {
-        const [sh, sm] = s.split(":").map(Number);
-        const [eh, em] = e.split(":").map(Number);
-        if (Number.isFinite(sh) && Number.isFinite(sm) && Number.isFinite(eh) && Number.isFinite(em)) {
-          timings[id] = { startMinutes: sh * 60 + sm, endMinutes: eh * 60 + em };
+    const timings: Record<string, Partial<Record<SlotId, { startMinutes: number; endMinutes: number }>>> = {};
+    for (const [weekday, slots] of Object.entries(slotTimingInputs)) {
+      if (!slots) continue;
+      timings[weekday] = {};
+      for (const { id } of SLOT_DEFS) {
+        const t = slots[id];
+        if (t?.start && t?.end) {
+          const [sh, sm] = t.start.split(":").map(Number);
+          const [eh, em] = t.end.split(":").map(Number);
+          if (Number.isFinite(sh) && Number.isFinite(sm) && Number.isFinite(eh) && Number.isFinite(em))
+            timings[weekday][id] = { startMinutes: sh * 60 + sm, endMinutes: eh * 60 + em };
         }
       }
     }
@@ -369,10 +372,16 @@ export default function SetupPage() {
 
       <SlotTimingsCard
         templateEvents={templateEvents}
-        slotStartInputs={slotStartInputs}
-        slotEndInputs={slotEndInputs}
-        onStartChange={(id, v) => setSlotStartInputs((p) => ({ ...p, [id]: v }))}
-        onEndChange={(id, v) => setSlotEndInputs((p) => ({ ...p, [id]: v }))}
+        slotTimingInputs={slotTimingInputs}
+        onSlotChange={(weekday, id, field, v) =>
+          setSlotTimingInputs((prev) => ({
+            ...prev,
+            [weekday]: {
+              ...(prev[weekday] ?? {}),
+              [id]: { ...(prev[weekday]?.[id] ?? { start: "", end: "" }), [field]: v },
+            },
+          }))
+        }
         onSave={saveSlotTimings}
         saved={slotTimingsSaved}
       />
@@ -394,27 +403,28 @@ export default function SetupPage() {
 
 // ─── Sub-component ──────────────────────────────────────────────────────────
 
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+
 function SlotTimingsCard({
   templateEvents,
-  slotStartInputs,
-  slotEndInputs,
-  onStartChange,
-  onEndChange,
+  slotTimingInputs,
+  onSlotChange,
   onSave,
   saved,
 }: {
   templateEvents: CycleTemplateEvent[];
-  slotStartInputs: Partial<Record<SlotId, string>>;
-  slotEndInputs: Partial<Record<SlotId, string>>;
-  onStartChange: (id: SlotId, v: string) => void;
-  onEndChange: (id: SlotId, v: string) => void;
+  slotTimingInputs: Partial<Record<string, Partial<Record<SlotId, { start: string; end: string }>>>> ;
+  onSlotChange: (weekday: string, id: SlotId, field: "start" | "end", v: string) => void;
   onSave: () => void;
   saved: boolean;
 }) {
-  // Build ICS-detected timing map: SlotId → best template event across all day labels
+  const [selectedWeekday, setSelectedWeekday] = useState<string>("Mon");
+
+  // ICS-detected timing for the selected weekday (MonA + MonB both contribute)
   const icsTimingBySlot = useMemo(() => {
     const m = new Map<SlotId, CycleTemplateEvent>();
     for (const e of templateEvents) {
+      if (!e.dayLabel.startsWith(selectedWeekday)) continue;
       const sid = slotForEvent(e.periodCode, e.title);
       if (!sid) continue;
       const existing = m.get(sid);
@@ -424,9 +434,9 @@ function SlotTimingsCard({
         m.set(sid, e);
     }
     return m;
-  }, [templateEvents]);
+  }, [templateEvents, selectedWeekday]);
 
-  // Events with no slot mapping (period code unrecognised)
+  // Events with no slot mapping (period code unrecognised) — shown once, not per-day
   const unmapped = useMemo(() => {
     const byCode = new Map<string, { titles: Set<string>; dayLabels: Set<string> }>();
     for (const e of templateEvents) {
@@ -449,6 +459,8 @@ function SlotTimingsCard({
     return `${h}:${String(min).padStart(2, "0")}`;
   }
 
+  const currentInputs = slotTimingInputs[selectedWeekday] ?? {};
+
   return (
     <>
       <div className="card">
@@ -457,6 +469,23 @@ function SlotTimingsCard({
           Times detected from your ICS import are shown read-only. Enter manual
           times for slots not covered by the ICS (e.g. "Before school").
           Manual times are a fallback — ICS times take priority.
+        </div>
+
+        <div className="row" style={{ gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
+          {WEEKDAYS.map((wd) => (
+            <button
+              key={wd}
+              type="button"
+              className="btn"
+              onClick={() => setSelectedWeekday(wd)}
+              style={{
+                opacity: selectedWeekday === wd ? 1 : 0.45,
+                fontWeight: selectedWeekday === wd ? 600 : 400,
+              }}
+            >
+              {wd}
+            </button>
+          ))}
         </div>
 
         <div
@@ -474,7 +503,8 @@ function SlotTimingsCard({
 
           {SLOT_DEFS.map(({ id, label }) => {
             const ics = icsTimingBySlot.get(id);
-            const hasOverride = !!(slotStartInputs[id] || slotEndInputs[id]);
+            const inp = currentInputs[id];
+            const hasOverride = !!(inp?.start || inp?.end);
             const missing = !ics && !hasOverride;
             return (
               <div key={id} style={{ display: "contents" }}>
@@ -498,14 +528,14 @@ function SlotTimingsCard({
                 </div>
                 <input
                   type="time"
-                  value={slotStartInputs[id] ?? ""}
-                  onChange={(e) => onStartChange(id, e.target.value)}
+                  value={inp?.start ?? ""}
+                  onChange={(e) => onSlotChange(selectedWeekday, id, "start", e.target.value)}
                   style={{ fontSize: "0.85em" }}
                 />
                 <input
                   type="time"
-                  value={slotEndInputs[id] ?? ""}
-                  onChange={(e) => onEndChange(id, e.target.value)}
+                  value={inp?.end ?? ""}
+                  onChange={(e) => onSlotChange(selectedWeekday, id, "end", e.target.value)}
                   style={{ fontSize: "0.85em" }}
                 />
               </div>
