@@ -472,11 +472,13 @@ export default function TodayPage() {
   // current/next computed from template events, placed-with-timing cells, and manual cells
   // that have a template event resolvable via templateBySlot
   const currentNext = useMemo(() => {
+    const manualSlotTimings = rollingSettings?.slotTimings ?? {};
     const realEvents = cells
       .filter((x) => {
         if (x.cell.kind === "template") return true;
         if (x.cell.kind === "placed" && x.cell.e != null) return true;
         if (x.cell.kind === "manual" && x.slotId && templateBySlot.get(x.slotId)) return true;
+        if ((x.cell.kind === "manual" || x.cell.kind === "placed") && x.slotId && manualSlotTimings[x.slotId]) return true;
         return false;
       })
       .map((x) => {
@@ -501,10 +503,11 @@ export default function TodayPage() {
           const color = subject?.color ?? "#9ca3af";
           return { title, start, end, color };
         } else {
-          // manual cell — use templateBySlot timing
-          const e = templateBySlot.get(x.slotId!)!;
-          const start = minutesToLocalDateTime(dateLocal, e.startMinutes).getTime();
-          const end = minutesToLocalDateTime(dateLocal, e.endMinutes).getTime();
+          // manual cell — use templateBySlot timing, then fall back to manual slot timings
+          const tplE = x.slotId ? templateBySlot.get(x.slotId) : undefined;
+          const timing = tplE ?? (x.slotId ? manualSlotTimings[x.slotId] : undefined);
+          const start = minutesToLocalDateTime(dateLocal, timing!.startMinutes).getTime();
+          const end = minutesToLocalDateTime(dateLocal, timing!.endMinutes).getTime();
           const title = (cell as { kind: "manual"; a: { manualTitle: string } }).a.manualTitle;
           const color = "#9ca3af";
           return { title, start, end, color };
@@ -517,7 +520,7 @@ export default function TodayPage() {
       realEvents.find((e) => nowMs >= e.start && nowMs < e.end) ?? null;
     const next = realEvents.find((e) => e.start > nowMs) ?? null;
     return { current, next };
-  }, [cells, now, dateLocal, subjectById, templateBySlot]);
+  }, [cells, now, dateLocal, subjectById, templateBySlot, rollingSettings]);
 
   function onPrevDay() {
     setSelectedDate((d) => adjustToWeekday(addDays(d, -1), -1));
@@ -979,6 +982,7 @@ export default function TodayPage() {
                           : cell.e.title;
 
               const slotTemplate = slotId ? templateBySlot.get(slotId) : undefined;
+              const manualSlotTiming = slotId ? (rollingSettings?.slotTimings ?? {})[slotId] : undefined;
               const timeText =
                 cell.kind === "template"
                   ? timeRangeFromTemplate(dateLocal, cell.e)
@@ -986,7 +990,9 @@ export default function TodayPage() {
                     ? timeRangeFromTemplate(dateLocal, cell.e)
                     : cell.kind === "manual" && slotTemplate
                       ? timeRangeFromTemplate(dateLocal, slotTemplate)
-                      : null;
+                      : manualSlotTiming
+                        ? timeRangeFromTemplate(dateLocal, manualSlotTiming as any)
+                        : null;
 
               return (
                 <tr key={block.id}>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import {
   getRollingSettings,
@@ -6,6 +6,10 @@ import {
   type RollingSettings,
 } from "../rolling/settings";
 import { NavLink } from "react-router-dom";
+import { getAllCycleTemplateEvents } from "../db/templateQueries";
+import { slotForEvent } from "../rolling/buildSlotAssignments";
+import { SLOT_DEFS, type SlotId } from "../rolling/slots";
+import type { CycleTemplateEvent } from "../db/db";
 
 /** Extract term starts/ends for a specific year from termYears array, falling back to flat fields. */
 function termDatesForYear(s: RollingSettings, year: number) {
@@ -53,6 +57,32 @@ export default function SetupPage() {
   const [t3w, setT3w] = useState<"A" | "B">("A");
   const [t4w, setT4w] = useState<"A" | "B">("A");
 
+  const [templateEvents, setTemplateEvents] = useState<CycleTemplateEvent[]>([]);
+  const [slotStartInputs, setSlotStartInputs] = useState<Partial<Record<SlotId, string>>>({});
+  const [slotEndInputs, setSlotEndInputs] = useState<Partial<Record<SlotId, string>>>({});
+  const [slotTimingsSaved, setSlotTimingsSaved] = useState(false);
+
+  function minutesToHHMM(m: number): string {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${h}:${String(min).padStart(2, "0")}`;
+  }
+
+  function applySlotTimings(s: RollingSettings) {
+    const st = s.slotTimings ?? {};
+    const starts: Partial<Record<SlotId, string>> = {};
+    const ends: Partial<Record<SlotId, string>> = {};
+    for (const { id } of SLOT_DEFS) {
+      const t = st[id];
+      if (t) {
+        starts[id] = minutesToHHMM(t.startMinutes);
+        ends[id] = minutesToHHMM(t.endMinutes);
+      }
+    }
+    setSlotStartInputs(starts);
+    setSlotEndInputs(ends);
+  }
+
   function applyTermDates(s: RollingSettings, year: number) {
     const d = termDatesForYear(s, year);
     setT1s(d.t1s);
@@ -80,6 +110,10 @@ export default function SetupPage() {
       setSettings(s);
       setActiveYear(year);
       applyTermDates(s, year);
+      applySlotTimings(s);
+      getAllCycleTemplateEvents(userId, year).then((evts) => {
+        if (alive) setTemplateEvents(evts);
+      });
     };
     load();
     const onChange = () => load();
@@ -90,11 +124,37 @@ export default function SetupPage() {
     };
   }, [userId]);
 
+  // Reload template events when activeYear changes
+  useEffect(() => {
+    if (!userId) return;
+    getAllCycleTemplateEvents(userId, activeYear).then(setTemplateEvents);
+  }, [userId, activeYear]);
+
   // When the user picks a different year in the dropdown, reload term dates for that year
   // (without saving yet — blanks if no data exists for that year)
   function onYearChange(y: number) {
     setActiveYear(y);
     if (settings) applyTermDates(settings, y);
+  }
+
+  async function saveSlotTimings() {
+    if (!userId) return;
+    const current = await getRollingSettings(userId);
+    const timings: Partial<Record<SlotId, { startMinutes: number; endMinutes: number }>> = {};
+    for (const { id } of SLOT_DEFS) {
+      const s = (slotStartInputs[id] ?? "").trim();
+      const e = (slotEndInputs[id] ?? "").trim();
+      if (s && e) {
+        const [sh, sm] = s.split(":").map(Number);
+        const [eh, em] = e.split(":").map(Number);
+        if (Number.isFinite(sh) && Number.isFinite(sm) && Number.isFinite(eh) && Number.isFinite(em)) {
+          timings[id] = { startMinutes: sh * 60 + sm, endMinutes: eh * 60 + em };
+        }
+      }
+    }
+    await setRollingSettings(userId, { ...current, slotTimings: timings });
+    setSlotTimingsSaved(true);
+    setTimeout(() => setSlotTimingsSaved(false), 2000);
   }
 
   async function save() {
@@ -307,6 +367,16 @@ export default function SetupPage() {
         </div>
       </div>
 
+      <SlotTimingsCard
+        templateEvents={templateEvents}
+        slotStartInputs={slotStartInputs}
+        slotEndInputs={slotEndInputs}
+        onStartChange={(id, v) => setSlotStartInputs((p) => ({ ...p, [id]: v }))}
+        onEndChange={(id, v) => setSlotEndInputs((p) => ({ ...p, [id]: v }))}
+        onSave={saveSlotTimings}
+        saved={slotTimingsSaved}
+      />
+
       {settings ? (
         <div className="card">
           <div className="badge">Stored term years</div>
@@ -319,5 +389,184 @@ export default function SetupPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+// ─── Sub-component ──────────────────────────────────────────────────────────
+
+function SlotTimingsCard({
+  templateEvents,
+  slotStartInputs,
+  slotEndInputs,
+  onStartChange,
+  onEndChange,
+  onSave,
+  saved,
+}: {
+  templateEvents: CycleTemplateEvent[];
+  slotStartInputs: Partial<Record<SlotId, string>>;
+  slotEndInputs: Partial<Record<SlotId, string>>;
+  onStartChange: (id: SlotId, v: string) => void;
+  onEndChange: (id: SlotId, v: string) => void;
+  onSave: () => void;
+  saved: boolean;
+}) {
+  // Build ICS-detected timing map: SlotId → best template event across all day labels
+  const icsTimingBySlot = useMemo(() => {
+    const m = new Map<SlotId, CycleTemplateEvent>();
+    for (const e of templateEvents) {
+      const sid = slotForEvent(e.periodCode, e.title);
+      if (!sid) continue;
+      const existing = m.get(sid);
+      if (!existing) { m.set(sid, e); continue; }
+      const rank = (ev: CycleTemplateEvent) => ev.type === "class" ? 0 : ev.type === "duty" ? 1 : 2;
+      if (rank(e) < rank(existing) || (rank(e) === rank(existing) && e.startMinutes < existing.startMinutes))
+        m.set(sid, e);
+    }
+    return m;
+  }, [templateEvents]);
+
+  // Events with no slot mapping (period code unrecognised)
+  const unmapped = useMemo(() => {
+    const byCode = new Map<string, { titles: Set<string>; dayLabels: Set<string> }>();
+    for (const e of templateEvents) {
+      if (slotForEvent(e.periodCode, e.title) !== null) continue;
+      const key = e.periodCode?.trim() || "(no period code)";
+      if (!byCode.has(key)) byCode.set(key, { titles: new Set(), dayLabels: new Set() });
+      byCode.get(key)!.titles.add(e.title);
+      byCode.get(key)!.dayLabels.add(e.dayLabel);
+    }
+    return Array.from(byCode.entries()).map(([code, { titles, dayLabels }]) => ({
+      code,
+      example: [...titles][0] ?? "",
+      dayLabelCount: dayLabels.size,
+    }));
+  }, [templateEvents]);
+
+  function fmtMinutes(m: number): string {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${h}:${String(min).padStart(2, "0")}`;
+  }
+
+  return (
+    <>
+      <div className="card">
+        <h2>Slot timings</h2>
+        <div className="muted" style={{ marginBottom: 12 }}>
+          Times detected from your ICS import are shown read-only. Enter manual
+          times for slots not covered by the ICS (e.g. "Before school").
+          Manual times are a fallback — ICS times take priority.
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(110px, auto) auto 1fr 1fr",
+            gap: "6px 10px",
+            alignItems: "center",
+          }}
+        >
+          <div className="muted" style={{ fontSize: "0.8em" }}>Slot</div>
+          <div className="muted" style={{ fontSize: "0.8em" }}>ICS detected</div>
+          <div className="muted" style={{ fontSize: "0.8em" }}>Override start</div>
+          <div className="muted" style={{ fontSize: "0.8em" }}>Override end</div>
+
+          {SLOT_DEFS.map(({ id, label }) => {
+            const ics = icsTimingBySlot.get(id);
+            const hasOverride = !!(slotStartInputs[id] || slotEndInputs[id]);
+            const missing = !ics && !hasOverride;
+            return (
+              <div key={id} style={{ display: "contents" }}>
+                <div style={{ fontSize: "0.9em" }}>{label}</div>
+                <div>
+                  {ics ? (
+                    <span
+                      className="badge"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "var(--text)", fontFamily: "monospace", fontSize: "0.8em" }}
+                    >
+                      {fmtMinutes(ics.startMinutes)}–{fmtMinutes(ics.endMinutes)}
+                    </span>
+                  ) : (
+                    <span
+                      className="badge"
+                      style={{ background: missing ? "rgba(234,179,8,0.18)" : "rgba(100,100,100,0.12)", color: "var(--muted)", fontSize: "0.75em" }}
+                    >
+                      {missing ? "⚠ Not in ICS" : "Not in ICS"}
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="time"
+                  value={slotStartInputs[id] ?? ""}
+                  onChange={(e) => onStartChange(id, e.target.value)}
+                  style={{ fontSize: "0.85em" }}
+                />
+                <input
+                  type="time"
+                  value={slotEndInputs[id] ?? ""}
+                  onChange={(e) => onEndChange(id, e.target.value)}
+                  style={{ fontSize: "0.85em" }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="row" style={{ marginTop: 14, justifyContent: "flex-end", gap: 10 }}>
+          {saved && <span className="muted" style={{ fontSize: "0.85em" }}>Saved ✓</span>}
+          <button className="btn" type="button" onClick={onSave}>
+            Save slot timings
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <details>
+          <summary style={{ cursor: "pointer", userSelect: "none" }}>
+            <strong>Unmapped ICS events</strong>
+            {unmapped.length === 0 ? (
+              <span className="muted" style={{ marginLeft: 10, fontSize: "0.85em" }}>
+                — All ICS events mapped to slots ✓
+              </span>
+            ) : (
+              <span
+                className="badge"
+                style={{ marginLeft: 10, background: "rgba(234,179,8,0.18)", color: "var(--text)", fontSize: "0.78em" }}
+              >
+                {unmapped.length} unrecognised period code{unmapped.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </summary>
+          {unmapped.length === 0 ? null : (
+            <div style={{ marginTop: 12 }}>
+              <div className="muted" style={{ fontSize: "0.82em", marginBottom: 8 }}>
+                These ICS events could not be matched to a canonical slot because their
+                period code is not recognised. They are excluded from the timetable.
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: "5px 12px",
+                  alignItems: "baseline",
+                }}
+              >
+                <div className="muted" style={{ fontSize: "0.78em" }}>Period code</div>
+                <div className="muted" style={{ fontSize: "0.78em" }}>Example title</div>
+                <div className="muted" style={{ fontSize: "0.78em" }}>Days affected</div>
+                {unmapped.map(({ code, example, dayLabelCount }) => (
+                  <div key={code} style={{ display: "contents" }}>
+                    <code style={{ fontSize: "0.85em" }}>{code}</code>
+                    <span style={{ fontSize: "0.85em", color: "var(--muted)" }}>{example}</span>
+                    <span style={{ fontSize: "0.85em", color: "var(--muted)" }}>{dayLabelCount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </details>
+      </div>
+    </>
   );
 }
