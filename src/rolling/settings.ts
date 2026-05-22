@@ -48,8 +48,8 @@ export interface RollingSettings {
     t4?: WeekSet;
   };
 
-  // Manual timing overrides for slots not covered by the ICS (e.g. "before", "after")
-  slotTimings?: Partial<Record<SlotId, { startMinutes: number; endMinutes: number }>>;
+  // Manual timing overrides per weekday ("Mon"/"Tue"/etc.) for slots not covered by the ICS
+  slotTimings?: Partial<Record<string, Partial<Record<SlotId, { startMinutes: number; endMinutes: number }>>>>;
 }
 
 const KEY = "rolling";
