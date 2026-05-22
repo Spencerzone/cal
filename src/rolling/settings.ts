@@ -2,6 +2,7 @@
 
 import { getDoc, setDoc } from "firebase/firestore";
 import { settingDoc } from "../db/db";
+import type { SlotId } from "./slots";
 
 export type WeekSet = "A" | "B";
 export type TermKey = "t1" | "t2" | "t3" | "t4";
@@ -46,6 +47,9 @@ export interface RollingSettings {
     t3?: WeekSet;
     t4?: WeekSet;
   };
+
+  // Manual timing overrides for slots not covered by the ICS (e.g. "before", "after")
+  slotTimings?: Partial<Record<SlotId, { startMinutes: number; endMinutes: number }>>;
 }
 
 const KEY = "rolling";
