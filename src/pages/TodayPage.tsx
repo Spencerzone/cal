@@ -966,8 +966,10 @@ export default function TodayPage() {
                     ? roomOverride === undefined
                       ? cell.a.manualRoom
                       : roomOverride
-                    : subject
-                      ? roomOverride
+                    : cell.kind === "placed"
+                      ? roomOverride === undefined
+                        ? (cell.e?.room ?? null)
+                        : roomOverride
                       : null;
 
               const codeText =

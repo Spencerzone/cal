@@ -53,7 +53,7 @@ type Cell =
   | { kind: "blank" }
   | { kind: "free" }
   | { kind: "manual"; a: SlotAssignment }
-  | { kind: "placed"; subjectId: string }
+  | { kind: "placed"; subjectId: string; e?: CycleTemplateEvent }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
@@ -431,8 +431,11 @@ export default function WeekPage() {
         if (entry && Object.prototype.hasOwnProperty.call(entry, "subjectId")) {
           const ov = entry.subjectId;
           if (ov === null) return { kind: "blank" } as Cell;
-          if (typeof ov === "string")
-            return { kind: "placed", subjectId: ov } as Cell;
+          if (typeof ov === "string") {
+            const a = assignmentsByDate.get(dateKey)?.get(slotId);
+            const e = a?.sourceTemplateEventId ? templateById.get(a.sourceTemplateEventId) : undefined;
+            return { kind: "placed", subjectId: ov, e } as Cell;
+          }
         }
 
         const a = assignmentsByDate.get(dateKey)?.get(slotId);
@@ -893,8 +896,10 @@ export default function WeekPage() {
                         ? roomOverride === undefined
                           ? cell.a.manualRoom
                           : roomOverride
-                        : overrideSubject
-                          ? roomOverride
+                        : cell.kind === "placed"
+                          ? roomOverride === undefined
+                            ? (cell.e?.room ?? null)
+                            : roomOverride
                           : null;
 
                   const codeText =
