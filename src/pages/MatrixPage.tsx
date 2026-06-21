@@ -266,10 +266,15 @@ export default function MatrixPage() {
     nextRoomText: string,
   ) {
     const trimmed = nextRoomText.trim();
-    const roomOverride: string | null = trimmed ? trimmed : null;
-    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
-      roomOverride,
-    });
+    if (trimmed) {
+      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+        roomOverride: trimmed,
+      });
+    } else {
+      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+        roomOverride: undefined,
+      });
+    }
   }
 
   async function setBlankRoom(dl: DayLabel, slotId: SlotId) {
