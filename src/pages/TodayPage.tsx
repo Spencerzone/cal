@@ -56,7 +56,7 @@ type Cell =
   | { kind: "blank" }
   | { kind: "free" }
   | { kind: "manual"; a: SlotAssignment }
-  | { kind: "placed"; subjectId: string; e?: CycleTemplateEvent }
+  | { kind: "placed"; subjectId: string; e?: CycleTemplateEvent; a?: SlotAssignment }
   | { kind: "template"; a: SlotAssignment; e: CycleTemplateEvent };
 
 const SLOT_LABEL_TO_ID: Record<string, SlotId> = Object.fromEntries(
@@ -450,7 +450,7 @@ export default function TodayPage() {
             (a?.sourceTemplateEventId
               ? templateById.get(a.sourceTemplateEventId)
               : undefined) ?? templateBySlot.get(slotId);
-          return { block: b, slotId, cell: { kind: "placed", subjectId: sid, e } };
+          return { block: b, slotId, cell: { kind: "placed", subjectId: sid, e, a } };
         }
       }
 
@@ -968,7 +968,7 @@ export default function TodayPage() {
                       : roomOverride
                     : cell.kind === "placed"
                       ? roomOverride === undefined
-                        ? (cell.e?.room ?? null)
+                        ? (cell.e?.room ?? cell.a?.manualRoom ?? null)
                         : roomOverride
                       : null;
 
