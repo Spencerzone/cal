@@ -461,6 +461,7 @@ export default function RichTextPlanEditor(props: {
         >
           {hasContent ? (
             <div
+              className="planEditorContent"
               style={{ color: "var(--editor-text)" }}
               dangerouslySetInnerHTML={{ __html: accessibleHtml(html) }}
             />
@@ -924,6 +925,7 @@ export default function RichTextPlanEditor(props: {
 
           <div
             ref={ref}
+            className="planEditorContent"
             contentEditable
             suppressContentEditableWarning
             onInput={onInput}
