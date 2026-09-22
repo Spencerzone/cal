@@ -282,6 +282,10 @@ h2 {
   width: 100%;
 }
 
+.planEditorContent p {
+  margin: 2px 0;
+}
+
 .slotClickable {
   cursor: pointer;
 }
