@@ -396,7 +396,8 @@ export default function RichTextPlanEditor(props: {
       ref={wrapRef}
       className="card"
       style={{
-        marginTop: 4,
+        marginTop: 2,
+        padding: 2,
         background: "var(--panel3)",
         ...(hasContent ? filledCardStyle : {}),
       }}
@@ -411,7 +412,7 @@ export default function RichTextPlanEditor(props: {
             letterSpacing: 0.5,
             textTransform: "uppercase" as const,
             color: "#f59e0b",
-            marginBottom: 4,
+            marginBottom: 2,
           }}
         >
           {label}
@@ -445,13 +446,13 @@ export default function RichTextPlanEditor(props: {
             }
           }}
           style={{
-            marginTop: label ? 2 : 4,
+            marginTop: 2,
             width: "100%",
             boxSizing: "border-box",
             minHeight: compact ? 30 : 60,
             maxHeight: 260,
             overflowY: "auto",
-            padding: compact && !hasContent ? "6px 8px" : "8px 10px",
+            padding: 2,
             borderRadius: 8,
             background: "var(--editor-bg)",
             border: "1px solid var(--editor-border)",
@@ -477,12 +478,13 @@ export default function RichTextPlanEditor(props: {
               gap: 8,
               flexWrap: "wrap",
               alignItems: "center",
-              marginTop: 8,
+              marginTop: 2,
             }}
           >
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("bold")}
             >
@@ -491,6 +493,7 @@ export default function RichTextPlanEditor(props: {
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("italic")}
             >
@@ -499,6 +502,7 @@ export default function RichTextPlanEditor(props: {
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("underline")}
             >
@@ -507,6 +511,7 @@ export default function RichTextPlanEditor(props: {
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("insertUnorderedList")}
               title="Bullet list"
@@ -529,6 +534,7 @@ export default function RichTextPlanEditor(props: {
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("insertOrderedList")}
               title="Numbered list"
@@ -559,6 +565,7 @@ export default function RichTextPlanEditor(props: {
               <button
                 className="btn"
                 type="button"
+                style={{ padding: 2 }}
                 onMouseDown={toolbarMouseDown}
                 onClick={() =>
                   setOpenPicker((p) => (p === "text" ? null : "text"))
@@ -594,6 +601,7 @@ export default function RichTextPlanEditor(props: {
               <button
                 className="btn"
                 type="button"
+                style={{ padding: 2 }}
                 onMouseDown={toolbarMouseDown}
                 onClick={() =>
                   setOpenPicker((p) => (p === "highlight" ? null : "highlight"))
@@ -749,6 +757,7 @@ export default function RichTextPlanEditor(props: {
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={onAddUrl}
             >
@@ -758,6 +767,7 @@ export default function RichTextPlanEditor(props: {
             <button
               className="btn"
               type="button"
+              style={{ padding: 2 }}
               onMouseDown={toolbarMouseDown}
               onClick={() => exec("removeFormat")}
             >
@@ -772,7 +782,7 @@ export default function RichTextPlanEditor(props: {
                 dirtyRef.current = false;
                 setActive(false);
               }}
-              style={{ marginLeft: "auto" }}
+              style={{ padding: 2, marginLeft: "auto" }}
             >
               Done
             </button>
@@ -919,13 +929,13 @@ export default function RichTextPlanEditor(props: {
             onInput={onInput}
             onKeyDown={onEditorKeyDown}
             style={{
-              marginTop: 8,
+              marginTop: 2,
               width: "100%",
               boxSizing: "border-box",
               minHeight: 140,
               maxHeight: 320,
               overflowY: "auto",
-              padding: 10,
+              padding: 2,
               borderRadius: 12,
               background: "var(--editor-bg)",
               border: "1px solid var(--editor-border)",
