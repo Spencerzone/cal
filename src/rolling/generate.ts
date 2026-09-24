@@ -6,6 +6,7 @@ import { dayLabelForDate } from "./cycle";
 import { getTemplateMeta, applyMetaToLabel } from "./templateMapping";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
+import { yearForDate } from "./termWeek";
 
 export type GeneratedEvent = {
   slotId: SlotId;
@@ -21,7 +22,7 @@ export async function generateForDate(
   const canonical = dayLabelForDate(localDateKey, settings) as DayLabel | null;
   if (!canonical) return [];
 
-  const activeYear = settings.activeYear ?? new Date().getFullYear();
+  const activeYear = yearForDate(localDateKey, settings);
   const meta = await getTemplateMeta(userId, activeYear);
   const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
 

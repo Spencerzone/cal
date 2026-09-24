@@ -22,10 +22,13 @@ import { getTemplateMeta } from "../rolling/templateMapping";
 import { applyMetaToLabel } from "../rolling/templateMapping";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { getAllCycleTemplateEvents } from "../db/templateQueries";
-import { getPlacementsForDayLabels } from "../db/placementQueries";
+import {
+  getPlacementsForDayLabels,
+  resolvePlacementVersion,
+} from "../db/placementQueries";
 import { subjectIdForTemplateEvent } from "../db/subjectUtils";
 import { getLessonPlansForDate } from "../db/lessonPlanQueries";
-import { termInfoForDate } from "../rolling/termWeek";
+import { termInfoForDate, yearForDate } from "../rolling/termWeek";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 
 type SlotDef = { id: SlotId; label: string };
@@ -223,6 +226,7 @@ export default function SubjectPage() {
     title: string;
     color: string;
     html: string;
+    year: number;
   };
 
   const [rows, setRows] = useState<LessonRow[]>([]);
@@ -243,50 +247,85 @@ export default function SubjectPage() {
 
     (async () => {
       const settings = rollingSettings as any; // use loaded state, don't re-fetch
-      const meta = await getTemplateMeta(userId, activeYear);
-      const template = await getAllCycleTemplateEvents(userId, activeYear);
-      const templateById = new Map<string, CycleTemplateEvent>(
-        template.map((e) => [e.id, e]),
-      );
 
       const dateKeys = eachDateKeyInclusive(termRange.start, termRange.end);
-      const dateLabelPairs: Array<{ dateKey: string; label: DayLabel }> = [];
+      // Each date resolves its own calendar-year bucket, so a term range that
+      // crosses a year boundary (e.g. a Year 12 course spanning Term 4 of one
+      // year into Term 1 of the next) still pulls the right Subjects/
+      // Placements/SlotAssignments/CycleTemplateEvents on each side.
+      const canonicalPairs: Array<{
+        dateKey: string;
+        canonical: DayLabel;
+        year: number;
+      }> = [];
+      const years = new Set<number>();
       for (const dk of dateKeys) {
         const canonical = dayLabelForDate(dk, settings) as DayLabel | null;
         if (!canonical) continue; // weekend/holiday
-        const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
-        dateLabelPairs.push({ dateKey: dk, label: stored });
+        const year = yearForDate(dk, settings);
+        years.add(year);
+        canonicalPairs.push({ dateKey: dk, canonical, year });
       }
 
-      const uniqueLabels = Array.from(
-        new Set(dateLabelPairs.map((x) => x.label)),
+      const metaByYear = new Map<number, any>();
+      await Promise.all(
+        Array.from(years).map(async (year) => {
+          metaByYear.set(year, await getTemplateMeta(userId, year));
+        }),
       );
-      const assignments = uniqueLabels.length
-        ? await getAssignmentsForDayLabels(userId, activeYear, uniqueLabels)
-        : [];
 
-      const placements = uniqueLabels.length
-        ? await getPlacementsForDayLabels(userId, activeYear, uniqueLabels)
-        : [];
+      const dateLabelPairs: Array<{
+        dateKey: string;
+        label: DayLabel;
+        year: number;
+      }> = canonicalPairs.map(({ dateKey, canonical, year }) => {
+        const meta = metaByYear.get(year);
+        const stored = meta ? applyMetaToLabel(canonical, meta) : canonical;
+        return { dateKey, label: stored, year };
+      });
 
-      const assignmentByKey = new Map<string, SlotAssignment>();
-      for (const a of assignments)
-        assignmentByKey.set(`${a.dayLabel}::${a.slotId}`, a);
+      const templateByYear = new Map<number, Map<string, CycleTemplateEvent>>();
+      const assignmentByKey = new Map<string, SlotAssignment>(); // `${year}::${dayLabel}::${slotId}`
+      const placementDocsByYearLabel = new Map<string, any[]>(); // `${year}::${dayLabel}` -> raw Placement docs
 
-      const placementByKey = new Map<
-        string,
-        { subjectId?: string | null; roomOverride?: string | null }
-      >();
-      for (const p of placements) {
-        const k = `${p.dayLabel}::${p.slotId}`;
-        const o: { subjectId?: string | null; roomOverride?: string | null } =
-          {};
-        if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
-          o.subjectId = (p as any).subjectId;
-        if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
-          o.roomOverride = (p as any).roomOverride;
-        placementByKey.set(k, o);
+      const labelsByYear = new Map<number, Set<DayLabel>>();
+      for (const { label, year } of dateLabelPairs) {
+        if (!labelsByYear.has(year)) labelsByYear.set(year, new Set());
+        labelsByYear.get(year)!.add(label);
       }
+
+      await Promise.all(
+        Array.from(years).map(async (year) => {
+          const template = await getAllCycleTemplateEvents(userId, year);
+          templateByYear.set(
+            year,
+            new Map(template.map((e) => [e.id, e])),
+          );
+
+          const labels = Array.from(labelsByYear.get(year) ?? []);
+          if (!labels.length) return;
+
+          const assignments = await getAssignmentsForDayLabels(
+            userId,
+            year,
+            labels,
+          );
+          for (const a of assignments)
+            assignmentByKey.set(`${year}::${a.dayLabel}::${a.slotId}`, a);
+
+          const placements = await getPlacementsForDayLabels(
+            userId,
+            year,
+            labels,
+          );
+          for (const p of placements) {
+            const k = `${year}::${p.dayLabel}`;
+            if (!placementDocsByYearLabel.has(k))
+              placementDocsByYearLabel.set(k, []);
+            placementDocsByYearLabel.get(k)!.push(p);
+          }
+        }),
+      );
 
       type PendingRow = {
         dateKey: string;
@@ -297,10 +336,20 @@ export default function SubjectPage() {
         color: string;
       };
       const pending: PendingRow[] = [];
-      for (const { dateKey, label } of dateLabelPairs) {
+      for (const { dateKey, label, year } of dateLabelPairs) {
+        const templateById = templateByYear.get(year) ?? new Map();
+        const placementDocs = placementDocsByYearLabel.get(
+          `${year}::${label}`,
+        );
         for (const slot of SLOT_DEFS) {
-          const key = `${label}::${slot.id}`;
+          const key = `${year}::${label}::${slot.id}`;
           const a = assignmentByKey.get(key);
+
+          const placementDoc = placementDocs?.find(
+            (p) => p.slotId === slot.id,
+          );
+          const ov = resolvePlacementVersion(placementDoc, dateKey);
+
           if (a && a.kind === "class") {
             let baseSubjectId: string | null = null;
             let title = "—";
@@ -315,7 +364,6 @@ export default function SubjectPage() {
             } else if (a.manualTitle) {
               title = a.manualTitle;
             }
-            const ov = placementByKey.get(key);
             const ovSubjectId =
               ov && Object.prototype.hasOwnProperty.call(ov, "subjectId")
                 ? ov.subjectId
@@ -335,7 +383,6 @@ export default function SubjectPage() {
               continue;
             }
           }
-          const ov = placementByKey.get(key);
           if (ov) {
             const ovSubjectId = Object.prototype.hasOwnProperty.call(
               ov,
@@ -360,9 +407,18 @@ export default function SubjectPage() {
           }
         }
       }
+      const yearByDate = new Map(
+        dateLabelPairs.map((x) => [x.dateKey, x.year]),
+      );
       const uniqueDates = Array.from(new Set(pending.map((r) => r.dateKey)));
       const planResults = await Promise.all(
-        uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
+        uniqueDates.map((dk) =>
+          getLessonPlansForDate(
+            userId,
+            yearByDate.get(dk) ?? activeYear,
+            dk,
+          ),
+        ),
       );
       const plansByDate = new Map<string, Map<string, string>>();
       for (let i = 0; i < uniqueDates.length; i++) {
@@ -382,6 +438,7 @@ export default function SubjectPage() {
           title: r.title,
           color: r.color,
           html,
+          year: yearByDate.get(r.dateKey) ?? activeYear,
         });
       }
 
@@ -418,7 +475,13 @@ export default function SubjectPage() {
     const onChanged = async () => {
       const uniqueDates = Array.from(new Set(rows.map((r) => r.dateKey)));
       const results = await Promise.all(
-        uniqueDates.map((dk) => getLessonPlansForDate(userId, activeYear, dk)),
+        uniqueDates.map((dk) =>
+          getLessonPlansForDate(
+            userId,
+            rollingSettings ? yearForDate(dk, rollingSettings) : activeYear,
+            dk,
+          ),
+        ),
       );
       const fresh = new Map<string, Map<string, string>>();
       for (let i = 0; i < uniqueDates.length; i++) {
@@ -436,7 +499,7 @@ export default function SubjectPage() {
     window.addEventListener("lessonplans-changed", onChanged as any);
     return () =>
       window.removeEventListener("lessonplans-changed", onChanged as any);
-  }, [userId, activeYear, rows]);
+  }, [userId, activeYear, rows, rollingSettings]);
 
   return (
     <div className="grid" id="lessons-print-root">
@@ -622,7 +685,7 @@ export default function SubjectPage() {
                           const tw = rollingSettings
                             ? termInfoForDate(
                                 parseISO(r.dateKey),
-                                settingsForYear(rollingSettings, activeYear),
+                                settingsForYear(rollingSettings, r.year),
                               )
                             : null;
                           const termPart = tw
@@ -650,7 +713,7 @@ export default function SubjectPage() {
                   >
                     <RichTextPlanEditor
                       userId={userId}
-                      year={activeYear}
+                      year={r.year}
                       dateKey={r.dateKey}
                       slotId={r.slotId}
                       initialHtml={r.html}

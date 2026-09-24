@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getRollingSettings } from "../rolling/settings";
+import { getRollingSettings, type RollingSettings } from "../rolling/settings";
+import { nextTermStartAfter } from "../rolling/termWeek";
 import { dayLabelsForSet } from "../db/templateQueries";
 import { getAssignmentsForDayLabels } from "../db/assignmentQueries";
 import { useAuth } from "../auth/AuthProvider";
@@ -31,11 +32,19 @@ function contrastColor(hex: string): string {
 }
 
 import {
-  getPlacementsForDayLabels,
-  upsertPlacementPatch,
+  getResolvedPlacementsForDayLabels,
+  addPlacementVersion,
 } from "../db/placementQueries";
 
 type SlotDef = { id: SlotId; label: string };
+
+function todayKey(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 const SLOT_DEFS: SlotDef[] = [
   { id: "before", label: "Before school" },
@@ -69,14 +78,28 @@ export default function MatrixPage() {
   const labels = useMemo(() => dayLabelsForSet(set), [set]);
   const rows = useMemo(() => SLOT_DEFS, []);
 
+  const [rollingSettings, setRollingSettingsState] =
+    useState<RollingSettings | null>(null);
+
+  // The date any edit made below takes effect from. Also doubles as "which
+  // date's state is this grid showing" — defaults to today, so the grid and
+  // its edits behave exactly as before unless changed.
+  const [effectiveFrom, setEffectiveFrom] = useState<string>(todayKey());
+
+  const nextTermQuickPick = useMemo(() => {
+    if (!rollingSettings) return null;
+    return nextTermStartAfter(todayKey(), rollingSettings);
+  }, [rollingSettings]);
+
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     const load = async () => {
       const s = await getRollingSettings(userId);
+      if (cancelled) return;
+      setRollingSettingsState(s);
       const y = (s as any)?.activeYear;
-      if (!cancelled && typeof y === "number" && Number.isFinite(y))
-        setActiveYear(y);
+      if (typeof y === "number" && Number.isFinite(y)) setActiveYear(y);
     };
     load();
     const on = () => load();
@@ -113,7 +136,12 @@ export default function MatrixPage() {
   }
 
   async function loadPlacements() {
-    const ps = await getPlacementsForDayLabels(userId, activeYear, labels);
+    const ps = await getResolvedPlacementsForDayLabels(
+      userId,
+      activeYear,
+      labels,
+      effectiveFrom,
+    );
     const m = new Map<
       string,
       { subjectId?: string | null; roomOverride?: string | null }
@@ -154,7 +182,7 @@ export default function MatrixPage() {
     window.addEventListener("placements-changed", onPlacements as any);
     return () =>
       window.removeEventListener("placements-changed", onPlacements as any);
-  }, [userId, activeYear, labels.join(",")]);
+  }, [userId, activeYear, labels.join(","), effectiveFrom]);
 
   // Default cell content from slotAssignments/template (one per slot). Now includes manual assignments too.
   const baseCell = useMemo(() => {
@@ -243,19 +271,22 @@ export default function MatrixPage() {
 
   async function onSelect(dl: DayLabel, slotId: SlotId, value: string) {
     if (value === "") {
-      // "Use template" — remove subject override only; room override is preserved by upsertPlacementPatch
-      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      // "Use template" — remove subject override only; room override carries forward unchanged
+      await addPlacementVersion(userId, activeYear, dl, slotId, {
+        effectiveFrom,
         subjectId: undefined,
       });
       return;
     }
     if (value === "__blank__") {
-      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      await addPlacementVersion(userId, activeYear, dl, slotId, {
+        effectiveFrom,
         subjectId: null,
       });
       return;
     }
-    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+    await addPlacementVersion(userId, activeYear, dl, slotId, {
+      effectiveFrom,
       subjectId: value,
     });
   }
@@ -267,27 +298,60 @@ export default function MatrixPage() {
   ) {
     const trimmed = nextRoomText.trim();
     if (trimmed) {
-      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      await addPlacementVersion(userId, activeYear, dl, slotId, {
+        effectiveFrom,
         roomOverride: trimmed,
       });
     } else {
-      await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+      await addPlacementVersion(userId, activeYear, dl, slotId, {
+        effectiveFrom,
         roomOverride: undefined,
       });
     }
   }
 
   async function setBlankRoom(dl: DayLabel, slotId: SlotId) {
-    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+    await addPlacementVersion(userId, activeYear, dl, slotId, {
+      effectiveFrom,
       roomOverride: null,
     });
   }
 
   async function clearRoomOverride(dl: DayLabel, slotId: SlotId) {
     // Remove roomOverride field entirely so the template room shows through.
-    await upsertPlacementPatch(userId, activeYear, dl, slotId, {
+    await addPlacementVersion(userId, activeYear, dl, slotId, {
+      effectiveFrom,
       roomOverride: undefined,
     });
+  }
+
+  const [carryOpenKey, setCarryOpenKey] = useState<string | null>(null);
+  const [carryFrom, setCarryFrom] = useState<string>("");
+  const [carryTo, setCarryTo] = useState<string>("");
+
+  function openCarryPanel(key: string) {
+    const nextYear = activeYear + 1;
+    const yc = (rollingSettings?.termYears ?? []).find(
+      (t) => t.year === nextYear,
+    );
+    const t1Start = (yc?.starts?.t1 ?? "").trim();
+    setCarryFrom(t1Start || `${nextYear}-01-01`);
+    setCarryTo("");
+    setCarryOpenKey(key);
+  }
+
+  async function carryToNextYear(
+    dl: DayLabel,
+    slotId: SlotId,
+    subjectIdToCopy: string | null,
+  ) {
+    if (!carryFrom) return;
+    await addPlacementVersion(userId, activeYear + 1, dl, slotId, {
+      effectiveFrom: carryFrom,
+      effectiveTo: carryTo.trim() ? carryTo.trim() : undefined,
+      subjectId: subjectIdToCopy,
+    });
+    setCarryOpenKey(null);
   }
 
   useEffect(() => {
@@ -339,6 +403,34 @@ export default function MatrixPage() {
         <div className="muted">
           Choose a subject/duty/break for each slot. “Use template” removes the
           override.
+        </div>
+
+        <div className="space" />
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <label htmlFor="matrix-effective-from" className="muted">
+            Effective from
+          </label>
+          <input
+            id="matrix-effective-from"
+            type="date"
+            value={effectiveFrom}
+            onChange={(e) => setEffectiveFrom(e.target.value || todayKey())}
+          />
+          <button className="btn" onClick={() => setEffectiveFrom(todayKey())}>
+            Today
+          </button>
+          {nextTermQuickPick ? (
+            <button
+              className="btn"
+              onClick={() => setEffectiveFrom(nextTermQuickPick)}
+            >
+              Start of next term ({nextTermQuickPick})
+            </button>
+          ) : null}
+        </div>
+        <div className="muted" style={{ marginTop: 4 }}>
+          Edits below take effect from this date onward — everything before it
+          is kept as history.
         </div>
       </div>
 
@@ -461,6 +553,11 @@ export default function MatrixPage() {
                         ? ""
                         : roomOverride;
 
+                  const effectiveSubjectId =
+                    overrideSubjectId !== undefined
+                      ? overrideSubjectId
+                      : baseSubjectId;
+
                   return (
                     <td key={k} style={{ verticalAlign: "top" }}>
                       <div
@@ -549,6 +646,66 @@ export default function MatrixPage() {
                         {resolvedRoom ? (
                           <div style={{ marginTop: 4, color: mutedColor }}>
                             Room: {resolvedRoom}
+                          </div>
+                        ) : null}
+
+                        <div className="space" />
+                        <button
+                          onClick={() => openCarryPanel(k)}
+                          title={`Copy this subject into the ${activeYear + 1} matrix`}
+                        >
+                          → {activeYear + 1}
+                        </button>
+
+                        {carryOpenKey === k ? (
+                          <div
+                            className="card"
+                            style={{
+                              marginTop: 6,
+                              background: "var(--panel2, #1a1a1a)",
+                              color: "var(--text, #fff)",
+                            }}
+                          >
+                            <div className="muted">
+                              Copy “{effectiveSubjectId
+                                ? (subjectsById.get(effectiveSubjectId)?.title ?? "—")
+                                : "Blank"}
+                              ” into {activeYear + 1}
+                            </div>
+                            <div className="space" />
+                            <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                              <label className="muted">From</label>
+                              <input
+                                type="date"
+                                value={carryFrom}
+                                onChange={(e) => setCarryFrom(e.target.value)}
+                              />
+                            </div>
+                            <div
+                              className="row"
+                              style={{ gap: 6, alignItems: "center", marginTop: 4 }}
+                            >
+                              <label className="muted">To (optional)</label>
+                              <input
+                                type="date"
+                                value={carryTo}
+                                onChange={(e) => setCarryTo(e.target.value)}
+                              />
+                            </div>
+                            <div className="space" />
+                            <div className="row" style={{ gap: 6 }}>
+                              <button
+                                className="btn"
+                                onClick={() =>
+                                  carryToNextYear(dl, row.id, effectiveSubjectId)
+                                }
+                              >
+                                Copy
+                              </button>
+                              <button onClick={() => setCarryOpenKey(null)}>
+                                Cancel
+                              </button>
+                            </div>
                           </div>
                         ) : null}
                       </div>

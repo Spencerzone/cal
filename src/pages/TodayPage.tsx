@@ -43,13 +43,13 @@ import {
   detailForTemplateEvent,
   displayTitle,
 } from "../db/subjectUtils";
-import { getPlacementsForDayLabels } from "../db/placementQueries";
+import { getResolvedPlacementsForDayLabels } from "../db/placementQueries";
 import {
   getAttachmentsForPlan,
   getLessonPlansForDate,
 } from "../db/lessonPlanQueries";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
-import { termInfoForDate } from "../rolling/termWeek";
+import { termInfoForDate, yearForDate } from "../rolling/termWeek";
 import { getDayNote, setDayNote } from "../db/dayNoteQueries";
 
 type Cell =
@@ -152,14 +152,22 @@ export default function TodayPage() {
   );
 
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
-  const activeYear = useMemo(
-    () => (rollingSettings?.activeYear ?? selectedDate.getFullYear()) as number,
-    [rollingSettings, selectedDate],
-  );
 
   const dateKey = useMemo(
     () => format(selectedDate, "yyyy-MM-dd"),
     [selectedDate],
+  );
+
+  // Which calendar-year bucket (Subjects/Placements/SlotAssignments/CycleTemplateEvents)
+  // to read for the date being viewed. Derived per-date (not a single global
+  // setting) so a term spanning two calendar years resolves correctly on both
+  // sides of the boundary.
+  const activeYear = useMemo(
+    () =>
+      rollingSettings
+        ? yearForDate(dateKey, rollingSettings)
+        : selectedDate.getFullYear(),
+    [rollingSettings, dateKey, selectedDate],
   );
   const dateLocal = useMemo(() => new Date(selectedDate), [selectedDate]);
   const isViewingToday = useMemo(
@@ -324,7 +332,12 @@ export default function TodayPage() {
     }
 
     const load = async () => {
-      const ps = await getPlacementsForDayLabels(userId, activeYear, [label]);
+      const ps = await getResolvedPlacementsForDayLabels(
+        userId,
+        activeYear,
+        [label],
+        dateKey,
+      );
       const m = new Map<
         SlotId,
         { subjectId?: string | null; roomOverride?: string | null }
@@ -346,7 +359,7 @@ export default function TodayPage() {
     window.addEventListener("placements-changed", onChanged as any);
     return () =>
       window.removeEventListener("placements-changed", onChanged as any);
-  }, [label, userId, activeYear]);
+  }, [label, userId, activeYear, dateKey]);
 
   // Load lesson plans + attachments for the selected date
   useEffect(() => {

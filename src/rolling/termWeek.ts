@@ -173,6 +173,19 @@ export function termInfoForDate(
   return { year: best.year, term: best.term, week: Math.max(1, week), set };
 }
 
+/**
+ * Which calendar-year bucket (Subjects/Placements/SlotAssignments/CycleTemplateEvents)
+ * a given date's data should be read from. Uses the TermYear whose term actually
+ * covers this date when configured, so a term spanning two calendar years (e.g. NSW
+ * Year 12: Term 4 of one year through Term 3 of the next) resolves to the correct
+ * year on each side of the boundary, falling back to the date's own calendar year.
+ */
+export function yearForDate(dateKey: string, settings: RollingSettings): number {
+  const d = parseISO(dateKey);
+  if (!isValid(d)) return new Date().getFullYear();
+  return termInfoForDate(d, settings)?.year ?? d.getFullYear();
+}
+
 export function nextTermStartAfter(
   dateKey: string,
   settings: RollingSettings,

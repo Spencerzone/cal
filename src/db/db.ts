@@ -114,14 +114,29 @@ export type SlotAssignment = {
   manualRoom?: string | null;
 };
 
+/**
+ * A single effective-dated state for a Placement slot. `effectiveFrom` is inclusive;
+ * `effectiveTo` (when set) is exclusive — the version applies to dates in
+ * [effectiveFrom, effectiveTo). An absent/null `effectiveTo` means open-ended.
+ */
+export type PlacementVersion = {
+  effectiveFrom: string; // yyyy-MM-dd
+  effectiveTo?: string | null; // yyyy-MM-dd, exclusive
+  subjectId?: string | null;
+  roomOverride?: string | null;
+};
+
 export type Placement = {
   key: string; // `${year}::${dayLabel}::${slotId}` (or legacy without year)
   year?: number;
   userId: string;
   dayLabel: DayLabel;
   slotId: SlotId;
+  // Legacy flat fields — still read (as an always-effective version) for docs
+  // written before effective-dating existed. New writes go through `versions`.
   subjectId?: string | null;
   roomOverride?: string | null;
+  versions?: PlacementVersion[];
 };
 
 export type LessonPlan = {
