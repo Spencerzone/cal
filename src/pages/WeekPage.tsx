@@ -41,12 +41,16 @@ import {
   detailForTemplateEvent,
   displayTitle,
 } from "../db/subjectUtils";
-import { getPlacementsForDayLabels } from "../db/placementQueries";
+import { getResolvedPlacementsForDayLabels } from "../db/placementQueries";
 import {
   getAttachmentsForPlan,
   getLessonPlansForDate,
 } from "../db/lessonPlanQueries";
-import { termInfoForDate, nextTermStartAfter } from "../rolling/termWeek";
+import {
+  termInfoForDate,
+  nextTermStartAfter,
+  yearForDate,
+} from "../rolling/termWeek";
 import RichTextPlanEditor from "../components/RichTextPlanEditor";
 
 type Cell =
@@ -151,8 +155,20 @@ export default function WeekPage() {
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [rollingSettings, setRollingSettingsState] = useState<any>(null);
 
-  const activeYear = (rollingSettings?.activeYear ??
-    weekStart.getFullYear()) as number;
+  // Which calendar-year bucket (Subjects/Placements/SlotAssignments/CycleTemplateEvents)
+  // to read for the viewed week. Derived from the week's own Monday (not a single
+  // global setting) so viewing a week in a different calendar year works without
+  // having to flip the global "active year" setting. In practice a school week
+  // never straddles two calendar years (the boundary falls in the summer break),
+  // so one year per week is sufficient — only Placements are resolved per-day
+  // below, since an effective-dated change can land mid-week.
+  const activeYear = useMemo(
+    () =>
+      rollingSettings
+        ? yearForDate(format(weekStart, "yyyy-MM-dd"), rollingSettings)
+        : weekStart.getFullYear(),
+    [rollingSettings, weekStart],
+  );
 
   const weekDays = useMemo(
     () => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)),
@@ -368,47 +384,48 @@ export default function WeekPage() {
     }
   }, [openPlanKey, activePlanKey, plansByDate, attachmentsByDate]);
 
-  // Load placements for the dayLabels used this week
+  // Load placements for each date in the viewed week, resolved as of that
+  // exact date — an effective-dated change can land in the middle of a week.
   useEffect(() => {
     (async () => {
-      const unique = Array.from(new Set(Array.from(dayLabelByDate.values())));
-      if (unique.length === 0) {
+      if (dayLabelByDate.size === 0) {
         setPlacementsByDate(new Map());
         return;
-      }
-      const ps = await getPlacementsForDayLabels(userId, activeYear, unique);
-
-      const byLabel = new Map<
-        DayLabel,
-        Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
-      >();
-      for (const p of ps) {
-        const m =
-          byLabel.get(p.dayLabel) ??
-          new Map<
-            SlotId,
-            { subjectId?: string | null; roomOverride?: string | null }
-          >();
-        const o: { subjectId?: string | null; roomOverride?: string | null } =
-          {};
-        if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
-          o.subjectId = p.subjectId;
-        if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
-          o.roomOverride = p.roomOverride;
-        m.set(p.slotId, o);
-        byLabel.set(p.dayLabel, m);
       }
 
       const byDate = new Map<
         string,
         Map<SlotId, { subjectId?: string | null; roomOverride?: string | null }>
       >();
-      for (const [dateKey, dl] of dayLabelByDate) {
-        byDate.set(dateKey, byLabel.get(dl) ?? new Map());
-      }
+      await Promise.all(
+        Array.from(dayLabelByDate.entries()).map(async ([dateKey, dl]) => {
+          const ps = await getResolvedPlacementsForDayLabels(
+            userId,
+            activeYear,
+            [dl],
+            dateKey,
+          );
+          const m = new Map<
+            SlotId,
+            { subjectId?: string | null; roomOverride?: string | null }
+          >();
+          for (const p of ps) {
+            const o: {
+              subjectId?: string | null;
+              roomOverride?: string | null;
+            } = {};
+            if (Object.prototype.hasOwnProperty.call(p, "subjectId"))
+              o.subjectId = p.subjectId;
+            if (Object.prototype.hasOwnProperty.call(p, "roomOverride"))
+              o.roomOverride = p.roomOverride;
+            m.set(p.slotId, o);
+          }
+          byDate.set(dateKey, m);
+        }),
+      );
       setPlacementsByDate(byDate);
     })();
-  }, [dayLabelByDate]);
+  }, [dayLabelByDate, userId, activeYear]);
 
   // Refresh placements when changed elsewhere
   useEffect(() => {
