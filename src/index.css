@@ -140,6 +140,12 @@ a {
   color: var(--muted);
   font-size: 13px;
 }
+.termCountdown {
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
 
 .layout {
   display: grid;
