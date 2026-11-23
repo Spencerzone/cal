@@ -141,9 +141,14 @@ a {
   font-size: 13px;
 }
 .termCountdown {
-  color: var(--muted);
+  align-self: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 999px;
+  padding: 2px 9px;
   font-size: 11px;
-  opacity: 0.8;
+  font-weight: 600;
   white-space: nowrap;
 }
 

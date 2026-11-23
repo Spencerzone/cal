@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { differenceInCalendarDays, format, isValid, parseISO } from "date-fns";
+import { addDays, format, isValid, parseISO } from "date-fns";
 
 import { useAuth } from "../auth/AuthProvider";
+import { dayLabelForDate } from "../rolling/cycle";
 import { getRollingSettings } from "../rolling/settings";
 import type { TermKey } from "../rolling/settings";
 import { termInfoForDate } from "../rolling/termWeek";
 
-/** Small header label: calendar days remaining until the end of the current term. */
+/** Header badge: school days remaining until the end of the current term. */
 export default function TermCountdown() {
   const { user } = useAuth();
   const [text, setText] = useState("");
@@ -33,13 +34,15 @@ export default function TermCountdown() {
           setText("");
           return;
         }
-        const days = differenceInCalendarDays(
-          end,
-          parseISO(format(today, "yyyy-MM-dd")),
-        );
-        if (days < 0) setText("");
-        else if (days === 0) setText("Last day of term");
-        else setText(`${days} day${days === 1 ? "" : "s"} left in term`);
+        // Count school days (weekdays that aren't excluded) from today through term end, inclusive.
+        let days = 0;
+        const endKey = format(end, "yyyy-MM-dd");
+        for (let d = new Date(today); format(d, "yyyy-MM-dd") <= endKey; d = addDays(d, 1)) {
+          if (dayLabelForDate(format(d, "yyyy-MM-dd"), settings)) days++;
+        }
+        if (days <= 0) setText("");
+        else if (days === 1) setText("Last school day of term");
+        else setText(`${days} school days left`);
       } catch {
         if (!cancelled) setText("");
       }
