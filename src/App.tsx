@@ -22,6 +22,7 @@ import SubjectsPage from "./pages/SubjectsPage";
 import SetupPage from "./pages/SetupPage";
 import LoginPage from "./pages/LoginPage";
 import TodosPage from "./pages/TodosPage";
+import TermCountdown from "./components/TermCountdown";
 
 export default function App() {
   const location = useLocation();
@@ -139,6 +140,7 @@ export default function App() {
         <div className="topbarTitle">
           <span className="brand">DayBook</span>
           <span className="pageTitle">{pageTitle}</span>
+          <TermCountdown />
         </div>
         <ThemeToggle />
       </header>
